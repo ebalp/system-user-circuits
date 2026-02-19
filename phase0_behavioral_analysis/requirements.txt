@@ -28,3 +28,5 @@ ipykernel>=6.0.0
 # Testing
 pytest>=7.0.0
 hypothesis>=6.0.0
+
+openrouter>=0.6.0
