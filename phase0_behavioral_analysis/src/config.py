@@ -158,8 +158,6 @@ class Task:
 @dataclass
 class ApiConfig:
     """API configuration."""
-    token_file: str
-    key_env_var: str
     timeout: int
     max_retries: int
 
@@ -236,8 +234,6 @@ def load_config(path: str | Path) -> ExperimentConfig:
     # Parse API config
     api_data = data['api']
     api = ApiConfig(
-        token_file=api_data['token_file'],
-        key_env_var=api_data['key_env_var'],
         timeout=api_data['timeout'],
         max_retries=api_data['max_retries']
     )

@@ -54,7 +54,7 @@ cd system-user-circuits
 
 ### Using your HF token
 
-Source your config to load `HF_API_KEY` into your shell:
+Source your config to load `HF_TOKEN` into your shell:
 
 ```bash
 source config.sync.env

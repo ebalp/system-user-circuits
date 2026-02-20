@@ -1480,8 +1480,6 @@ invalid_classifier_strategy = st.text(
 def minimal_experiment_config_strategy():
     """Generate a minimal valid ExperimentConfig for testing."""
     api = ApiConfig(
-        token_file="token.txt",
-        key_env_var="HF_TOKEN",
         timeout=30,
         max_retries=3
     )

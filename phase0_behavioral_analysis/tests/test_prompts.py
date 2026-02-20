@@ -62,7 +62,7 @@ def _make_config(
         condition_c_strengths = list(system_templates.keys())
 
     return ExperimentConfig(
-        api=ApiConfig(token_file='hf_token.txt', key_env_var='HF_API_KEY', timeout=60, max_retries=3),
+        api=ApiConfig(timeout=60, max_retries=3),
         models=['test-model'],
         constraint_types=constraint_types,
         experiment_pairs=experiment_pairs,

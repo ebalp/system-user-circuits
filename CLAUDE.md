@@ -110,7 +110,7 @@ uv run pytest -v
 ### Running Experiments
 ```bash
 # From phase0_behavioral_analysis/
-# Source your config first to load HF_API_KEY: source <config>.sync.env
+# Source your config first to load HF_TOKEN: source <config>.sync.env
 uv run python run_experiments.py
 ```
 

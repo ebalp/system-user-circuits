@@ -49,7 +49,7 @@ def _make_config(n_pairs: int, n_strengths: int, n_user_styles: int, n_tasks: in
     tasks = [Task(id=f"task_{i}", prompt=f"Do task {i}") for i in range(n_tasks)]
 
     return ExperimentConfig(
-        api=ApiConfig(token_file="tok.txt", key_env_var="KEY", timeout=10, max_retries=1),
+        api=ApiConfig(timeout=10, max_retries=1),
         models=["model_a"],
         constraint_types=constraint_types,
         experiment_pairs=pairs,

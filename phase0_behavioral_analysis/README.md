@@ -19,10 +19,11 @@ uv sync
 
 ## HuggingFace API Token
 
-Experiments run against the HuggingFace Inference API. Provide your token in one of two ways:
+Experiments run against the HuggingFace Inference API. Set `HF_TOKEN` in your `<name>.sync.env` and source it before running:
 
-- **File**: Create `hf_token.txt` in this directory with your token
-- **Environment variable**: `export HF_API_KEY=hf_...`
+```bash
+source <name>.sync.env
+```
 
 ## Configuring Experiments
 

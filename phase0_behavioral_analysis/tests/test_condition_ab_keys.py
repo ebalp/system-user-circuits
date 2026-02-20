@@ -82,7 +82,7 @@ def experiment_config_strategy(draw):
     system_templates = {"medium": "System template {instruction} {negative}"}
 
     config = ExperimentConfig(
-        api=ApiConfig(token_file="tok.txt", key_env_var="KEY", timeout=10, max_retries=1),
+        api=ApiConfig(timeout=10, max_retries=1),
         models=models,
         constraint_types=[ct],
         experiment_pairs=[pair],

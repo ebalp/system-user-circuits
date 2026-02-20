@@ -2,9 +2,8 @@
 # Instruction Hierarchy Evaluation
 
 # API Configuration
+# Token is read from HF_TOKEN env var — set via: source <name>.sync.env
 api:
-  token_file: hf_token.txt
-  key_env_var: HF_API_KEY
   timeout: 60
   max_retries: 3
 

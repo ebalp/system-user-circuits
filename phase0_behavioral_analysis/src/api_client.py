@@ -9,7 +9,6 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from huggingface_hub import InferenceClient
@@ -36,55 +35,43 @@ class ChatResponse:
 class HFClient:
     """
     Hugging Face Inference API client with retry logic and logging.
-    
-    Token priority: api_key param > token_file > HF_API_KEY env var
+
+    Token priority: api_key param > HF_TOKEN env var (set via source <name>.sync.env)
     """
-    
+
     def __init__(
         self,
         api_key: str | None = None,
-        token_file: str = 'hf_token.txt',
         timeout: int = 60,
         max_retries: int = 3
     ):
         """
         Initialize the HF client.
-        
+
         Args:
-            api_key: API key (highest priority)
-            token_file: Path to file containing API key
+            api_key: HF token (overrides HF_TOKEN env var if provided)
             timeout: Request timeout in seconds
             max_retries: Maximum retry attempts for rate limits
         """
         self.timeout = timeout
         self.max_retries = max_retries
-        self.token = self._load_token(api_key, token_file)
+        self.token = self._load_token(api_key)
         self._client: InferenceClient | None = None
-    
-    def _load_token(self, api_key: str | None, token_file: str) -> str:
-        """Load API token from various sources."""
-        # Priority 1: Direct api_key parameter
+
+    def _load_token(self, api_key: str | None) -> str:
+        """Load API token from parameter or HF_TOKEN environment variable."""
         if api_key:
-            logger.debug("Using API key from parameter")
+            logger.debug("Using HF token from parameter")
             return api_key
-        
-        # Priority 2: Token file
-        token_path = Path(token_file)
-        if token_path.exists():
-            token = token_path.read_text().strip()
-            if token:
-                logger.debug(f"Using API key from {token_file}")
-                return token
-        
-        # Priority 3: Environment variable
-        env_token = os.environ.get('HF_API_KEY')
+
+        env_token = os.environ.get('HF_TOKEN')
         if env_token:
-            logger.debug("Using API key from HF_API_KEY environment variable")
+            logger.debug("Using HF token from HF_TOKEN environment variable")
             return env_token
-        
+
         raise ValueError(
-            "No API token found. Provide api_key, create hf_token.txt, "
-            "or set HF_API_KEY environment variable."
+            "No HF token found. Set HF_TOKEN in your <name>.sync.env and "
+            "source it before running: source <name>.sync.env"
         )
     
     def _get_client(self, model_id: str) -> InferenceClient:

@@ -3,8 +3,6 @@ Tests for the HuggingFace API client.
 """
 
 import os
-import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,82 +12,34 @@ from src.api_client import HFClient, ChatResponse
 
 def _has_api_token() -> bool:
     """Check if an API token is available for integration tests."""
-    # Check token file in current dir
-    if Path('hf_token.txt').exists():
-        token = Path('hf_token.txt').read_text().strip()
-        if token:
-            return True
-    # Check token file in parent dir (workspace root)
-    if Path('../hf_token.txt').exists():
-        token = Path('../hf_token.txt').read_text().strip()
-        if token:
-            return True
-    # Check env var
-    if os.environ.get('HF_API_KEY'):
-        return True
-    return False
+    return bool(os.environ.get('HF_TOKEN'))
 
 
 class TestTokenLoading:
-    """Tests for token loading from various sources."""
-    
+    """Tests for token loading from parameter or HF_TOKEN env var."""
+
     def test_token_from_parameter(self):
         """Token passed as parameter should be used."""
         client = HFClient(api_key="test_token_param")
         assert client.token == "test_token_param"
-    
-    def test_token_from_file(self):
-        """Token should be loaded from file if no parameter."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-            f.write("test_token_file\n")
-            f.flush()
-            
-            try:
-                client = HFClient(token_file=f.name)
-                assert client.token == "test_token_file"
-            finally:
-                os.unlink(f.name)
-    
+
     def test_token_from_env_var(self):
-        """Token should be loaded from env var if no file."""
-        with patch.dict(os.environ, {'HF_API_KEY': 'test_token_env'}):
-            # Use non-existent file to force env var fallback
-            client = HFClient(token_file='nonexistent_file.txt')
+        """Token should be loaded from HF_TOKEN env var when no parameter given."""
+        with patch.dict(os.environ, {'HF_TOKEN': 'test_token_env'}):
+            client = HFClient()
             assert client.token == "test_token_env"
-    
-    def test_token_priority_param_over_file(self):
-        """Parameter should take priority over file."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-            f.write("file_token\n")
-            f.flush()
-            
-            try:
-                client = HFClient(api_key="param_token", token_file=f.name)
-                assert client.token == "param_token"
-            finally:
-                os.unlink(f.name)
-    
-    def test_token_priority_file_over_env(self):
-        """File should take priority over env var."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-            f.write("file_token\n")
-            f.flush()
-            
-            try:
-                with patch.dict(os.environ, {'HF_API_KEY': 'env_token'}):
-                    client = HFClient(token_file=f.name)
-                    assert client.token == "file_token"
-            finally:
-                os.unlink(f.name)
-    
+
+    def test_token_priority_param_over_env(self):
+        """Parameter should take priority over env var."""
+        with patch.dict(os.environ, {'HF_TOKEN': 'env_token'}):
+            client = HFClient(api_key="param_token")
+            assert client.token == "param_token"
+
     def test_no_token_raises_error(self):
-        """Should raise error if no token found anywhere."""
+        """Should raise ValueError if no token found."""
         with patch.dict(os.environ, {}, clear=True):
-            # Remove HF_API_KEY if it exists
-            os.environ.pop('HF_API_KEY', None)
-            
-            with pytest.raises(ValueError, match="No API token found"):
-                HFClient(token_file='nonexistent.txt')
+            with pytest.raises(ValueError, match="No HF token found"):
+                HFClient()
 
 
 class TestPromptHash:
@@ -374,12 +324,7 @@ class TestIntegration:
         # Use a small, fast model for testing
         model_id = "openai/gpt-oss-20b"
         
-        # Try token file in current dir first, then parent dir
-        token_file = 'hf_token.txt'
-        if not Path(token_file).exists():
-            token_file = '../hf_token.txt'
-        
-        client = HFClient(token_file=token_file)
+        client = HFClient()
         
         response = client.chat_completion(
             model_id=model_id,

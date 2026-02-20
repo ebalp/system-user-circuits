@@ -55,7 +55,7 @@ if [[ "$MODE" == "setup" ]]; then
     else
         echo -e "${YELLOW}GITHUB_TOKEN not set — skipping GitHub setup.${NC}"
     fi
-    if [[ -n "${HF_API_KEY:-}" ]]; then
+    if [[ -n "${HF_TOKEN:-}" ]]; then
         echo -e "${YELLOW}HF token present. To load it in this session: source $CONFIG_FILE${NC}"
     fi
 
