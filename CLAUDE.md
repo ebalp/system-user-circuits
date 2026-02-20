@@ -80,6 +80,10 @@ Always remind the user to upload before terminating. Follow the sync protocol ab
 - `<your-name>.sync.env` — personal config (gitignored, syncs with bucket)
 - `SYNC.md` — full sync documentation
 
+## Git Conventions
+
+Do not add `Co-Authored-By` trailers to commit messages.
+
 ## Project Overview
 
 This is the **Instruction Hierarchy Evaluation System** — a research platform for evaluating how LLMs handle conflicting instructions between system prompts and user messages. The project is organized in phases; currently only **Phase 0 (Behavioral Analysis)** is implemented under `phase0_behavioral_analysis/`.

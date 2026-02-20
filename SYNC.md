@@ -8,7 +8,7 @@ Code goes in GitHub. Data (numpy arrays, experiment results, checkpoints, etc.) 
 
 Each team member has:
 
-- **A personal filesystem per region** — named after yourself (e.g., `fs-enrique`, `fs-alice`). Lambda mounts it at `/lambda/nfs/<name>` on every instance in that region.
+- **A personal filesystem per region** — named after yourself (e.g., `your-name-fs-virginia`, `your-name-fs-ohio`). Lambda mounts it at `/lambda/nfs/<name>` on every instance in that region.
 - **A personal bucket on us-east-2** — a single persistent store in Washington DC that holds your data. When you move between regions, you upload before shutting down and download on the new instance.
 
 The bucket uses Lambda's Filesystem S3 Adapter — it's not AWS, it's Lambda's own storage accessed via an S3-compatible API.
@@ -19,10 +19,11 @@ You only do this once, ever.
 
 ### 1. Create your personal filesystems
 
-In the [Lambda Cloud console](https://cloud.lambda.ai), create a filesystem in each region you plan to use. Name them after yourself:
+In the [Lambda Cloud console](https://cloud.lambda.ai), create a filesystem in each region you plan to use. Name them after yourself with the geographic location:
 
-- `fs-enrique` (us-east-2)
-- `fs-enrique` (us-midwest-2)
+- `your-name-fs-dc-2` (us-east-2, Washington DC — also where your bucket lives)
+- `your-name-fs-virginia` (us-east-3)
+- `your-name-fs-ohio` (us-midwest-2)
 - etc.
 
 When launching instances, attach your filesystem for that region.
@@ -103,7 +104,7 @@ Save your data to the bucket:
 ./lambda-sync.sh <your-name>.sync.env upload
 ```
 
-The script will show you the current bucket contents and ask for confirmation before syncing.
+The script will ask for confirmation before syncing.
 
 ### Committing code
 
