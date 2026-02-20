@@ -39,7 +39,7 @@ In the Lambda Cloud console, go to **Filesystem → S3 Adapter Keys** and genera
 
 ### 4. Create a GitHub Personal Access Token
 
-Go to **GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens** and generate a token with repo access. This allows pushing and pulling code from new instances.
+Go to **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)** and generate a token with the `repo` scope. This allows pushing and pulling code from new instances.
 
 ### 5. Create your config file
 
@@ -57,7 +57,10 @@ LAMBDA_SECRET_ACCESS_KEY=<from credentials file>
 LAMBDA_REGION=us-east-2
 LAMBDA_ENDPOINT_URL=https://files.us-east-2.lambda.ai
 
-GITHUB_TOKEN=<your GitHub PAT>
+GIT_USER_NAME="Your Full Name"
+GIT_USER_EMAIL=your-email@example.com
+
+GITHUB_TOKEN=<your GitHub classic token>
 ```
 
 This file is gitignored — it stays in your filesystem, syncs with your bucket, and never goes to GitHub.
@@ -114,7 +117,7 @@ Code changes go to GitHub as usual — `git add`, `git commit`, `git push`. The 
 
 | Mode       | What it does                                                       |
 |------------|--------------------------------------------------------------------|
-| `setup`    | Configures git credentials from `GITHUB_TOKEN` in your config     |
+| `setup`    | Configures git identity and GitHub credentials from your config    |
 | `upload`   | Syncs your entire filesystem to your bucket                        |
 | `download` | Syncs your bucket to your local filesystem (warns about overwrites)|
 
