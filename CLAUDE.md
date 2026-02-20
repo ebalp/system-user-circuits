@@ -24,7 +24,7 @@ When a user asks to "set up the instance" or "clone the repo and set up", follow
    - **If they can upload it**: Wait for them to upload it into the repo directory, then continue.
    - **If they need to create it**: Ask for the values listed in `sync.env.template` and create `config.sync.env` from them.
 
-3. **Run setup** to configure git and install the Python environment (uv, Python 3.12, and `uv sync` are all handled automatically):
+3. **Run setup** to configure git and install the Python environment (uv, Python 3.12, and `uv sync` are all handled automatically). Explain what will happen to the user:
    ```bash
    ./lambda-sync.sh <config>.sync.env setup
    ```
@@ -36,8 +36,8 @@ When a user asks to "set up the instance" or "clone the repo and set up", follow
 The sync script has one confirmation prompt for both upload and download. Claude Code cannot handle interactive prompts natively, so the protocol is:
 
 1. **Explain what will happen** before running anything. Be specific:
-   - Which paths will be synced (explicit paths given, or auto-discovery)
-   - Whether `.syncignore` patterns are active
+   - Which paths will be synced (explicit paths given, or auto-discovery of all */data/ and */reports/)
+   - That patterns in `.syncignore` won't be synced 
    - For **upload**: bucket data will be overwritten with local files
    - For **download**: local files will be overwritten with bucket data — unsynced local changes will be lost
 

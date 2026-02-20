@@ -12,7 +12,7 @@ The sync script uploads `*/data/` and `*/reports/` directories to the bucket, an
 
 In the [Lambda Cloud console](https://cloud.lambda.ai):
 
-1. **Create a personal bucket** under **Filesystem → S3 Adapter Filesystems**. One bucket per person, works from any region. No instance filesystem needed.
+1. **Create a personal bucket** under **Filesystem → S3 Adapter Filesystems**. One bucket per person, only Washington and Ohio regions support this. Works with instances from any region. No instance filesystem needed.
 2. **Get S3 credentials** under **Filesystem → S3 Adapter Keys**. Generate an access key.
 3. **Get a GitHub token** under **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)** with `repo` scope.
 
