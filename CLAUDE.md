@@ -8,38 +8,52 @@ This project runs on Lambda AI cloud instances. Each team member has their own f
 
 ### New instance bootstrap
 
-When starting on a new Lambda AI instance, run these steps in order:
+When a user asks to "set up the instance" or "clone the repo and set up", follow these steps:
 
-1. **Clone the repo into the filesystem:**
+1. **Detect the filesystem name** from the current mount:
    ```bash
-   cd /lambda/nfs/<your-filesystem-name>
-   mkdir <your-name>
-   cd <your-name>
+   ls /lambda/nfs/
+   ```
+
+2. **Ask the user for their name** (used for the directory and config file name).
+
+3. **Clone the repo:**
+   ```bash
+   cd /lambda/nfs/<filesystem-name>
+   mkdir <name>
+   cd <name>
    git clone https://github.com/ebalp/system-user-circuits.git
    cd system-user-circuits
    ```
 
-2. **Create your personal config** (first time only — after that it syncs with the bucket):
+4. **Check if `<name>.sync.env` already exists** (it would if they previously uploaded to their bucket and are downloading onto a new filesystem). If it does not exist, **ask the user for the following values** to create it:
+   - BUCKET_NAME (their personal Lambda AI filesystem bucket UUID)
+   - LAMBDA_ACCESS_KEY_ID (from Lambda Cloud console → Filesystem → S3 Adapter Keys)
+   - LAMBDA_SECRET_ACCESS_KEY (same source)
+   - LAMBDA_REGION (default: us-east-2)
+   - LAMBDA_ENDPOINT_URL (default: https://files.us-east-2.lambda.ai)
+   - GIT_USER_NAME (their full name for git commits)
+   - GIT_USER_EMAIL (their email for git commits)
+   - GITHUB_TOKEN (classic token from GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic), with repo scope)
+
+   Then create `<name>.sync.env` from the template with those values.
+
+5. **Run setup** to configure git:
    ```bash
-   cp sync.env.template <your-name>.sync.env
-   # Fill in: BUCKET_NAME, LAMBDA_ACCESS_KEY_ID, LAMBDA_SECRET_ACCESS_KEY,
-   #          GIT_USER_NAME, GIT_USER_EMAIL, GITHUB_TOKEN
+   ./lambda-sync.sh <name>.sync.env setup
    ```
 
-3. **Run setup** to configure git identity and GitHub credentials:
+6. **Download from bucket** (if the user has previous work):
    ```bash
-   ./lambda-sync.sh <your-name>.sync.env setup
+   ./lambda-sync.sh <name>.sync.env download
    ```
 
-4. **Download your data from the bucket** (if you have previous work):
-   ```bash
-   ./lambda-sync.sh <your-name>.sync.env download
-   ```
+### Before shutting down
 
-5. **Before shutting down**, always upload:
-   ```bash
-   ./lambda-sync.sh <your-name>.sync.env upload
-   ```
+Always remind the user to upload before terminating:
+```bash
+./lambda-sync.sh <name>.sync.env upload
+```
 
 ### Key files
 
