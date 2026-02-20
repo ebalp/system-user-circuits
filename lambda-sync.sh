@@ -1,24 +1,11 @@
 #!/bin/bash
-# lambda-sync.sh — Sync your Lambda AI filesystem with your personal bucket.
+# lambda-sync.sh — Sync experiment data with your personal bucket.
 #
-# Persists local data (numpy arrays, experiment results, etc.) across instances.
-# Code goes in git; data goes here.
+# Code goes in GitHub. Data (results, reports, etc.) goes here.
+# Syncs all */data/ and */reports/ directories found in the repo.
 #
 # Usage:
-#   ./lambda-sync.sh <config-file> <upload|download|setup>
-#
-# First time setup:
-#   1. Name your filesystem after yourself (e.g., fs-enrique, fs-alice)
-#   2. Clone the repo into the filesystem
-#   3. cp sync.env.template <your-name>.sync.env   (fill in your details)
-#   4. ./lambda-sync.sh <your-name>.sync.env setup      ← configure git credentials
-#   5. ./lambda-sync.sh <your-name>.sync.env upload      ← seed your bucket
-#
-# Returning to a stale filesystem (worked in another region, synced, came back):
-#   1. ./lambda-sync.sh <your-name>.sync.env setup       ← configure git credentials
-#   2. ./lambda-sync.sh <your-name>.sync.env download    ← pull latest from bucket
-#      ... work ...
-#   3. ./lambda-sync.sh <your-name>.sync.env upload      ← save before shutdown
+#   ./lambda-sync.sh <config-file> <setup|upload|download>
 
 set -euo pipefail
 
@@ -53,13 +40,16 @@ if [[ "$MODE" == "setup" ]]; then
         git config --global user.email "$GIT_USER_EMAIL"
         echo -e "${GREEN}Git identity configured: $GIT_USER_NAME <$GIT_USER_EMAIL>${NC}"
     else
-        echo -e "${YELLOW}GIT_USER_NAME/GIT_USER_EMAIL not set in $CONFIG_FILE — skipping git identity.${NC}"
+        echo -e "${YELLOW}GIT_USER_NAME/GIT_USER_EMAIL not set — skipping git identity.${NC}"
     fi
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
         git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
         echo -e "${GREEN}GitHub credentials configured.${NC}"
     else
-        echo -e "${YELLOW}GITHUB_TOKEN not set in $CONFIG_FILE — skipping GitHub setup.${NC}"
+        echo -e "${YELLOW}GITHUB_TOKEN not set — skipping GitHub setup.${NC}"
+    fi
+    if [[ -n "${HF_API_KEY:-}" ]]; then
+        echo -e "${YELLOW}To use your HF token in this session: source $CONFIG_FILE${NC}"
     fi
     exit 0
 fi
@@ -72,17 +62,14 @@ for VAR in BUCKET_NAME LAMBDA_ACCESS_KEY_ID LAMBDA_SECRET_ACCESS_KEY LAMBDA_REGI
     fi
 done
 
-# ---------- Detect filesystem mount from current directory ----------
-FILESYSTEM_NAME="$(pwd | cut -d'/' -f4)"
-LOCAL_PATH="/lambda/nfs/$FILESYSTEM_NAME"
-
-if [[ ! -d "$LOCAL_PATH" ]]; then
-    echo -e "${RED}Error: filesystem not mounted at $LOCAL_PATH${NC}"
-    echo "Make sure you are running this from inside a Lambda filesystem."
+# ---------- Detect repo root ----------
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -z "$REPO_ROOT" ]]; then
+    echo -e "${RED}Error: not inside a git repository. Run this from within the repo.${NC}"
     exit 1
 fi
 
-# ---------- Map Lambda credentials to what the aws CLI expects ----------
+# ---------- Map Lambda credentials ----------
 export AWS_ACCESS_KEY_ID="$LAMBDA_ACCESS_KEY_ID"
 export AWS_SECRET_ACCESS_KEY="$LAMBDA_SECRET_ACCESS_KEY"
 export AWS_DEFAULT_REGION="$LAMBDA_REGION"
@@ -92,17 +79,17 @@ export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
 export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 
 # ---------- Confirmation ----------
-echo -e "${GREEN}Lambda Filesystem Sync${NC}"
-echo "  Filesystem: $FILESYSTEM_NAME"
-echo "  Bucket:     $BUCKET_NAME"
-echo "  Endpoint:   $LAMBDA_ENDPOINT_URL"
+echo -e "${GREEN}Lambda Data Sync${NC}"
+echo "  Repo:     $REPO_ROOT"
+echo "  Bucket:   $BUCKET_NAME"
+echo "  Endpoint: $LAMBDA_ENDPOINT_URL"
 echo ""
 
 if [[ "$MODE" == "upload" ]]; then
-    echo -e "${YELLOW}This will overwrite bucket contents with $LOCAL_PATH${NC}"
+    echo -e "${YELLOW}This will overwrite bucket data with local data from $REPO_ROOT${NC}"
     read -r -p "Proceed? [y/N] " CONFIRM
 elif [[ "$MODE" == "download" ]]; then
-    echo -e "${RED}This will overwrite $LOCAL_PATH with bucket contents. Local changes not uploaded will be lost.${NC}"
+    echo -e "${RED}This will overwrite local data in $REPO_ROOT with bucket data. Local changes not uploaded will be lost.${NC}"
     read -r -p "Proceed? [y/N] " CONFIRM
 fi
 
@@ -115,22 +102,24 @@ echo ""
 
 # ---------- Sync ----------
 if [[ "$MODE" == "upload" ]]; then
-    echo -e "${YELLOW}Uploading $LOCAL_PATH → bucket...${NC}"
-    aws s3 sync "$LOCAL_PATH" "s3://$BUCKET_NAME/" \
-        --endpoint-url "$LAMBDA_ENDPOINT_URL" \
-        --exclude ".venv/*" \
-        --exclude "*/.venv/*" \
-        --exclude ".ipynb_checkpoints/*" \
-        --exclude "*/.ipynb_checkpoints/*"
+    echo -e "${YELLOW}Uploading data → bucket...${NC}"
+    FOUND=0
+    for dir in "$REPO_ROOT"/*/data "$REPO_ROOT"/*/reports; do
+        [[ -d "$dir" ]] || continue
+        FOUND=1
+        rel="${dir#$REPO_ROOT/}"
+        echo "  $rel/"
+        aws s3 sync "$dir/" "s3://$BUCKET_NAME/$rel/" \
+            --endpoint-url "$LAMBDA_ENDPOINT_URL"
+    done
+    if [[ $FOUND -eq 0 ]]; then
+        echo "  No data/ or reports/ directories found."
+    fi
     echo -e "${GREEN}Upload complete.${NC}"
 
 elif [[ "$MODE" == "download" ]]; then
-    echo -e "${YELLOW}Downloading bucket → $LOCAL_PATH...${NC}"
-    aws s3 sync "s3://$BUCKET_NAME/" "$LOCAL_PATH" \
-        --endpoint-url "$LAMBDA_ENDPOINT_URL" \
-        --exclude ".venv/*" \
-        --exclude "*/.venv/*" \
-        --exclude ".ipynb_checkpoints/*" \
-        --exclude "*/.ipynb_checkpoints/*"
+    echo -e "${YELLOW}Downloading bucket → repo...${NC}"
+    aws s3 sync "s3://$BUCKET_NAME/" "$REPO_ROOT/" \
+        --endpoint-url "$LAMBDA_ENDPOINT_URL"
     echo -e "${GREEN}Download complete.${NC}"
 fi

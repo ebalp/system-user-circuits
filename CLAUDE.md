@@ -44,9 +44,9 @@ When a user asks to "set up the instance" or "clone the repo and set up", follow
    ./lambda-sync.sh <name>.sync.env setup
    ```
 
-6. **Download from bucket** (if the user has previous work): follow the sync protocol below.
+6. **Download from bucket** (if the user has previous work): follow the sync protocol below. Then run `git pull` to ensure the code is at the latest commit.
 
-7. **Set up the Python environment** from the repo root. The `.venv` is never synced to the bucket (rebuilding with `uv sync` is faster than transferring it), so this step is always needed on a new instance:
+7. **Set up the Python environment** from the repo root. The `.venv` is never synced to the bucket, so this step is always needed on a new instance:
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
    uv python install 3.12
@@ -58,8 +58,8 @@ When a user asks to "set up the instance" or "clone the repo and set up", follow
 The sync script has one confirmation prompt for both upload and download. Claude Code cannot handle interactive prompts natively, so the protocol is:
 
 1. **State clearly what will happen** before running anything:
-   - For **upload**: "This will overwrite `bucket/<bucket-name>/` with `/lambda/nfs/<filesystem>/`."
-   - For **download**: "This will overwrite `/lambda/nfs/<filesystem>/` with `bucket/<bucket-name>/`. Local changes not uploaded will be lost."
+   - For **upload**: "This will overwrite bucket data with local `*/data/` and `*/reports/` from the repo."
+   - For **download**: "This will overwrite local `*/data/` and `*/reports/` with bucket data. Local changes not uploaded will be lost."
 
 2. **Wait for the user to confirm** in the conversation.
 
