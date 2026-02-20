@@ -8,10 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 When a user asks to "set up the instance" or "clone the repo and set up", follow these steps:
 
-1. **Find the filesystem mount and clone the repo:**
+1. **Clone the repo to local disk:**
    ```bash
-   ls /lambda/nfs/
-   cd /lambda/nfs/<filesystem-name>
+   cd /home/ubuntu
    git clone https://github.com/ebalp/system-user-circuits.git
    cd system-user-circuits
    ```
@@ -25,34 +24,34 @@ When a user asks to "set up the instance" or "clone the repo and set up", follow
    - **If they can upload it**: Wait for them to upload it into the repo directory, then continue.
    - **If they need to create it**: Ask for the values listed in `sync.env.template` and create `config.sync.env` from them.
 
-3. **Run setup** to configure git:
+3. **Run setup** to configure git and install the Python environment (uv, Python 3.12, and `uv sync` are all handled automatically):
    ```bash
    ./lambda-sync.sh <config>.sync.env setup
    ```
 
 4. **Download from bucket** (if the user has previous work): follow the sync protocol below.
 
-5. **Set up the Python environment** from the repo root. The `.venv` is never synced to the bucket, so this step is always needed on a new instance:
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   uv python install 3.12
-   uv sync
-   ```
-
 ### Running sync commands (upload / download)
 
 The sync script has one confirmation prompt for both upload and download. Claude Code cannot handle interactive prompts natively, so the protocol is:
 
-1. **State clearly what will happen** before running anything:
-   - For **upload**: "This will overwrite bucket data with local `*/data/` and `*/reports/` from the repo."
-   - For **download**: "This will overwrite local `*/data/` and `*/reports/` with bucket data. Local changes not uploaded will be lost."
+1. **Explain what will happen** before running anything. Be specific:
+   - Which paths will be synced (explicit paths given, or auto-discovery)
+   - Whether `.syncignore` patterns are active
+   - For **upload**: bucket data will be overwritten with local files
+   - For **download**: local files will be overwritten with bucket data — unsynced local changes will be lost
 
 2. **Wait for the user to confirm** in the conversation.
 
 3. **Only after confirmation**, pipe the response:
    ```bash
+   # Full sync
    printf "y\n" | bash ./lambda-sync.sh <config>.sync.env upload
    printf "y\n" | bash ./lambda-sync.sh <config>.sync.env download
+
+   # Targeted sync (one or more paths)
+   printf "y\n" | bash ./lambda-sync.sh <config>.sync.env upload phase0/data/results
+   printf "y\n" | bash ./lambda-sync.sh <config>.sync.env download phase0/data
    ```
 
 ### Before shutting down
@@ -71,11 +70,11 @@ This is the **Instruction Hierarchy Evaluation System** — a research platform 
 
 ### Environment setup
 
-The project uses `uv`. The `.venv` lives at the repo root and is stored on the NFS filesystem, so it persists across instance restarts within a region. When switching regions, recreate it with `uv sync` (fast).
+The project uses `uv`. The `.venv` lives at the repo root on the local instance disk — it is ephemeral and must be recreated on each new instance (takes ~1 min via `uv sync`).
 
-From the repo root:
+On a new instance, `./lambda-sync.sh <config>.sync.env setup` handles everything (uv install, Python 3.12, `uv sync`). If you need to re-run manually from the repo root:
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
 uv python install 3.12
 uv sync
 ```

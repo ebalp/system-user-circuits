@@ -6,16 +6,15 @@ Persist experiment data across Lambda AI instances and regions.
 
 The bucket stores only outputs that shouldn't be in git but need to persist: experiment results, generated reports, and similar data files. Everything else lives in the repo.
 
-The sync script uploads all `*/data/` and `*/reports/` directories from the repo to the bucket, and downloads them back when you switch instances. Code files are never touched.
+The sync script uploads `*/data/` and `*/reports/` directories to the bucket, and downloads them back when you start a new instance. You can also sync specific paths. Code files are never touched. Patterns in `.syncignore` are excluded from every sync.
 
 ## One-time account setup
 
 In the [Lambda Cloud console](https://cloud.lambda.ai):
 
-1. **Create personal filesystems** in each region you plan to use — name them after yourself with the location (e.g., `your-name-fs-dc-2`, `your-name-fs-virginia`). Attach the right one when launching an instance.
-2. **Create a personal bucket** under **Filesystem → S3 Adapter Filesystems**. One bucket per person, works from any region.
-3. **Get S3 credentials** under **Filesystem → S3 Adapter Keys**. Generate an access key.
-4. **Get a GitHub token** under **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)** with `repo` scope.
+1. **Create a personal bucket** under **Filesystem → S3 Adapter Filesystems**. One bucket per person, works from any region. No instance filesystem needed.
+2. **Get S3 credentials** under **Filesystem → S3 Adapter Keys**. Generate an access key.
+3. **Get a GitHub token** under **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)** with `repo` scope.
 
 Then create your config file:
 
@@ -36,11 +35,14 @@ Seed your bucket:
 
 ### New instance
 
+No filesystem attachment needed — instances have 512GB local disk.
+
 ```bash
+cd /home/ubuntu
 git clone https://github.com/ebalp/system-user-circuits.git
 cd system-user-circuits
 # upload your .sync.env to this directory via Jupyter
-./lambda-sync.sh config.sync.env setup     # configure git credentials
+./lambda-sync.sh config.sync.env setup     # git config + uv env (all automatic)
 ./lambda-sync.sh config.sync.env download  # restore data from bucket
 ```
 
@@ -61,16 +63,25 @@ source config.sync.env
 ## Script reference
 
 ```
-./lambda-sync.sh <config-file> <mode>
+./lambda-sync.sh <config-file> <mode> [path ...]
 ```
 
-| Mode       | What it does                                                |
-|------------|-------------------------------------------------------------|
-| `setup`    | Configures git identity and GitHub credentials              |
-| `upload`   | Syncs all `*/data/` and `*/reports/` dirs to bucket         |
-| `download` | Syncs bucket data to local repo                             |
+| Mode       | What it does                                                              |
+|------------|---------------------------------------------------------------------------|
+| `setup`    | Configures git, installs uv, sets up Python environment                   |
+| `upload`   | Syncs `*/data/` and `*/reports/` to bucket (or explicit paths if given)   |
+| `download` | Syncs bucket to local repo (or explicit paths if given)                   |
 
 Both `upload` and `download` ask for one confirmation. Read the direction carefully — upload overwrites the bucket, download overwrites local data.
+
+Pass one or more paths to sync only specific directories:
+
+```bash
+./lambda-sync.sh config.sync.env upload phase0/data/results
+./lambda-sync.sh config.sync.env download phase0/data phase0/reports
+```
+
+Exclude patterns go in `.syncignore` at the repo root.
 
 > **When running via Claude Code:** See `CLAUDE.md` for the protocol.
 

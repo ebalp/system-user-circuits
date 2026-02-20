@@ -1,0 +1,12 @@
+# .syncignore — patterns excluded from every upload and download
+# One pattern per line. Passed as --exclude to aws s3 sync.
+# * matches any character except /  (so *.pkl excludes foo.pkl but not dir/foo.pkl)
+# Use */*.pkl or prefix with */ to match in subdirectories.
+
+# OS / editor noise
+.DS_Store
+*.swp
+
+# Python cache
+*.pyc
+*/__pycache__/*

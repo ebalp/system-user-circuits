@@ -12,21 +12,18 @@ Follow the setup guide at https://code.claude.com/docs/en/setup for authenticati
 
 The Pro plan ($20/month) is more than enough for our workload.
 
-## 2. Personal filesystems
+## 2. Shared team bucket
 
-Before launching an instance, make sure you have two personal filesystems created in the [Lambda Cloud console](https://cloud.lambda.ai):
+Data is stored in a shared Lambda filesystem in Washington DC (`us-east-2` or `us-east-3`), which exposes an S3-compatible API. There is one per team — ask your team lead for the `.sync.env` credentials file if you don't have it yet.
 
-- **A filesystem in `us-east-2` or `us-east-3` (Washington DC)** — this is where your personal bucket lives. It is your persistent data store across regions.
-- **A filesystem in the region where you are launching the instance** — this is what gets mounted on the instance.
+You do **not** need to attach any filesystem when launching an instance. The local instance disk (512GB) is used as ephemeral working space; all results are pushed to the shared bucket before terminating.
 
-Name both filesystems after yourself using the geographic location (e.g., `your-name-fs-dc-2` for the Washington DC bucket filesystem, `your-name-fs-virginia` or `your-name-fs-ohio` for compute instance filesystems). When launching an instance, attach the filesystem for that region.
-
-See `SYNC.md` for full details on how filesystems and buckets work together.
+See `SYNC.md` for full details on how the bucket sync works.
 
 ## 3. Instance bootstrap
 
-Once Claude Code is installed, run it and say:
+Launch an instance without attaching any filesystem. Once Claude Code is installed, run it and say:
 
 > Clone https://github.com/ebalp/system-user-circuits and set up the instance
 
-It will walk you through everything. Have your `<your-name>.sync.env` file ready to upload, or your credentials handy (see `SYNC.md`).
+It will walk you through everything. Have your `.sync.env` credentials file ready to paste or upload (see `SYNC.md`).
