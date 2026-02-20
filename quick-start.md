@@ -1,6 +1,10 @@
 # Setup
 
-## 1. Claude Code
+## 1. Open a terminal
+
+Log into JupyterLab on your Lambda instance and open a terminal from the Launcher (**+** → **Terminal**).
+
+## 2. Claude Code
 
 Install Claude Code on your Lambda instance:
 
@@ -8,7 +12,7 @@ Install Claude Code on your Lambda instance:
 curl -fsSL https://claude.ai/install.sh | bash
 ```
 
-Follow the setup guide at https://code.claude.com/docs/en/setup for authentication.
+Follow the setup guide at https://code.claude.com/docs/en/setup for authentication. Claude Code is also compatible with OpenRouter if you prefer to use that instead.
 
 ## 2. Personal bucket
 
