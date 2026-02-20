@@ -19,7 +19,7 @@ Before launching an instance, make sure you have two personal filesystems create
 - **A filesystem in `us-east-2` or `us-east-3` (Washington DC)** — this is where your personal bucket lives. It is your persistent data store across regions.
 - **A filesystem in the region where you are launching the instance** — this is what gets mounted on the instance.
 
-Name both filesystems after yourself (e.g., `your-name-fs-us-east-2`, `your-name-fs-ohio`). When launching an instance, attach the filesystem for that region.
+Name both filesystems after yourself using the geographic location (e.g., `your-name-fs-dc-2` for the Washington DC bucket filesystem, `your-name-fs-virginia` or `your-name-fs-ohio` for compute instance filesystems). When launching an instance, attach the filesystem for that region.
 
 See `SYNC.md` for full details on how filesystems and buckets work together.
 

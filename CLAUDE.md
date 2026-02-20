@@ -55,40 +55,23 @@ When a user asks to "set up the instance" or "clone the repo and set up", follow
 
 ### Running sync commands (upload / download)
 
-The sync script uses interactive confirmation prompts that Claude Code cannot handle natively. **Never bypass these silently** — the overwrite warning on `download` is a real safeguard.
+The sync script has one confirmation prompt for both upload and download. Claude Code cannot handle interactive prompts natively, so the protocol is:
 
-**Protocol for every upload or download:**
+1. **State clearly what will happen** before running anything:
+   - For **upload**: "This will overwrite `bucket/<bucket-name>/` with `/lambda/nfs/<filesystem>/`."
+   - For **download**: "This will overwrite `/lambda/nfs/<filesystem>/` with `bucket/<bucket-name>/`. Local changes not uploaded will be lost."
 
-1. **Run the bucket preview** as a standalone command and show the output to the user in the conversation:
+2. **Wait for the user to confirm** in the conversation.
+
+3. **Only after confirmation**, pipe the response:
    ```bash
-   source <name>.sync.env && \
-   AWS_ACCESS_KEY_ID=$LAMBDA_ACCESS_KEY_ID \
-   AWS_SECRET_ACCESS_KEY=$LAMBDA_SECRET_ACCESS_KEY \
-   AWS_DEFAULT_REGION=$LAMBDA_REGION \
-   aws s3 ls s3://$BUCKET_NAME/ --endpoint-url $LAMBDA_ENDPOINT_URL
-   ```
-
-2. **Show the user the bucket contents and explicitly state what will happen** before asking anything:
-   - For **download**: "Bucket contains X. This will overwrite everything in `/lambda/nfs/<filesystem>/` with those contents. Local changes not previously uploaded will be lost."
-   - For **upload**: "Bucket currently contains X. This will sync `/lambda/nfs/<filesystem>/` to your bucket, overwriting older bucket contents."
-
-3. **Wait for the user to explicitly confirm** in the conversation. Do not proceed until they do.
-
-4. **Only after user confirmation**, run the command with piped responses (the script prompts twice for download — once to confirm the bucket, once to confirm the overwrite):
-   ```bash
-   # download — two prompts
-   printf "y\ny\n" | bash ./lambda-sync.sh <name>.sync.env download
-
-   # upload — one prompt
    printf "y\n" | bash ./lambda-sync.sh <name>.sync.env upload
+   printf "y\n" | bash ./lambda-sync.sh <name>.sync.env download
    ```
 
 ### Before shutting down
 
-Always remind the user to upload before terminating, following the sync protocol above:
-```bash
-printf "y\n" | bash ./lambda-sync.sh <name>.sync.env upload
-```
+Always remind the user to upload before terminating. Follow the sync protocol above.
 
 ### Key files
 

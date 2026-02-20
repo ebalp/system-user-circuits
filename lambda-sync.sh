@@ -91,26 +91,21 @@ export AWS_DEFAULT_REGION="$LAMBDA_REGION"
 export AWS_REQUEST_CHECKSUM_CALCULATION=when_required
 export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 
-# ---------- Safety check: show bucket contents before syncing ----------
+# ---------- Confirmation ----------
 echo -e "${GREEN}Lambda Filesystem Sync${NC}"
 echo "  Filesystem: $FILESYSTEM_NAME"
 echo "  Bucket:     $BUCKET_NAME"
 echo "  Endpoint:   $LAMBDA_ENDPOINT_URL"
-echo "  Mount:      $LOCAL_PATH"
-echo "  Mode:       $MODE"
 echo ""
 
-BUCKET_CONTENTS="$(aws s3 ls "s3://$BUCKET_NAME/" --endpoint-url "$LAMBDA_ENDPOINT_URL" 2>&1 || true)"
-
-if [[ -z "$BUCKET_CONTENTS" ]]; then
-    echo -e "${YELLOW}Bucket is empty (first sync?).${NC}"
-else
-    echo "Top-level contents of this bucket:"
-    echo "$BUCKET_CONTENTS"
+if [[ "$MODE" == "upload" ]]; then
+    echo -e "${YELLOW}This will overwrite bucket contents with $LOCAL_PATH${NC}"
+    read -r -p "Proceed? [y/N] " CONFIRM
+elif [[ "$MODE" == "download" ]]; then
+    echo -e "${RED}This will overwrite $LOCAL_PATH with bucket contents. Local changes not uploaded will be lost.${NC}"
+    read -r -p "Proceed? [y/N] " CONFIRM
 fi
 
-echo ""
-read -r -p "You are on filesystem '$FILESYSTEM_NAME'. Proceed with $MODE? [y/N] " CONFIRM
 if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
     echo "Aborted."
     exit 0
@@ -120,8 +115,8 @@ echo ""
 
 # ---------- Sync ----------
 if [[ "$MODE" == "upload" ]]; then
-    echo -e "${YELLOW}Uploading $LOCAL_PATH → bucket/$FILESYSTEM_NAME/...${NC}"
-    aws s3 sync "$LOCAL_PATH" "s3://$BUCKET_NAME/$FILESYSTEM_NAME/" \
+    echo -e "${YELLOW}Uploading $LOCAL_PATH → bucket...${NC}"
+    aws s3 sync "$LOCAL_PATH" "s3://$BUCKET_NAME/" \
         --endpoint-url "$LAMBDA_ENDPOINT_URL" \
         --exclude "*/.venv/*" \
         --exclude "*/.ipynb_checkpoints/*" \
@@ -129,16 +124,8 @@ if [[ "$MODE" == "upload" ]]; then
     echo -e "${GREEN}Upload complete.${NC}"
 
 elif [[ "$MODE" == "download" ]]; then
-    echo -e "${RED}WARNING: This will overwrite local files in $LOCAL_PATH with the bucket contents.${NC}"
-    echo -e "${RED}Any local changes that were not uploaded will be lost.${NC}"
-    read -r -p "Are you sure? [y/N] " CONFIRM_DL
-    if [[ "$CONFIRM_DL" != "y" && "$CONFIRM_DL" != "Y" ]]; then
-        echo "Aborted."
-        exit 0
-    fi
-    echo ""
-    echo -e "${YELLOW}Downloading bucket/$FILESYSTEM_NAME/ → $LOCAL_PATH...${NC}"
-    aws s3 sync "s3://$BUCKET_NAME/$FILESYSTEM_NAME/" "$LOCAL_PATH" \
+    echo -e "${YELLOW}Downloading bucket → $LOCAL_PATH...${NC}"
+    aws s3 sync "s3://$BUCKET_NAME/" "$LOCAL_PATH" \
         --endpoint-url "$LAMBDA_ENDPOINT_URL" \
         --exclude "*/.venv/*" \
         --exclude "*/.ipynb_checkpoints/*" \
