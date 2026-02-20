@@ -2,6 +2,52 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Lambda AI Instance Setup
+
+This project runs on Lambda AI cloud instances. Each team member has their own filesystem and bucket for data persistence across instances and regions. See `SYNC.md` for full documentation.
+
+### New instance bootstrap
+
+When starting on a new Lambda AI instance, run these steps in order:
+
+1. **Clone the repo into the filesystem:**
+   ```bash
+   cd /lambda/nfs/<your-filesystem-name>
+   mkdir <your-name>
+   cd <your-name>
+   git clone https://github.com/ebalp/system-user-circuits.git
+   cd system-user-circuits
+   ```
+
+2. **Create your personal config** (first time only — after that it syncs with the bucket):
+   ```bash
+   cp sync.env.template <your-name>.sync.env
+   # Fill in: BUCKET_NAME, LAMBDA_ACCESS_KEY_ID, LAMBDA_SECRET_ACCESS_KEY,
+   #          GIT_USER_NAME, GIT_USER_EMAIL, GITHUB_TOKEN
+   ```
+
+3. **Run setup** to configure git identity and GitHub credentials:
+   ```bash
+   ./lambda-sync.sh <your-name>.sync.env setup
+   ```
+
+4. **Download your data from the bucket** (if you have previous work):
+   ```bash
+   ./lambda-sync.sh <your-name>.sync.env download
+   ```
+
+5. **Before shutting down**, always upload:
+   ```bash
+   ./lambda-sync.sh <your-name>.sync.env upload
+   ```
+
+### Key files
+
+- `lambda-sync.sh` — sync script (setup/upload/download)
+- `sync.env.template` — config template for new team members
+- `<your-name>.sync.env` — personal config (gitignored, syncs with bucket)
+- `SYNC.md` — full sync documentation
+
 ## Project Overview
 
 This is the **Instruction Hierarchy Evaluation System** — a research platform for evaluating how LLMs handle conflicting instructions between system prompts and user messages. The project is organized in phases; currently only **Phase 0 (Behavioral Analysis)** is implemented under `phase0_behavioral_analysis/`.
