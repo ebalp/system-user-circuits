@@ -6,84 +6,57 @@ Persist experiment data across Lambda AI instances and regions.
 
 The bucket stores only outputs that shouldn't be in git but need to persist: experiment results, generated reports, and similar data files. Everything else lives in the repo.
 
-## How it works
-
-Each team member has:
-
-- **A personal filesystem per region** — named after yourself (e.g., `your-name-fs-virginia`). Lambda mounts it at `/lambda/nfs/<name>` on every instance in that region.
-- **A personal bucket on us-east-2** — a single store in Washington DC for your data. When you move between regions, upload before shutting down and download on the new instance.
-
-The bucket uses Lambda's Filesystem S3 Adapter — not AWS, Lambda's own storage with an S3-compatible API.
-
 The sync script uploads all `*/data/` and `*/reports/` directories from the repo to the bucket, and downloads them back when you switch instances. Code files are never touched.
 
 ## One-time account setup
 
-### 1. Create your personal filesystems
+In the [Lambda Cloud console](https://cloud.lambda.ai):
 
-In the [Lambda Cloud console](https://cloud.lambda.ai), create a filesystem in each region you plan to use. Name them after yourself with the geographic location:
+1. **Create personal filesystems** in each region you plan to use — name them after yourself with the location (e.g., `your-name-fs-dc-2`, `your-name-fs-virginia`). Attach the right one when launching an instance.
+2. **Create a personal bucket** under **Filesystem → S3 Adapter Filesystems**. One bucket per person, works from any region.
+3. **Get S3 credentials** under **Filesystem → S3 Adapter Keys**. Generate an access key.
+4. **Get a GitHub token** under **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)** with `repo` scope.
 
-- `your-name-fs-dc-2` (us-east-2, Washington DC — also where your bucket lives)
-- `your-name-fs-virginia` (us-east-3)
-- `your-name-fs-ohio` (us-midwest-2)
-- etc.
-
-When launching instances, attach your filesystem for that region.
-
-### 2. Create your personal bucket
-
-In the Lambda Cloud console, go to **Filesystem → S3 Adapter Filesystems** and create a bucket. One bucket per person is enough — it works from any region.
-
-### 3. Get your S3 Adapter credentials
-
-Go to **Filesystem → S3 Adapter Keys** and generate an access key. These keys work for any bucket.
-
-### 4. Create a GitHub Personal Access Token
-
-Go to **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)** and generate a token with the `repo` scope.
-
-### 5. Create your config file
+Then create your config file:
 
 ```bash
-cp sync.env.template <your-name>.sync.env
+cp sync.env.template config.sync.env   # or any name ending in .sync.env
 ```
 
-Fill in your details. This file is gitignored — keep it in your repo directory and upload it to new instances manually (e.g. via Jupyter).
+Fill in your details. This file is gitignored — keep it in the repo directory and upload it manually to each new instance (e.g. via Jupyter).
 
-### 6. Seed your bucket
+Seed your bucket:
 
 ```bash
-./lambda-sync.sh <your-name>.sync.env setup
-./lambda-sync.sh <your-name>.sync.env upload
+./lambda-sync.sh config.sync.env setup
+./lambda-sync.sh config.sync.env upload
 ```
 
 ## Daily workflow
 
-### Starting work on a new instance
+### New instance
 
 ```bash
-./lambda-sync.sh <your-name>.sync.env setup      # configure git credentials
-./lambda-sync.sh <your-name>.sync.env download    # restore data from bucket
-git pull                                           # get latest code
+git clone https://github.com/ebalp/system-user-circuits.git
+cd system-user-circuits
+# upload your .sync.env to this directory via Jupyter
+./lambda-sync.sh config.sync.env setup     # configure git credentials
+./lambda-sync.sh config.sync.env download  # restore data from bucket
 ```
 
 ### Before shutting down
 
 ```bash
-./lambda-sync.sh <your-name>.sync.env upload
+./lambda-sync.sh config.sync.env upload
 ```
 
 ### Using your HF token
 
-After setup, source your config to make `HF_API_KEY` available in your shell:
+Source your config to load `HF_API_KEY` into your shell:
 
 ```bash
-source <your-name>.sync.env
+source config.sync.env
 ```
-
-### Committing code
-
-`git add`, `git commit`, `git push` as usual. The sync script only touches data directories.
 
 ## Script reference
 
@@ -97,25 +70,15 @@ source <your-name>.sync.env
 | `upload`   | Syncs all `*/data/` and `*/reports/` dirs to bucket         |
 | `download` | Syncs bucket data to local repo                             |
 
-Both `upload` and `download` show what will happen and ask for one confirmation. Read the direction carefully — upload overwrites the bucket, download overwrites local data.
+Both `upload` and `download` ask for one confirmation. Read the direction carefully — upload overwrites the bucket, download overwrites local data.
 
 > **When running via Claude Code:** See `CLAUDE.md` for the protocol.
 
-## Available regions and endpoints
-
-| Region        | Location       | Endpoint                              |
-|---------------|----------------|---------------------------------------|
-| us-east-2     | Washington DC  | https://files.us-east-2.lambda.ai    |
-| us-east-3     | Washington DC  | https://files.us-east-3.lambda.ai    |
-| us-midwest-2  | Ohio           | https://files.us-midwest-2.lambda.ai  |
-
-Buckets are created in `us-east-2` but accessible from any region.
-
 ## File overview
 
-| File                   | Committed to git | Description                           |
-|------------------------|------------------|---------------------------------------|
-| `lambda-sync.sh`       | Yes              | The sync script                       |
-| `sync.env.template`    | Yes              | Template for personal config          |
-| `<your-name>.sync.env` | No (gitignored)  | Your personal credentials and config  |
-| `SYNC.md`              | Yes              | This file                             |
+| File                | Committed to git | Description                           |
+|---------------------|------------------|---------------------------------------|
+| `lambda-sync.sh`    | Yes              | The sync script                       |
+| `sync.env.template` | Yes              | Template for personal config          |
+| `*.sync.env`        | No (gitignored)  | Your personal credentials and config  |
+| `SYNC.md`           | Yes              | This file                             |

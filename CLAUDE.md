@@ -4,49 +4,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Lambda AI Instance Setup
 
-This project runs on Lambda AI cloud instances. Each team member has their own filesystem and bucket for data persistence across instances and regions. See `SYNC.md` for full documentation.
-
 ### New instance bootstrap
 
 When a user asks to "set up the instance" or "clone the repo and set up", follow these steps:
 
-1. **Detect the filesystem name** from the current mount:
+1. **Find the filesystem mount and clone the repo:**
    ```bash
    ls /lambda/nfs/
-   ```
-
-2. **Ask the user for their name** (used for the config file name).
-
-3. **Clone the repo:**
-   ```bash
    cd /lambda/nfs/<filesystem-name>
    git clone https://github.com/ebalp/system-user-circuits.git
    cd system-user-circuits
    ```
 
-4. **Check if `<name>.sync.env` already exists** (it would if they previously uploaded to their bucket and are downloading onto a new filesystem). If it does not exist, **ask the user**: "Do you have your `<name>.sync.env` file? You can upload it through Jupyter to the repo directory. Otherwise I can create one if you give me the values."
-
-   - **If they can upload it**: Wait for them to upload `<name>.sync.env` into the repo directory, then continue.
-   - **If they need to create it**: Ask for these values:
-     - BUCKET_NAME (their personal Lambda AI filesystem bucket UUID)
-     - LAMBDA_ACCESS_KEY_ID (from Lambda Cloud console → Filesystem → S3 Adapter Keys)
-     - LAMBDA_SECRET_ACCESS_KEY (same source)
-     - LAMBDA_REGION (default: us-east-2)
-     - LAMBDA_ENDPOINT_URL (default: https://files.us-east-2.lambda.ai)
-     - GIT_USER_NAME (their full name for git commits)
-     - GIT_USER_EMAIL (their email for git commits)
-     - GITHUB_TOKEN (classic token from GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic), with repo scope)
-
-     Then create `<name>.sync.env` from the template with those values.
-
-5. **Run setup** to configure git:
+2. **Locate the config file:**
    ```bash
-   ./lambda-sync.sh <name>.sync.env setup
+   ls *.sync.env
+   ```
+   If none exists, ask the user: "Do you have a `.sync.env` config file? You can upload it through Jupyter to the repo directory. Otherwise I can create one from the template if you give me the values."
+
+   - **If they can upload it**: Wait for them to upload it into the repo directory, then continue.
+   - **If they need to create it**: Ask for the values listed in `sync.env.template` and create `config.sync.env` from them.
+
+3. **Run setup** to configure git:
+   ```bash
+   ./lambda-sync.sh <config>.sync.env setup
    ```
 
-6. **Download from bucket** (if the user has previous work): follow the sync protocol below. Then run `git pull` to ensure the code is at the latest commit.
+4. **Download from bucket** (if the user has previous work): follow the sync protocol below.
 
-7. **Set up the Python environment** from the repo root. The `.venv` is never synced to the bucket, so this step is always needed on a new instance:
+5. **Set up the Python environment** from the repo root. The `.venv` is never synced to the bucket, so this step is always needed on a new instance:
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
    uv python install 3.12
@@ -65,20 +51,13 @@ The sync script has one confirmation prompt for both upload and download. Claude
 
 3. **Only after confirmation**, pipe the response:
    ```bash
-   printf "y\n" | bash ./lambda-sync.sh <name>.sync.env upload
-   printf "y\n" | bash ./lambda-sync.sh <name>.sync.env download
+   printf "y\n" | bash ./lambda-sync.sh <config>.sync.env upload
+   printf "y\n" | bash ./lambda-sync.sh <config>.sync.env download
    ```
 
 ### Before shutting down
 
 Always remind the user to upload before terminating. Follow the sync protocol above.
-
-### Key files
-
-- `lambda-sync.sh` — sync script (setup/upload/download)
-- `sync.env.template` — config template for new team members
-- `<your-name>.sync.env` — personal config (gitignored, syncs with bucket)
-- `SYNC.md` — full sync documentation
 
 ## Git Conventions
 
@@ -132,7 +111,7 @@ uv run pytest -v
 ### Running Experiments
 ```bash
 # From phase0_behavioral_analysis/
-# Requires HF API token in hf_token.txt or HF_API_KEY env var
+# Source your config first to load HF_API_KEY: source <config>.sync.env
 uv run python run_experiments.py
 ```
 
