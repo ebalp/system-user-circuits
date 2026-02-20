@@ -9,11 +9,12 @@ Evaluates how LLMs handle conflicting instructions between system prompts and us
 
 ## Setup
 
+From the repo root:
+
 ```bash
-cd phase0_behavioral_analysis
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv python install 3.12
+uv sync
 ```
 
 ## HuggingFace API Token
@@ -36,7 +37,7 @@ Edit `config/experiment.yaml` to configure:
 ## Running Experiments
 
 ```bash
-python run_experiments.py
+uv run python run_experiments.py
 ```
 
 Results are saved as JSONL files in `data/results/`. The runner uses SHA-256 hashing for deduplication, so re-running skips already-completed experiments.
@@ -44,18 +45,18 @@ Results are saved as JSONL files in `data/results/`. The runner uses SHA-256 has
 ## Generating Reports
 
 ```bash
-python generate_report.py
+uv run python generate_report.py
 ```
 
 Produces an interactive HTML report at `reports/report.html`. Options:
 
 ```bash
-python generate_report.py --results-dir data/results --output reports/report.html
+uv run python generate_report.py --results-dir data/results --output reports/report.html
 ```
 
 ## Tests
 
 ```bash
-pytest              # all tests
-pytest -k "test_name"  # single test by name
+uv run pytest              # all tests
+uv run pytest -k "test_name"  # single test by name
 ```

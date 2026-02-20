@@ -1,0 +1,13 @@
+.venv/
+hf_token.txt
+*.bak
+__pycache__
+.pytest_cache
+.hypothesis
+.DS_Store
+.ipynb_checkpoints/
+data/results/
+reports/
+
+# Lambda AI filesystem credentials — never push to GitHub
+*.sync.env

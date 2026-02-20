@@ -1,9 +1,0 @@
-.venv/
-hf_token.txt
-*.bak
-__pycache__
-.pytest_cache
-.hypothesis
-.DS_Store
-data/results/
-reports/
