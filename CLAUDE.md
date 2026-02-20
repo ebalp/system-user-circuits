@@ -15,13 +15,11 @@ When a user asks to "set up the instance" or "clone the repo and set up", follow
    ls /lambda/nfs/
    ```
 
-2. **Ask the user for their name** (used for the directory and config file name).
+2. **Ask the user for their name** (used for the config file name).
 
 3. **Clone the repo:**
    ```bash
    cd /lambda/nfs/<filesystem-name>
-   mkdir <name>
-   cd <name>
    git clone https://github.com/ebalp/system-user-circuits.git
    cd system-user-circuits
    ```
@@ -46,16 +44,50 @@ When a user asks to "set up the instance" or "clone the repo and set up", follow
    ./lambda-sync.sh <name>.sync.env setup
    ```
 
-6. **Download from bucket** (if the user has previous work):
+6. **Download from bucket** (if the user has previous work): follow the sync protocol below.
+
+7. **Set up the Python environment** from the repo root. The `.venv` is never synced to the bucket (rebuilding with `uv sync` is faster than transferring it), so this step is always needed on a new instance:
    ```bash
-   ./lambda-sync.sh <name>.sync.env download
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   uv python install 3.12
+   uv sync
+   ```
+
+### Running sync commands (upload / download)
+
+The sync script uses interactive confirmation prompts that Claude Code cannot handle natively. **Never bypass these silently** — the overwrite warning on `download` is a real safeguard.
+
+**Protocol for every upload or download:**
+
+1. **Run the bucket preview** as a standalone command and show the output to the user in the conversation:
+   ```bash
+   source <name>.sync.env && \
+   AWS_ACCESS_KEY_ID=$LAMBDA_ACCESS_KEY_ID \
+   AWS_SECRET_ACCESS_KEY=$LAMBDA_SECRET_ACCESS_KEY \
+   AWS_DEFAULT_REGION=$LAMBDA_REGION \
+   aws s3 ls s3://$BUCKET_NAME/ --endpoint-url $LAMBDA_ENDPOINT_URL
+   ```
+
+2. **Show the user the bucket contents and explicitly state what will happen** before asking anything:
+   - For **download**: "Bucket contains X. This will overwrite everything in `/lambda/nfs/<filesystem>/` with those contents. Local changes not previously uploaded will be lost."
+   - For **upload**: "Bucket currently contains X. This will sync `/lambda/nfs/<filesystem>/` to your bucket, overwriting older bucket contents."
+
+3. **Wait for the user to explicitly confirm** in the conversation. Do not proceed until they do.
+
+4. **Only after user confirmation**, run the command with piped responses (the script prompts twice for download — once to confirm the bucket, once to confirm the overwrite):
+   ```bash
+   # download — two prompts
+   printf "y\ny\n" | bash ./lambda-sync.sh <name>.sync.env download
+
+   # upload — one prompt
+   printf "y\n" | bash ./lambda-sync.sh <name>.sync.env upload
    ```
 
 ### Before shutting down
 
-Always remind the user to upload before terminating:
+Always remind the user to upload before terminating, following the sync protocol above:
 ```bash
-./lambda-sync.sh <name>.sync.env upload
+printf "y\n" | bash ./lambda-sync.sh <name>.sync.env upload
 ```
 
 ### Key files
@@ -71,38 +103,56 @@ This is the **Instruction Hierarchy Evaluation System** — a research platform 
 
 ## Commands
 
-All commands should be run from the `phase0_behavioral_analysis/` directory.
+### Environment setup
 
-### Setup
+The project uses `uv`. The `.venv` lives at the repo root and is stored on the NFS filesystem, so it persists across instance restarts within a region. When switching regions, recreate it with `uv sync` (fast).
+
+From the repo root:
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv python install 3.12
+uv sync
+```
+
+To run scripts or tools:
+```bash
+uv run python <script.py>
+uv run pytest
+```
+
+Or activate for interactive work:
+```bash
+source .venv/bin/activate
 ```
 
 ### Running Tests
+
+All test commands from `phase0_behavioral_analysis/`:
 ```bash
 # All tests
-pytest
+uv run pytest
 
 # Single test file
-pytest tests/test_config.py
+uv run pytest tests/test_config.py
 
 # Single test by name
-pytest tests/test_config.py -k "test_name"
+uv run pytest tests/test_config.py -k "test_name"
 
 # Verbose output
-pytest -v
+uv run pytest -v
 ```
 
 ### Running Experiments
 ```bash
+# From phase0_behavioral_analysis/
 # Requires HF API token in hf_token.txt or HF_API_KEY env var
-python run_experiments.py
+uv run python run_experiments.py
 ```
 
 ### Generating Reports
 ```bash
-python generate_report.py --results-dir data/results --output reports/report.html
+# From phase0_behavioral_analysis/
+uv run python generate_report.py --results-dir data/results --output reports/report.html
 ```
 
 ## Architecture

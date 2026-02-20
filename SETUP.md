@@ -5,14 +5,25 @@
 Install Claude Code on your Lambda instance:
 
 ```bash
-npm install -g @anthropic-ai/claude-code
+curl -fsSL https://claude.ai/install.sh | bash
 ```
 
-Follow the setup guide at https://code.claude.com/docs/en/setup
+Follow the setup guide at https://code.claude.com/docs/en/setup for authentication.
 
 The Pro plan ($20/month) is more than enough for our workload.
 
-## 2. Instance bootstrap
+## 2. Personal filesystems
+
+Before launching an instance, make sure you have two personal filesystems created in the [Lambda Cloud console](https://cloud.lambda.ai):
+
+- **A filesystem in `us-east-2` or `us-east-3` (Washington DC)** — this is where your personal bucket lives. It is your persistent data store across regions.
+- **A filesystem in the region where you are launching the instance** — this is what gets mounted on the instance.
+
+Name both filesystems after yourself (e.g., `your-name-fs-us-east-2`, `your-name-fs-ohio`). When launching an instance, attach the filesystem for that region.
+
+See `SYNC.md` for full details on how filesystems and buckets work together.
+
+## 3. Instance bootstrap
 
 Once Claude Code is installed, run it and say:
 

@@ -123,7 +123,9 @@ Code changes go to GitHub as usual — `git add`, `git commit`, `git push`. The 
 
 The script auto-detects which filesystem you're on from the current directory. Run it from anywhere inside your filesystem mount.
 
-Before every `upload` or `download`, the script shows the bucket's top-level contents and asks for confirmation — so you can verify you're syncing the right bucket.
+Before every `upload` or `download`, the script shows the bucket's top-level contents and asks for confirmation — so you can verify you're syncing the right bucket. **Read this output carefully before confirming**, especially for `download`, which will overwrite local files.
+
+> **When running via Claude Code:** The script's interactive prompts cannot be answered by Claude Code natively. Claude Code must preview the bucket contents and present them to you, then wait for your explicit approval before piping confirmations to the script. See `CLAUDE.md` for the full protocol.
 
 ## Available regions and endpoints
 

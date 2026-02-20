@@ -120,9 +120,10 @@ echo ""
 
 # ---------- Sync ----------
 if [[ "$MODE" == "upload" ]]; then
-    echo -e "${YELLOW}Uploading $LOCAL_PATH → bucket...${NC}"
-    aws s3 sync "$LOCAL_PATH" "s3://$BUCKET_NAME/" \
+    echo -e "${YELLOW}Uploading $LOCAL_PATH → bucket/$FILESYSTEM_NAME/...${NC}"
+    aws s3 sync "$LOCAL_PATH" "s3://$BUCKET_NAME/$FILESYSTEM_NAME/" \
         --endpoint-url "$LAMBDA_ENDPOINT_URL" \
+        --exclude "*/.venv/*" \
         --exclude "*/.ipynb_checkpoints/*" \
         --exclude ".ipynb_checkpoints/*"
     echo -e "${GREEN}Upload complete.${NC}"
@@ -136,9 +137,10 @@ elif [[ "$MODE" == "download" ]]; then
         exit 0
     fi
     echo ""
-    echo -e "${YELLOW}Downloading bucket → $LOCAL_PATH...${NC}"
-    aws s3 sync "s3://$BUCKET_NAME/" "$LOCAL_PATH" \
+    echo -e "${YELLOW}Downloading bucket/$FILESYSTEM_NAME/ → $LOCAL_PATH...${NC}"
+    aws s3 sync "s3://$BUCKET_NAME/$FILESYSTEM_NAME/" "$LOCAL_PATH" \
         --endpoint-url "$LAMBDA_ENDPOINT_URL" \
+        --exclude "*/.venv/*" \
         --exclude "*/.ipynb_checkpoints/*" \
         --exclude ".ipynb_checkpoints/*"
     echo -e "${GREEN}Download complete.${NC}"
