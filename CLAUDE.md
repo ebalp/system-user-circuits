@@ -26,17 +26,20 @@ When a user asks to "set up the instance" or "clone the repo and set up", follow
    cd system-user-circuits
    ```
 
-4. **Check if `<name>.sync.env` already exists** (it would if they previously uploaded to their bucket and are downloading onto a new filesystem). If it does not exist, **ask the user for the following values** to create it:
-   - BUCKET_NAME (their personal Lambda AI filesystem bucket UUID)
-   - LAMBDA_ACCESS_KEY_ID (from Lambda Cloud console → Filesystem → S3 Adapter Keys)
-   - LAMBDA_SECRET_ACCESS_KEY (same source)
-   - LAMBDA_REGION (default: us-east-2)
-   - LAMBDA_ENDPOINT_URL (default: https://files.us-east-2.lambda.ai)
-   - GIT_USER_NAME (their full name for git commits)
-   - GIT_USER_EMAIL (their email for git commits)
-   - GITHUB_TOKEN (classic token from GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic), with repo scope)
+4. **Check if `<name>.sync.env` already exists** (it would if they previously uploaded to their bucket and are downloading onto a new filesystem). If it does not exist, **ask the user**: "Do you have your `<name>.sync.env` file? You can upload it through Jupyter to the repo directory. Otherwise I can create one if you give me the values."
 
-   Then create `<name>.sync.env` from the template with those values.
+   - **If they can upload it**: Wait for them to upload `<name>.sync.env` into the repo directory, then continue.
+   - **If they need to create it**: Ask for these values:
+     - BUCKET_NAME (their personal Lambda AI filesystem bucket UUID)
+     - LAMBDA_ACCESS_KEY_ID (from Lambda Cloud console → Filesystem → S3 Adapter Keys)
+     - LAMBDA_SECRET_ACCESS_KEY (same source)
+     - LAMBDA_REGION (default: us-east-2)
+     - LAMBDA_ENDPOINT_URL (default: https://files.us-east-2.lambda.ai)
+     - GIT_USER_NAME (their full name for git commits)
+     - GIT_USER_EMAIL (their email for git commits)
+     - GITHUB_TOKEN (classic token from GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic), with repo scope)
+
+     Then create `<name>.sync.env` from the template with those values.
 
 5. **Run setup** to configure git:
    ```bash
