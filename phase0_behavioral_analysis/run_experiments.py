@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def main():
     config = load_config("config/experiment.yaml")
     client = HFClient()
-    runner = ExperimentRunner(config, client)
+    runner = ExperimentRunner(config, client, per_model_concurrency=3)
 
     keys = runner.generate_experiment_keys()
     logger.info(f"Generated {len(keys)} experiment keys")

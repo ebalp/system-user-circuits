@@ -9,6 +9,8 @@ for deduplication and reproducibility.
 import hashlib
 import json
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
@@ -197,20 +199,23 @@ class ExperimentRunner:
         self,
         config: ExperimentConfig,
         client: HFClient,
-        output_dir: str = 'data/results'
+        output_dir: str = 'data/results',
+        per_model_concurrency: int = 3,
     ):
         """
         Initialize the experiment runner.
-        
+
         Args:
             config: Experiment configuration
             client: HuggingFace API client
             output_dir: Directory for storing results
+            per_model_concurrency: Max concurrent API requests per model endpoint
         """
         self.config = config
         self.client = client
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.per_model_concurrency = per_model_concurrency
     
     def _get_results_path(self, model_id: str) -> Path:
         """Get the path to the results file for a model."""
@@ -453,39 +458,137 @@ class ExperimentRunner:
         ])
         return '_'.join(parts)
     
+    @staticmethod
+    def _interleave_by_model(keys: list[ExperimentKey]) -> list[ExperimentKey]:
+        """Round-robin interleave keys across models.
+
+        Without this, all keys for model-0 appear first in the list.
+        The thread pool would fill all workers with model-0 tasks, leaving
+        12-of-15 blocked on model-0's semaphore with no other model running.
+
+        After interleaving, the first N submitted tasks span all models, so
+        each model's semaphore fills independently and all run in parallel.
+        """
+        from collections import defaultdict
+        by_model: dict[str, list[ExperimentKey]] = defaultdict(list)
+        for k in keys:
+            by_model[k.model].append(k)
+        interleaved: list[ExperimentKey] = []
+        queues = list(by_model.values())
+        while any(queues):
+            for q in queues:
+                if q:
+                    interleaved.append(q.pop(0))
+        return interleaved
+
+    def _load_completed_hash_counts(self, model_id: str) -> dict[str, int]:
+        """Read the model's JSONL once and return experiment_hash -> record count.
+
+        Used at startup to build an in-memory completion index so that
+        is_completed checks are O(1) instead of O(file_size) per key.
+        """
+        results_path = self._get_results_path(model_id)
+        counts: dict[str, int] = {}
+        if not results_path.exists():
+            return counts
+        try:
+            with open(results_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                        h = rec.get('experiment_hash', '')
+                        if h:
+                            counts[h] = counts.get(h, 0) + 1
+                    except json.JSONDecodeError:
+                        continue
+        except IOError:
+            pass
+        return counts
+
     def run_all_with_dedup(self, force: bool = False) -> dict[str, list[ExperimentResult]]:
         """
         Run all experiments, skipping completed ones.
-        
-        Uses prompt_id-based deduplication. Results are stored in flat JSONL
-        files, one per model (e.g., data/results/Qwen_Qwen2.5-7B-Instruct.jsonl).
-        Each record contains full experiment metadata for easy filtering.
-        
+
+        Uses experiment_hash-based deduplication (O(1) per key) via an
+        in-memory index built from a single JSONL scan at startup.
+
+        Requests to the same model are rate-limited to ``per_model_concurrency``
+        concurrent calls via a per-model semaphore. Different models run fully
+        in parallel since they are independent HF endpoints.
+
         Args:
             force: If True, re-run all experiments even if completed.
-            
+
         Returns:
             Dict mapping model_id -> list of ExperimentResult.
         """
         keys = self.generate_experiment_keys()
         results: dict[str, list[ExperimentResult]] = {}
-        
-        completed = 0
+
+        # Build in-memory completion index: one JSONL scan per model
+        all_models = list({k.model for k in keys})
+        completed_counts: dict[str, dict[str, int]] = {
+            model: self._load_completed_hash_counts(model)
+            for model in all_models
+        }
+
+        # Filter pending experiments upfront
+        pending: list[ExperimentKey] = []
         skipped = 0
-        
-        for key in tqdm(keys, desc="Running experiments"):
-            if not force and self.is_completed(key):
+        for key in keys:
+            h = compute_experiment_hash(key)
+            done = completed_counts.get(key.model, {}).get(h, 0)
+            if not force and done >= key.instances_per_cell:
                 skipped += 1
-                continue
-            
-            exp_results = self._run_experiment_flat(key)
-            results.setdefault(key.model, []).extend(exp_results)
-            completed += 1
-        
-        logger.info(f"Completed: {completed}, Skipped: {skipped}")
+            else:
+                pending.append(key)
+
+        logger.info(f"Pending: {len(pending)}, Already done: {skipped}")
+        if not pending:
+            logger.info("All experiments already completed.")
+            return results
+
+        # Interleave pending keys round-robin by model so that all models
+        # get dispatched to workers immediately rather than one model at a time.
+        pending = self._interleave_by_model(pending)
+
+        # Per-model semaphores (rate limiting) and locks (safe file writes)
+        model_semaphores = {m: threading.Semaphore(self.per_model_concurrency) for m in all_models}
+        model_locks = {m: threading.Lock() for m in all_models}
+
+        def run_key(key: ExperimentKey) -> tuple[ExperimentKey, list[ExperimentResult]]:
+            with model_semaphores[key.model]:
+                exp_results = self._run_experiment_flat(key, model_locks[key.model])
+            return key, exp_results
+
+        max_workers = len(all_models) * self.per_model_concurrency
+        completed_count = 0
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_key = {executor.submit(run_key, key): key for key in pending}
+            for future in tqdm(as_completed(future_to_key), total=len(pending), desc="Running experiments"):
+                key = future_to_key[future]
+                try:
+                    _, exp_results = future.result()
+                    results.setdefault(key.model, []).extend(exp_results)
+                    completed_count += 1
+                except Exception as e:
+                    logger.error(
+                        f"Experiment {key.condition}/{key.constraint_type} "
+                        f"({key.model}) failed: {e}"
+                    )
+
+        logger.info(f"Completed: {completed_count}, Skipped: {skipped}")
         return results
     
-    def _run_experiment_flat(self, key: ExperimentKey) -> list[ExperimentResult]:
+    def _run_experiment_flat(
+        self,
+        key: ExperimentKey,
+        write_lock: threading.Lock,
+    ) -> list[ExperimentResult]:
         """
         Run a single experiment and append results to the model's JSONL file.
 
@@ -498,6 +601,7 @@ class ExperimentRunner:
 
         Args:
             key: The ExperimentKey defining the experiment to run.
+            write_lock: Per-model lock that guards concurrent JSONL appends.
 
         Returns:
             List of ExperimentResult for all instances.
@@ -521,9 +625,10 @@ class ExperimentRunner:
             # Build enriched record with experiment metadata
             record = self._build_enriched_record(key, result)
 
-            with open(results_path, 'a') as f:
-                f.write(json.dumps(record) + '\n')
-        
+            with write_lock:
+                with open(results_path, 'a') as f:
+                    f.write(json.dumps(record) + '\n')
+
         return results
     
     def _build_enriched_record(self, key: ExperimentKey, result: ExperimentResult) -> dict:
