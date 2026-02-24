@@ -366,7 +366,10 @@ def get_constraint_type_by_name(config: ExperimentConfig, name: str) -> Constrai
 # =============================================================================
 
 # Set of valid classifier names that can be referenced in constraint types
-VALID_CLASSIFIERS = {'language', 'format', 'yaml', 'starting_word'}
+VALID_CLASSIFIERS = {
+    'language', 'format', 'yaml', 'starting_word',
+    'emoji', 'capitalization', 'list_format', 'disclaimer', 'self_reference',
+}
 
 
 def validate_config(config: ExperimentConfig) -> list[str]:

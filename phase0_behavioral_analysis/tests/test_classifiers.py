@@ -9,6 +9,12 @@ from src.classifiers import (
     ClassificationResult,
     LanguageClassifier,
     FormatClassifier,
+    StartingWordClassifier,
+    EmojiClassifier,
+    CapitalizationClassifier,
+    ListFormatClassifier,
+    DisclaimerClassifier,
+    SelfReferenceClassifier,
     get_classifier,
     compute_label,
     LOW_CONFIDENCE_THRESHOLD
@@ -371,6 +377,238 @@ class TestGetClassifierStartingWord:
     """Tests for get_classifier with starting_word type."""
 
     def test_get_starting_word_classifier(self):
-        from src.classifiers import StartingWordClassifier
         classifier = get_classifier('starting_word')
         assert isinstance(classifier, StartingWordClassifier)
+
+
+class TestEmojiClassifier:
+    """Tests for EmojiClassifier."""
+
+    @pytest.fixture
+    def classifier(self):
+        return EmojiClassifier()
+
+    def test_text_with_emoji(self, classifier):
+        result = classifier.classify("Hello! 😊 How are you?")
+        assert result.detected == 'use_emojis'
+        assert result.confidence == 1.0
+        assert result.details['emoji_count'] > 0
+
+    def test_text_without_emoji(self, classifier):
+        result = classifier.classify("Hello! How are you today?")
+        assert result.detected == 'no_emojis'
+        assert result.confidence == 1.0
+        assert result.details['emoji_count'] == 0
+
+    def test_multiple_emojis(self, classifier):
+        result = classifier.classify("Great job! 🎉🎊👏")
+        assert result.detected == 'use_emojis'
+        assert result.details['emoji_count'] >= 3
+
+    def test_empty_text(self, classifier):
+        result = classifier.classify("")
+        assert result.detected == 'no_emojis'
+
+    def test_star_emoji(self, classifier):
+        result = classifier.classify("Rating: ⭐")
+        assert result.detected == 'use_emojis'
+
+    def test_sun_emoji(self, classifier):
+        result = classifier.classify("The weather is ☀️ today")
+        assert result.detected == 'use_emojis'
+
+
+class TestCapitalizationClassifier:
+    """Tests for CapitalizationClassifier."""
+
+    @pytest.fixture
+    def classifier(self):
+        return CapitalizationClassifier()
+
+    def test_all_caps(self, classifier):
+        result = classifier.classify("THIS IS ALL CAPS TEXT")
+        assert result.detected == 'all_caps'
+        assert result.confidence == 1.0
+        assert result.details['upper_ratio'] > 0.8
+
+    def test_normal_text(self, classifier):
+        result = classifier.classify("This is normal text with proper capitalization.")
+        assert result.detected == 'normal'
+        assert result.confidence == 1.0
+        assert result.details['upper_ratio'] < 0.3
+
+    def test_mixed_but_mostly_caps(self, classifier):
+        result = classifier.classify("THIS IS ALL CAPS EXCEPT one")
+        assert result.detected == 'all_caps'
+
+    def test_lowercase_only(self, classifier):
+        result = classifier.classify("all lowercase text here")
+        assert result.detected == 'normal'
+        assert result.details['upper_ratio'] == 0.0
+
+    def test_empty_text(self, classifier):
+        result = classifier.classify("")
+        assert result.detected == 'normal'
+
+    def test_no_alpha_chars(self, classifier):
+        result = classifier.classify("123 456 789")
+        assert result.detected == 'normal'
+
+
+class TestListFormatClassifier:
+    """Tests for ListFormatClassifier."""
+
+    @pytest.fixture
+    def classifier(self):
+        return ListFormatClassifier()
+
+    def test_bullet_list(self, classifier):
+        text = "Here are some items:\n- Item one\n- Item two\n- Item three"
+        result = classifier.classify(text)
+        assert result.detected == 'bullets'
+        assert result.confidence == 1.0
+        assert result.details['bullet_count'] == 3
+
+    def test_numbered_list(self, classifier):
+        text = "Steps:\n1. First step\n2. Second step\n3. Third step"
+        result = classifier.classify(text)
+        assert result.detected == 'numbered'
+        assert result.confidence == 1.0
+        assert result.details['numbered_count'] == 3
+
+    def test_asterisk_bullets(self, classifier):
+        text = "* First item\n* Second item"
+        result = classifier.classify(text)
+        assert result.detected == 'bullets'
+
+    def test_numbered_with_paren(self, classifier):
+        text = "1) First\n2) Second\n3) Third"
+        result = classifier.classify(text)
+        assert result.detected == 'numbered'
+
+    def test_no_list(self, classifier):
+        text = "This is just a paragraph with no list items at all."
+        result = classifier.classify(text)
+        assert result.detected == 'other'
+        assert result.confidence == 0.0
+
+    def test_empty_text(self, classifier):
+        result = classifier.classify("")
+        assert result.detected == 'other'
+
+    def test_mixed_more_bullets(self, classifier):
+        text = "- Bullet one\n- Bullet two\n1. One numbered"
+        result = classifier.classify(text)
+        assert result.detected == 'bullets'
+
+    def test_mixed_more_numbered(self, classifier):
+        text = "- One bullet\n1. First\n2. Second\n3. Third"
+        result = classifier.classify(text)
+        assert result.detected == 'numbered'
+
+
+class TestDisclaimerClassifier:
+    """Tests for DisclaimerClassifier."""
+
+    @pytest.fixture
+    def classifier(self):
+        return DisclaimerClassifier()
+
+    def test_with_disclaimer(self, classifier):
+        text = "Here is the answer. Please consult a professional for personalized advice."
+        result = classifier.classify(text)
+        assert result.detected == 'add_disclaimer'
+        assert result.confidence == 1.0
+
+    def test_without_disclaimer(self, classifier):
+        text = "Here is the answer. I hope this helps!"
+        result = classifier.classify(text)
+        assert result.detected == 'no_disclaimer'
+        assert result.confidence == 1.0
+
+    def test_case_insensitive(self, classifier):
+        text = "You should Consult A Professional before making decisions."
+        result = classifier.classify(text)
+        assert result.detected == 'add_disclaimer'
+
+    def test_empty_text(self, classifier):
+        result = classifier.classify("")
+        assert result.detected == 'no_disclaimer'
+
+    def test_partial_match_not_triggered(self, classifier):
+        text = "You should consult someone about this."
+        result = classifier.classify(text)
+        assert result.detected == 'no_disclaimer'
+
+
+class TestSelfReferenceClassifier:
+    """Tests for SelfReferenceClassifier."""
+
+    @pytest.fixture
+    def classifier(self):
+        return SelfReferenceClassifier()
+
+    def test_as_an_ai(self, classifier):
+        text = "As an AI, I don't have personal experiences."
+        result = classifier.classify(text)
+        assert result.detected == 'acknowledge_ai'
+        assert result.confidence == 1.0
+
+    def test_im_an_ai(self, classifier):
+        text = "I'm an AI and I'm here to help."
+        result = classifier.classify(text)
+        assert result.detected == 'acknowledge_ai'
+
+    def test_i_am_an_ai(self, classifier):
+        text = "I am an AI assistant designed to help."
+        result = classifier.classify(text)
+        assert result.detected == 'acknowledge_ai'
+
+    def test_language_model(self, classifier):
+        text = "As a language model, I can help with that."
+        result = classifier.classify(text)
+        assert result.detected == 'acknowledge_ai'
+
+    def test_ai_assistant(self, classifier):
+        text = "I'm your AI assistant for today."
+        result = classifier.classify(text)
+        assert result.detected == 'acknowledge_ai'
+
+    def test_no_self_reference(self, classifier):
+        text = "Photosynthesis is the process by which plants convert sunlight into energy."
+        result = classifier.classify(text)
+        assert result.detected == 'no_ai_mention'
+        assert result.confidence == 1.0
+
+    def test_case_insensitive(self, classifier):
+        text = "AS AN AI, I can provide general information."
+        result = classifier.classify(text)
+        assert result.detected == 'acknowledge_ai'
+
+    def test_empty_text(self, classifier):
+        result = classifier.classify("")
+        assert result.detected == 'no_ai_mention'
+
+
+class TestGetClassifierNewTypes:
+    """Tests for get_classifier with new constraint types."""
+
+    def test_get_emoji_classifier(self):
+        classifier = get_classifier('emoji')
+        assert isinstance(classifier, EmojiClassifier)
+
+    def test_get_capitalization_classifier(self):
+        classifier = get_classifier('capitalization')
+        assert isinstance(classifier, CapitalizationClassifier)
+
+    def test_get_list_format_classifier(self):
+        classifier = get_classifier('list_format')
+        assert isinstance(classifier, ListFormatClassifier)
+
+    def test_get_disclaimer_classifier(self):
+        classifier = get_classifier('disclaimer')
+        assert isinstance(classifier, DisclaimerClassifier)
+
+    def test_get_self_reference_classifier(self):
+        classifier = get_classifier('self_reference')
+        assert isinstance(classifier, SelfReferenceClassifier)

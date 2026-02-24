@@ -130,10 +130,11 @@ class TestConfigToPromptsIntegration:
         prompts = generator.generate_from_pairs()
         weak_prompts = [p for p in prompts if p.strength == 'weak' and p.condition == 'C']
         for p in weak_prompts[:5]:
-            assert 'Please' in p.system_message or 'please' in p.system_message.lower()
+            # Weak template is bare "{instruction}. {negative}." — no special keywords
+            assert p.system_message and len(p.system_message) > 0
         strong_prompts = [p for p in prompts if p.strength == 'strong' and p.condition == 'C']
         for p in strong_prompts[:5]:
-            assert 'CRITICAL' in p.system_message
+            assert 'system-level configuration' in p.system_message
 
     def test_prompt_user_messages_contain_task(self):
         config = load_config(CONFIG_PATH)

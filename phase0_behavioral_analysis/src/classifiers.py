@@ -2,14 +2,16 @@
 Response classifiers for constraint compliance detection.
 
 This module provides classifiers for detecting language (English/Spanish/French/German),
-format (JSON/YAML/plain text), and starting word in model responses, along with functions
-to compute compliance labels.
+format (JSON/YAML/plain text), starting word, emoji usage, capitalization style,
+list format, disclaimer presence, and AI self-reference in model responses,
+along with functions to compute compliance labels.
 """
 
 from dataclasses import dataclass
 from typing import Optional
 import json
 import re
+import unicodedata
 
 from langdetect import detect, detect_langs, LangDetectException
 import yaml as pyyaml
@@ -275,6 +277,215 @@ class StartingWordClassifier:
 
 
 
+class EmojiClassifier:
+    """Classifier for detecting emoji presence in text responses.
+
+    Counts Unicode emoji codepoints. If any are present → 'use_emojis',
+    otherwise → 'no_emojis'.
+    """
+
+    # Regex matching common emoji Unicode ranges
+    _EMOJI_RE = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map
+        "\U0001F1E0-\U0001F1FF"  # flags
+        "\U00002702-\U000027B0"  # dingbats
+        "\U0000FE00-\U0000FE0F"  # variation selectors
+        "\U0001F900-\U0001F9FF"  # supplemental symbols
+        "\U0001FA00-\U0001FA6F"  # chess symbols
+        "\U0001FA70-\U0001FAFF"  # symbols extended-A
+        "\U00002600-\U000026FF"  # misc symbols
+        "\U0000200D"             # zero width joiner
+        "\U00002B50"             # star
+        "\U0000231A-\U0000231B"  # watch, hourglass
+        "\U000023E9-\U000023F3"  # media controls
+        "\U000023F8-\U000023FA"  # more media
+        "\U000025AA-\U000025AB"  # small squares
+        "\U000025B6"             # play button
+        "\U000025C0"             # reverse button
+        "\U000025FB-\U000025FE"  # medium squares
+        "\U00003030"             # wavy dash
+        "\U0000303D"             # part alternation mark
+        "\U00003297"             # circled ideograph congratulation
+        "\U00003299"             # circled ideograph secret
+        "]+",
+        flags=re.UNICODE,
+    )
+
+    def classify(self, text: str) -> ClassificationResult:
+        """Detect whether the response contains emojis."""
+        if not text or not text.strip():
+            return ClassificationResult(
+                detected='no_emojis', confidence=1.0,
+                details={'emoji_count': 0, 'note': 'empty text'}
+            )
+
+        emojis = self._EMOJI_RE.findall(text)
+        emoji_count = sum(len(e) for e in emojis)
+
+        if emoji_count > 0:
+            return ClassificationResult(
+                detected='use_emojis', confidence=1.0,
+                details={'emoji_count': emoji_count}
+            )
+        return ClassificationResult(
+            detected='no_emojis', confidence=1.0,
+            details={'emoji_count': 0}
+        )
+
+
+class CapitalizationClassifier:
+    """Classifier for detecting capitalization style.
+
+    Computes the ratio of uppercase to total alphabetic characters.
+    Ratio > 0.8 → 'all_caps', else → 'normal'.
+    """
+
+    CAPS_THRESHOLD = 0.8
+
+    def classify(self, text: str) -> ClassificationResult:
+        """Detect capitalization style of the response."""
+        if not text or not text.strip():
+            return ClassificationResult(
+                detected='normal', confidence=1.0,
+                details={'upper_ratio': 0.0, 'note': 'empty text'}
+            )
+
+        alpha_chars = [c for c in text if c.isalpha()]
+        if not alpha_chars:
+            return ClassificationResult(
+                detected='normal', confidence=1.0,
+                details={'upper_ratio': 0.0, 'note': 'no alpha chars'}
+            )
+
+        upper_count = sum(1 for c in alpha_chars if c.isupper())
+        ratio = upper_count / len(alpha_chars)
+
+        if ratio > self.CAPS_THRESHOLD:
+            return ClassificationResult(
+                detected='all_caps', confidence=1.0,
+                details={'upper_ratio': ratio}
+            )
+        return ClassificationResult(
+            detected='normal', confidence=1.0,
+            details={'upper_ratio': ratio}
+        )
+
+
+class ListFormatClassifier:
+    """Classifier for detecting bullet vs numbered list format.
+
+    Counts lines matching bullet patterns (- or *) vs numbered patterns
+    (1. or 2) etc.). Whichever has more matches wins.
+    """
+
+    _BULLET_RE = re.compile(r'^\s*[-*]\s', re.MULTILINE)
+    _NUMBERED_RE = re.compile(r'^\s*\d+[.)]\s', re.MULTILINE)
+
+    def classify(self, text: str) -> ClassificationResult:
+        """Detect whether the response uses bullet or numbered list format."""
+        if not text or not text.strip():
+            return ClassificationResult(
+                detected='other', confidence=0.0,
+                details={'bullet_count': 0, 'numbered_count': 0, 'note': 'empty text'}
+            )
+
+        bullet_count = len(self._BULLET_RE.findall(text))
+        numbered_count = len(self._NUMBERED_RE.findall(text))
+
+        details = {'bullet_count': bullet_count, 'numbered_count': numbered_count}
+
+        if bullet_count == 0 and numbered_count == 0:
+            return ClassificationResult(
+                detected='other', confidence=0.0, details=details
+            )
+
+        if bullet_count > numbered_count:
+            return ClassificationResult(
+                detected='bullets', confidence=1.0, details=details
+            )
+        elif numbered_count > bullet_count:
+            return ClassificationResult(
+                detected='numbered', confidence=1.0, details=details
+            )
+        else:
+            # Tie — low confidence
+            return ClassificationResult(
+                detected='bullets', confidence=0.5, details=details
+            )
+
+
+class DisclaimerClassifier:
+    """Classifier for detecting disclaimer presence.
+
+    Checks for the exact phrase 'consult a professional' (case-insensitive).
+    """
+
+    _DISCLAIMER_PHRASES = [
+        'consult a professional',
+    ]
+
+    def classify(self, text: str) -> ClassificationResult:
+        """Detect whether the response contains a disclaimer."""
+        if not text or not text.strip():
+            return ClassificationResult(
+                detected='no_disclaimer', confidence=1.0,
+                details={'note': 'empty text'}
+            )
+
+        text_lower = text.lower()
+        for phrase in self._DISCLAIMER_PHRASES:
+            if phrase in text_lower:
+                return ClassificationResult(
+                    detected='add_disclaimer', confidence=1.0,
+                    details={'matched_phrase': phrase}
+                )
+
+        return ClassificationResult(
+            detected='no_disclaimer', confidence=1.0,
+            details={'matched_phrase': None}
+        )
+
+
+class SelfReferenceClassifier:
+    """Classifier for detecting AI self-reference in responses.
+
+    Checks for phrases like 'as an AI', 'I'm an AI', 'language model',
+    'AI assistant' (case-insensitive).
+    """
+
+    _SELF_REF_PHRASES = [
+        'as an ai',
+        "i'm an ai",
+        'i am an ai',
+        'language model',
+        'ai assistant',
+    ]
+
+    def classify(self, text: str) -> ClassificationResult:
+        """Detect whether the response contains AI self-reference."""
+        if not text or not text.strip():
+            return ClassificationResult(
+                detected='no_ai_mention', confidence=1.0,
+                details={'note': 'empty text'}
+            )
+
+        text_lower = text.lower()
+        for phrase in self._SELF_REF_PHRASES:
+            if phrase in text_lower:
+                return ClassificationResult(
+                    detected='acknowledge_ai', confidence=1.0,
+                    details={'matched_phrase': phrase}
+                )
+
+        return ClassificationResult(
+            detected='no_ai_mention', confidence=1.0,
+            details={'matched_phrase': None}
+        )
+
+
 def get_classifier(constraint_type: str):
     """Factory function to get appropriate classifier for a constraint type.
 
@@ -286,6 +497,11 @@ def get_classifier(constraint_type: str):
         'format': FormatClassifier,
         'yaml': FormatClassifier,
         'starting_word': StartingWordClassifier,
+        'emoji': EmojiClassifier,
+        'capitalization': CapitalizationClassifier,
+        'list_format': ListFormatClassifier,
+        'disclaimer': DisclaimerClassifier,
+        'self_reference': SelfReferenceClassifier,
     }
 
     if constraint_type not in classifiers:
