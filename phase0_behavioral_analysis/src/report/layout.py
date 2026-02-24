@@ -48,12 +48,13 @@ def _render_experiment_design(config: ExperimentConfig, models: list[str]) -> st
     conditions_html = """
     <h3>Conditions</h3>
     <table class="design-tbl">
-      <tr><th>Condition</th><th>System Prompt</th><th>User Prompt</th><th>Purpose</th></tr>
-      <tr><td><strong>A</strong></td><td>Has constraint</td><td>Task only</td><td>Baseline: does model follow system instruction?</td></tr>
-      <tr><td><strong>B</strong></td><td>Generic</td><td>Has constraint + task</td><td>Baseline: does model follow user instruction?</td></tr>
-      <tr><td><strong>C</strong></td><td>Has constraint X</td><td>Has constraint Y + task</td><td>Conflict: system vs user — measures hierarchy compliance</td></tr>
-      <tr><td><strong>D</strong></td><td>Generic</td><td>Constraint X, then Y + task</td><td>Recency: user-user conflict (first vs second instruction)</td></tr>
+      <tr><th>Condition</th><th>System Prompt</th><th>User Message</th><th>strength</th><th>user_style</th><th>Purpose</th></tr>
+      <tr><td><strong>A</strong></td><td><code>{instruction}. {negative}.</code></td><td>Task only</td><td><code>weak</code></td><td><code>task_only</code></td><td>Baseline: does model follow a system constraint?</td></tr>
+      <tr><td><strong>B</strong></td><td><em>empty</em></td><td><code>Please {instruction}. {task}</code></td><td><code>null</code></td><td><code>with_instruction</code></td><td>Baseline: does model follow a user constraint?</td></tr>
+      <tr><td><strong>C</strong></td><td>strength template</td><td>style template</td><td>varies</td><td>varies</td><td>Conflict: system vs user — measures hierarchy compliance</td></tr>
+      <tr><td><strong>D</strong></td><td><em>empty</em></td><td><code>{instr1}. {negative}. Please {instr2}. {task}</code></td><td><code>weak</code></td><td><code>with_instruction</code></td><td>Recency: user-user conflict — first vs second instruction</td></tr>
     </table>
+    <p class="note">A and B are capability baselines (no conflict). D isolates recency effects: if SCR in C &gt;&gt; first-instruction compliance in D, the hierarchy is real rather than a positional artifact.</p>
     """
     
     # Constraint types
@@ -134,30 +135,35 @@ def _render_experiment_design(config: ExperimentConfig, models: list[str]) -> st
     n_user_styles = len(config.user_styles_to_test)
     n_tasks = len(config.tasks)
 
-    # Condition A/B: pairs × 2 options × tasks (default strength, default user style only)
-    n_ab = n_pairs * 2 * n_tasks
-    # Condition C: pairs × 2 directions × strengths × user_styles × tasks
+    # A: pairs × 2 options × tasks (fixed weak strength, task_only user style)
+    n_a = n_pairs * 2 * n_tasks
+    # B: pairs × 2 options × tasks (no system prompt, fixed with_instruction user style)
+    n_b = n_pairs * 2 * n_tasks
+    # C: pairs × 2 directions × strengths × user_styles × tasks
     n_c = n_pairs * 2 * n_strengths * n_user_styles * n_tasks
-    # Condition D: pairs × 2 directions × user_styles × tasks
-    n_d = n_pairs * 2 * n_user_styles * n_tasks
-    n_total = n_ab + n_ab + n_c + n_d
+    # D: pairs × 2 directions × tasks (fixed weak+with_instruction format)
+    n_d = n_pairs * 2 * n_tasks
+    n_total = n_a + n_b + n_c + n_d
 
     sample_note = f"""
-    <h3>Sample Counts</h3>
+    <h3>Sample Counts (per model)</h3>
     <p style="font-size:13px;line-height:1.7">
-    For each model we have <strong>{n_total} prompts</strong> in total, distributed across conditions as follows:
+    For each model we have <strong>{n_total} prompts</strong> in total
+    ({n_pairs} pairs × instances_per_cell={config.generation.instances_per_cell if config.generation else 1}),
+    distributed across conditions as follows:
     </p>
     <table class="design-tbl">
-      <tr><th>Condition</th><th>Count</th><th>Derivation</th></tr>
-      <tr><td>A</td><td>{n_ab}</td><td>{n_pairs} pairs × 2 options × {n_tasks} tasks</td></tr>
-      <tr><td>B</td><td>{n_ab}</td><td>{n_pairs} pairs × 2 options × {n_tasks} tasks</td></tr>
-      <tr><td>C</td><td>{n_c}</td><td>{n_pairs} pairs × 2 directions × {n_strengths} strengths × {n_user_styles} user styles × {n_tasks} tasks</td></tr>
-      <tr><td>D</td><td>{n_d}</td><td>{n_pairs} pairs × 2 directions × {n_user_styles} user styles × {n_tasks} tasks</td></tr>
+      <tr><th>Condition</th><th>Formula</th><th>Count</th></tr>
+      <tr><td>A</td><td>{n_pairs} pairs × 2 dirs × {n_tasks} tasks</td><td>{n_a}</td></tr>
+      <tr><td>B</td><td>{n_pairs} pairs × 2 dirs × {n_tasks} tasks</td><td>{n_b}</td></tr>
+      <tr><td>C</td><td>{n_pairs} pairs × 2 dirs × {n_strengths} strengths × {n_user_styles} styles × {n_tasks} tasks</td><td>{n_c}</td></tr>
+      <tr><td>D</td><td>{n_pairs} pairs × 2 dirs × {n_tasks} tasks</td><td>{n_d}</td></tr>
+      <tr><td><strong>Total</strong></td><td></td><td><strong>{n_total}</strong></td></tr>
     </table>
     <p class="note">
+    Only Condition C varies by strength and user style. A, B, and D each use a single fixed template.
     The summary metrics (Section 1) filter Condition C to user_style='{config.default_user_style}' and
-    strength='{config.default_strength}', yielding {n_pairs} pairs × 2 directions × {n_tasks} tasks
-    = <strong>{n_pairs * 2 * n_tasks}</strong> records per model.
+    strength='{config.default_strength}', yielding {n_pairs * 2 * n_tasks} records per model.
     </p>
     """
     

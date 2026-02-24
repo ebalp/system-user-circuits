@@ -120,10 +120,10 @@ class HFClient:
         if disable_thinking and 'qwen3' in model_id.lower():
             final_user_message = f"{user_message} /no_think"
         
-        messages = [
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": final_user_message}
-        ]
+        messages = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        messages.append({"role": "user", "content": final_user_message})
         
         logger.info(
             f"API call: model={model_id}, hash={prompt_hash}, "

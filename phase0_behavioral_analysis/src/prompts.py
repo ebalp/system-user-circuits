@@ -7,7 +7,6 @@ model capability biases.
 """
 
 from dataclasses import dataclass, asdict
-from typing import Literal
 import json
 import csv
 
@@ -26,7 +25,7 @@ class Prompt:
     system_constraint: str | None     # 'english', 'spanish', etc. (None for B, D)
     user_constraint: str | None       # Constraint in user message (None for A)
     direction: str                    # 'a_to_b', 'b_to_a', or 'none' (for A, B)
-    strength: str                     # 'weak', 'medium', 'strong'
+    strength: str | None              # 'weak', 'medium', 'strong'; None for B (no system constraint)
     user_style: str                   # 'standard', 'jailbreak', 'polite' - which user template was used
     task_id: str                      # Task identifier
     system_message: str               # Rendered system prompt
@@ -120,7 +119,13 @@ class PromptGenerator:
         pair_key = f"{pair.option_a[:3]}{pair.option_b[:3]}"
 
         for condition in self.config.conditions:
-            for user_style in user_styles:
+            # Only C uses user templates (conflict styles). A/B are capability
+            # baselines and D is a fixed recency template — one style each.
+            if condition in ('A', 'B', 'D'):
+                styles = [self.config.default_user_style or 'with_instruction']
+            else:
+                styles = user_styles
+            for user_style in styles:
                 prompts.extend(self._generate_pair_condition(
                     condition=condition,
                     constraint_type=ct,
@@ -157,23 +162,29 @@ class PromptGenerator:
         option_a: ConstraintOption, option_b: ConstraintOption,
         user_style: str, pair_key: str,
     ) -> list[Prompt]:
-        """Generate Condition A prompts (system-only constraint)."""
+        """Generate Condition A prompts (system-only constraint).
+
+        System: bare instruction ('{instruction}. {negative}.')
+        User: task only — no user template applied.
+        """
         prompts = []
-        strength = self.config.default_strength
+        strength = 'weak'
         for option, direction in [(option_a, 'option_a'), (option_b, 'option_b')]:
             for task in self.config.tasks:
                 for i in range(self.config.generation.instances_per_cell):
                     prompt_id = self._make_id(
                         'A', constraint_type.name, option.name,
-                        None, strength, user_style, task.id, i,
+                        None, strength, 'task_only', task.id, i,
                         pair_key=pair_key,
                     )
-                    system_msg = self.render_system_prompt(constraint_type, option, strength)
+                    instruction = constraint_type.render_instruction(option)
+                    negative = constraint_type.negative_template
+                    system_msg = f"{instruction}. {negative}."
                     prompts.append(Prompt(
                         id=prompt_id, condition='A',
                         constraint_type=constraint_type.name,
                         system_constraint=option.name, user_constraint=None,
-                        direction=direction, strength=strength, user_style=user_style,
+                        direction=direction, strength=strength, user_style='task_only',
                         task_id=task.id, system_message=system_msg,
                         user_message=task.prompt, expected_label='followed_system'
                     ))
@@ -186,8 +197,8 @@ class PromptGenerator:
     ) -> list[Prompt]:
         """Generate Condition B prompts (user-only constraint)."""
         prompts = []
-        strength = self.config.default_strength
-        generic_system = "You are a helpful assistant."
+        strength = None
+        generic_system = ""
         for option, direction in [(option_a, 'option_a'), (option_b, 'option_b')]:
             for task in self.config.tasks:
                 for i in range(self.config.generation.instances_per_cell):
@@ -238,8 +249,8 @@ class PromptGenerator:
     ) -> list[Prompt]:
         """Generate Condition D prompts (user-user conflict / recency)."""
         prompts = []
-        strength = self.config.default_strength
-        generic_system = "You are a helpful assistant."
+        strength = 'weak'
+        generic_system = ""
         for task in self.config.tasks:
             prompts.extend(self._generate_pair_recency(
                 constraint_type=constraint_type,
@@ -300,12 +311,11 @@ class PromptGenerator:
                 pair_key=pair_key,
             )
             first_instr = constraint_type.render_instruction(first_option)
+            negative = constraint_type.negative_template
             second_instr = constraint_type.render_instruction(second_option)
             if first_instr:
                 first_instr = first_instr[0].upper() + first_instr[1:]
-            if second_instr:
-                second_instr = second_instr[0].upper() + second_instr[1:]
-            user_msg = f"{first_instr}. Actually, {second_instr}. {task.prompt}"
+            user_msg = f"{first_instr}. {negative}. Please {second_instr}. {task.prompt}"
             prompts.append(Prompt(
                 id=prompt_id, condition='D',
                 constraint_type=constraint_type.name,
@@ -320,7 +330,7 @@ class PromptGenerator:
     def _make_id(
         self, condition: str, constraint_type: str,
         system_opt: str | None, user_opt: str | None,
-        strength: str, user_style: str, task_id: str,
+        strength: str | None, user_style: str, task_id: str,
         instance: int, direction: str | None = None,
         pair_key: str | None = None
     ) -> str:
@@ -334,7 +344,9 @@ class PromptGenerator:
             parts.append(user_opt[:3])
         if direction and direction != 'none':
             parts.append(direction)
-        parts.extend([strength, user_style[:3], task_id, f"{instance:03d}"])
+        if strength:
+            parts.append(strength)
+        parts.extend([user_style[:3], task_id, f"{instance:03d}"])
         return '_'.join(parts)
 
     def export_to_json(self, prompts: list[Prompt], path: str) -> None:

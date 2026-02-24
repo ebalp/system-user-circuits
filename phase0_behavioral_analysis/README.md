@@ -1,11 +1,33 @@
 # Phase 0: Behavioral Analysis
 
-Evaluates how LLMs handle conflicting instructions between system prompts and user messages across 4 experimental conditions:
+Evaluates how LLMs handle conflicting instructions between system prompts and user messages across 4 experimental conditions.
 
-- **Condition A** — System-only baseline: system prompt has a constraint, user has only a task
-- **Condition B** — User-only baseline: generic system prompt, user has constraint + task
-- **Condition C** — Hierarchy conflict: system and user have conflicting constraints
-- **Condition D** — Recency conflict: user message contains two contradictory constraints
+## Experimental Design
+
+| Condition | System prompt | User message | `strength` | `user_style` | Purpose |
+|-----------|--------------|--------------|-----------|--------------|---------|
+| **A** | `{instruction}. {negative}.` | Task only | `weak` | `task_only` | Baseline: does the model follow a system constraint? |
+| **B** | *(empty)* | `Please {instruction}. {task}` | `null` | `with_instruction` | Baseline: does the model follow a user constraint? |
+| **C** | strength template | style template | varies | varies | Conflict: system vs user — measures hierarchy compliance |
+| **D** | *(empty)* | `{instruction}. {negative}. Please {instruction2}. {task}` | `weak` | `with_instruction` | Recency: same-level conflict — first vs second instruction |
+
+Conditions A and B are capability baselines (no conflict). Condition C is the main hierarchy test. Condition D isolates recency effects: if SCR in C is much higher than first-instruction compliance in D, the hierarchy is real rather than a positional artifact.
+
+Counterbalancing (both `a_to_b` and `b_to_a` directions) is applied to C and D to control for capability bias between options.
+
+## Prompt Counts
+
+Per experiment pair, per model (current config: 8 pairs, 16 tasks, 1 instance, counterbalancing on):
+
+| Condition | Formula | Count (per pair) | Total (8 pairs) |
+|-----------|---------|-----------------|-----------------|
+| A | 2 dirs × T × I | 2 × 16 × 1 = **32** | 256 |
+| B | 2 dirs × T × I | 2 × 16 × 1 = **32** | 256 |
+| C | 2 dirs × S × U × T × I | 2 × 3 × 4 × 16 × 1 = **384** | 3,072 |
+| D | 2 dirs × T × I | 2 × 16 × 1 = **32** | 256 |
+| **Total** | | **480** | **3,840** |
+
+Variables: T = tasks, I = instances per cell, S = system strengths (C only), U = user styles (C only).
 
 ## Setup
 

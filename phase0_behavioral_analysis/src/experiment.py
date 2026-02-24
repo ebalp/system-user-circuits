@@ -71,7 +71,7 @@ class ExperimentKey:
     constraint_type: str
     option_a: str
     option_b: str
-    system_template_name: str
+    system_template_name: str | None  # None for B (no system constraint)
     system_template_content: str
     user_template_name: str
     user_template_content: str
@@ -295,7 +295,9 @@ class ExperimentRunner:
         """
         if condition == 'C':
             return self.config.condition_c_strengths
-        return [self.config.default_strength]
+        if condition == 'B':
+            return [None]
+        return ['weak']
     
     def _get_directions_for_condition(self, condition: str) -> list[str]:
         """Get the directions to use for a given condition.
@@ -321,7 +323,7 @@ class ExperimentRunner:
         - For each model
         - For each experiment pair
         - For each system template (based on condition)
-        - For each user style (default only for A/B, all configured for C/D)
+        - For each user style (with_instruction only for A/B/D, all configured for C)
         - For each task
         - For each condition
         - For each direction (option_a/option_b for A/B, a_to_b/b_to_a for C/D)
@@ -349,7 +351,7 @@ class ExperimentRunner:
                 
                 for task in self.config.tasks:
                     for condition in self.config.conditions:
-                        if condition in ('A', 'B'):
+                        if condition in ('A', 'B', 'D'):
                             styles = [self.config.default_user_style]
                         else:
                             styles = user_styles
@@ -565,9 +567,10 @@ class ExperimentRunner:
         """
         # Build prompt ID — includes all dimensions for uniqueness and easy parsing
         direction_part = f"_{key.direction}" if key.direction != 'none' else ""
+        strength_part = f"_{key.system_template_name}" if key.system_template_name else ""
         prompt_id = (
             f"{key.condition}_{key.constraint_type}_{key.option_a}_{key.option_b}"
-            f"{direction_part}_{key.system_template_name}_{key.user_template_name}"
+            f"{direction_part}{strength_part}_{key.user_template_name}"
             f"_{key.task_id}_{instance_idx:03d}"
         )
         
@@ -654,33 +657,33 @@ class ExperimentRunner:
     
     def _render_system_message(self, key: ExperimentKey) -> str:
         """Render the system message for an experiment.
-        
+
         Condition-aware:
-        - A: System has constraint (uses strength template)
-        - B: Generic system prompt ("You are a helpful assistant.")
-        - C: System has constraint (uses strength template)
-        - D: Generic system prompt ("You are a helpful assistant.")
+        - A: Bare constraint only ('{instruction}. {negative}.') — no strength template
+        - B: No system prompt (empty)
+        - C: System has constraint using the configured strength template
+        - D: No system prompt (empty)
         """
-        # Conditions B and D have a generic system prompt
+        # Conditions B and D: no system prompt
         if key.condition in ('B', 'D'):
-            return "You are a helpful assistant."
-        
-        # Conditions A and C: system has the constraint
-        if key.direction == 'a_to_b':
+            return ""
+
+        # Resolve the option value from direction
+        if key.direction in ('a_to_b', 'option_a'):
             instruction_value = key.option_a_value
-        elif key.direction == 'b_to_a':
-            instruction_value = key.option_b_value
-        elif key.direction == 'option_a':
-            instruction_value = key.option_a_value
-        elif key.direction == 'option_b':
+        elif key.direction in ('b_to_a', 'option_b'):
             instruction_value = key.option_b_value
         else:
-            # Fallback for unexpected direction values
             instruction_value = key.option_a_value
-        
+
         instruction = key.instruction_template.format(value=instruction_value)
         negative = key.negative_template
-        
+
+        # Condition A: bare instruction, no strength wrapper
+        if key.condition == 'A':
+            return f"{instruction}. {negative}."
+
+        # Condition C: use the strength template
         if key.system_template_content:
             return key.system_template_content.format(
                 instruction=instruction,
@@ -714,10 +717,10 @@ class ExperimentRunner:
                 second_value = key.option_b_value
             first_instr = key.instruction_template.format(value=first_value)
             second_instr = key.instruction_template.format(value=second_value)
+            negative = key.negative_template
             # Capitalize for user message
             first_instr = first_instr[0].upper() + first_instr[1:] if first_instr else first_instr
-            second_instr = second_instr[0].upper() + second_instr[1:] if second_instr else second_instr
-            return f"{first_instr}. Actually, {second_instr}. {key.task_prompt}"
+            return f"{first_instr}. {negative}. Please {second_instr}. {key.task_prompt}"
         
         # Conditions B and C: user has a constraint + task
         if key.condition == 'B':

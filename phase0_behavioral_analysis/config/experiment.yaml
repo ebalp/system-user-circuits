@@ -9,7 +9,6 @@ api:
 
 # Models to evaluate
 models:
-  - Qwen/Qwen2.5-7B-Instruct
   - meta-llama/Llama-3.1-8B-Instruct
   # - meta-llama/Llama-3.1-70B-Instruct
   # - deepseek-ai/DeepSeek-R1-Distill-Qwen-7B
@@ -20,6 +19,7 @@ models:
   # - allenai/Olmo-3-7B-Instruct
   - meta-llama/Llama-3.3-70B-Instruct
   - meta-llama/Llama-3.2-1B-Instruct
+  - Qwen/Qwen2.5-7B-Instruct
 
 # Constraint Types
 # Each defines a template + options pool. The classifier field

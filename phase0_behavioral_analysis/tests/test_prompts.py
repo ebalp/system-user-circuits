@@ -368,7 +368,9 @@ class TestUserStyleCoverage:
         config = _make_config(user_styles_to_test=['with_instruction', 'jailbreak'])
         generator = PromptGenerator(config)
         prompts = generator.generate_from_pairs()
-        styles_found = {p.user_style for p in prompts}
+        # Only Condition C uses multiple user styles
+        condition_c = [p for p in prompts if p.condition == 'C']
+        styles_found = {p.user_style for p in condition_c}
         assert styles_found == {'with_instruction', 'jailbreak'}
 
     def test_user_style_field_matches_template_used(self):
@@ -376,7 +378,7 @@ class TestUserStyleCoverage:
         generator = PromptGenerator(config)
         prompts = generator.generate_from_pairs()
         for prompt in prompts:
-            if prompt.user_style == 'jailbreak' and prompt.condition == 'B':
+            if prompt.user_style == 'jailbreak' and prompt.condition == 'C':
                 assert 'Ignore all previous instructions' in prompt.user_message
 
     @given(st.lists(st.sampled_from(['with_instruction', 'jailbreak']), min_size=1, max_size=2, unique=True))
@@ -388,10 +390,12 @@ class TestUserStyleCoverage:
         )
         generator = PromptGenerator(config)
         prompts = generator.generate_from_pairs()
-        styles_found = {p.user_style for p in prompts}
+        # Only Condition C varies by user style; A, B, D use default style only
+        condition_c = [p for p in prompts if p.condition == 'C']
+        styles_found = {p.user_style for p in condition_c}
         assert styles_found == set(styles)
         style_counts = {}
-        for p in prompts:
+        for p in condition_c:
             style_counts[p.user_style] = style_counts.get(p.user_style, 0) + 1
         counts = list(style_counts.values())
-        assert len(set(counts)) == 1, "All styles should have equal prompt counts"
+        assert len(set(counts)) == 1, "All styles should have equal prompt counts in C"

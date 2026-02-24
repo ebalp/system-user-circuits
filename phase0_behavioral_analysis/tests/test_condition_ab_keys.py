@@ -146,13 +146,14 @@ class TestConditionCDAllUserStyles:
 
     @settings(max_examples=100)
     @given(config=experiment_config_strategy())
-    def test_condition_cd_keys_cover_all_user_styles(self, config: ExperimentConfig):
+    def test_condition_c_keys_cover_all_user_styles(self, config: ExperimentConfig):
         """
         **Validates: Requirements 3.3, 3.4**
 
         For any valid config with at least one model, pair, and task,
-        the set of user_template_name values across all C (or D) keys
+        the set of user_template_name values across all C keys
         must equal the configured user_styles_to_test set.
+        Only C varies by user style; A, B, D use the default style.
         """
         from unittest.mock import MagicMock
 
@@ -163,14 +164,13 @@ class TestConditionCDAllUserStyles:
 
         expected_styles = set(config.user_styles_to_test)
 
-        for cond in ("C", "D"):
-            cond_keys = [k for k in keys if k.condition == cond]
-            assert len(cond_keys) > 0, f"Expected at least one {cond} key"
-            actual_styles = {k.user_template_name for k in cond_keys}
-            assert actual_styles == expected_styles, (
-                f"Condition {cond} keys have user styles {actual_styles}, "
-                f"expected {expected_styles}"
-            )
+        cond_keys = [k for k in keys if k.condition == 'C']
+        assert len(cond_keys) > 0, "Expected at least one C key"
+        actual_styles = {k.user_template_name for k in cond_keys}
+        assert actual_styles == expected_styles, (
+            f"Condition C keys have user styles {actual_styles}, "
+            f"expected {expected_styles}"
+        )
 
 
 # =============================================================================
@@ -335,7 +335,7 @@ class TestKeyCountFormulaCorrectness:
         - A: n_models × n_pairs × 2 × n_tasks
         - B: n_models × n_pairs × 2 × n_tasks
         - C: n_models × n_pairs × 2 × n_strengths × n_user_styles × n_tasks
-        - D: n_models × n_pairs × 2 × n_user_styles × n_tasks
+        - D: n_models × n_pairs × 2 × n_tasks
         """
         from unittest.mock import MagicMock
 
@@ -357,7 +357,7 @@ class TestKeyCountFormulaCorrectness:
         expected_a = n_models * n_pairs * 2 * n_tasks
         expected_b = n_models * n_pairs * 2 * n_tasks
         expected_c = n_models * n_pairs * 2 * n_strengths * n_user_styles * n_tasks
-        expected_d = n_models * n_pairs * 2 * n_user_styles * n_tasks
+        expected_d = n_models * n_pairs * 2 * n_tasks
 
         actual_a = len(keys_by_condition.get("A", []))
         actual_b = len(keys_by_condition.get("B", []))
