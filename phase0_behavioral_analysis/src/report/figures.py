@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 
 import plotly.graph_objects as go
+import plotly.colors as pc
 from plotly.subplots import make_subplots
 
 from .data import (
@@ -184,7 +185,135 @@ def fig_directional_scr(records: list[dict]) -> go.Figure | None:
     return fig
 
 
-# ── 5. Heatmap (strength × constraint, default user style) ───────────────
+# ── 5. Constraint type × direction triangle-split matrix ─────────────────
+
+def _scr_to_color(scr: float | None) -> str:
+    """Map SCR [0,1] to a RdYlGn hex color."""
+    if scr is None:
+        return "rgba(210,210,210,0.5)"
+    v = max(0.0, min(1.0, scr))
+    colors = pc.sample_colorscale("RdYlGn", [v])
+    return colors[0]
+
+
+def fig_constraint_directions(records: list[dict]) -> go.Figure | None:
+    """Triangle-split matrix: each cell divided diagonally into two triangles,
+    one per counterbalancing direction. Rows = models, cols = constraint types.
+    * marks cells where the two directions differ by > 0.15."""
+    c = default_conflict_recs(records)
+    if not c:
+        return None
+    models = sorted(set(short_model(r["model"]) for r in c), key=_model_sort_key)
+    cts = sorted(set(r["constraint_type"] for r in c))
+    n_m, n_c = len(models), len(cts)
+
+    # Precompute SCR for each (model, constraint, direction)
+    scr_d1 = {}  # direction "a_to_b"
+    scr_d2 = {}  # direction "b_to_a"
+    for i, m in enumerate(models):
+        for j, ct in enumerate(cts):
+            r1 = [r for r in c if short_model(r["model"]) == m
+                  and r["constraint_type"] == ct and r["direction"] == "a_to_b"]
+            r2 = [r for r in c if short_model(r["model"]) == m
+                  and r["constraint_type"] == ct and r["direction"] == "b_to_a"]
+            scr_d1[(i, j)] = compute_scr(r1) if r1 else None
+            scr_d2[(i, j)] = compute_scr(r2) if r2 else None
+
+    fig = go.Figure()
+
+    for i in range(n_m):
+        for j in range(n_c):
+            s1 = scr_d1[(i, j)]
+            s2 = scr_d2[(i, j)]
+            c1 = _scr_to_color(s1)
+            c2 = _scr_to_color(s2)
+            m_name = models[i]
+            ct_name = cts[j]
+            asym = abs((s1 or 0) - (s2 or 0))
+            flag = " *" if asym > 0.15 else ""
+
+            # Upper-left triangle (direction 1): corners (j-0.5,i-0.5), (j-0.5,i+0.5), (j+0.5,i+0.5)
+            t1_text = f"<b>{m_name} × {ct_name}</b><br>Dir 1: {s1:.0%}{flag}" if s1 is not None else f"<b>{m_name} × {ct_name}</b><br>Dir 1: —"
+            fig.add_trace(go.Scatter(
+                x=[j - 0.5, j - 0.5, j + 0.5, j - 0.5],
+                y=[i - 0.5, i + 0.5, i + 0.5, i - 0.5],
+                fill="toself", fillcolor=c1,
+                line=dict(color="white", width=1),
+                mode="lines",
+                hovertemplate=t1_text + "<extra></extra>",
+                showlegend=False,
+            ))
+
+            # Lower-right triangle (direction 2): corners (j-0.5,i-0.5), (j+0.5,i-0.5), (j+0.5,i+0.5)
+            t2_text = f"<b>{m_name} × {ct_name}</b><br>Dir 2: {s2:.0%}{flag}" if s2 is not None else f"<b>{m_name} × {ct_name}</b><br>Dir 2: —"
+            fig.add_trace(go.Scatter(
+                x=[j - 0.5, j + 0.5, j + 0.5, j - 0.5],
+                y=[i - 0.5, i - 0.5, i + 0.5, i - 0.5],
+                fill="toself", fillcolor=c2,
+                line=dict(color="white", width=1),
+                mode="lines",
+                hovertemplate=t2_text + "<extra></extra>",
+                showlegend=False,
+            ))
+
+            # Diagonal divider line
+            fig.add_shape(type="line",
+                          x0=j - 0.5, y0=i - 0.5, x1=j + 0.5, y1=i + 0.5,
+                          line=dict(color="white", width=1))
+
+            # Text annotations (small, inside triangles)
+            if s1 is not None:
+                fig.add_annotation(x=j - 0.18, y=i + 0.18,
+                                   text=f"{s1:.0%}{flag}",
+                                   showarrow=False, font=dict(size=8, color="black"),
+                                   xref="x", yref="y")
+            if s2 is not None:
+                fig.add_annotation(x=j + 0.18, y=i - 0.18,
+                                   text=f"{s2:.0%}{flag}",
+                                   showarrow=False, font=dict(size=8, color="black"),
+                                   xref="x", yref="y")
+
+    # Cell grid lines
+    for ii in range(n_m + 1):
+        fig.add_shape(type="line", x0=-0.5, y0=ii - 0.5, x1=n_c - 0.5, y1=ii - 0.5,
+                      line=dict(color="lightgray", width=0.5))
+    for jj in range(n_c + 1):
+        fig.add_shape(type="line", x0=jj - 0.5, y0=-0.5, x1=jj - 0.5, y1=n_m - 0.5,
+                      line=dict(color="lightgray", width=0.5))
+
+    # Dummy heatmap for colorbar only
+    fig.add_trace(go.Heatmap(
+        z=[[0, 0.5, 1]], x=[-100, -99, -98], y=[-100],
+        colorscale="RdYlGn", zmin=0, zmax=1,
+        showscale=True, colorbar=dict(title="SCR", x=1.01),
+        opacity=0, hoverinfo="skip",
+    ))
+
+    fig.update_layout(
+        title="SCR by Constraint Type & Direction (Cond. C)<br>"
+              "<sup>Each cell split diagonally — upper-left & lower-right = two counterbalancing directions. * = |diff| > 0.15</sup>",
+        xaxis=dict(
+            tickvals=list(range(n_c)),
+            ticktext=[ct.capitalize() for ct in cts],
+            tickangle=-30,
+            range=[-0.5, n_c - 0.5],
+            showgrid=False, zeroline=False,
+        ),
+        yaxis=dict(
+            tickvals=list(range(n_m)),
+            ticktext=models,
+            range=[-0.5, n_m - 0.5],
+            showgrid=False, zeroline=False,
+        ),
+        plot_bgcolor="white",
+        showlegend=False,
+        height=max(300, 55 * n_m + 150),
+        margin=dict(l=150, r=80, t=100, b=100),
+    )
+    return fig
+
+
+# ── 6. Heatmap (strength × constraint, default user style) ───────────────
 
 def fig_heatmap(records: list[dict]) -> go.Figure | None:
     c = [r for r in records
@@ -222,9 +351,18 @@ def fig_heatmap(records: list[dict]) -> go.Figure | None:
             text=text, texttemplate="%{text}", zmin=0, zmax=1,
             colorscale="RdYlGn", showscale=(idx == n_models - 1),
         ), row=row, col=col)
+    # Only show y-axis labels for left-column subplots (Plotly suppresses them with shared_yaxes)
+    for idx in range(n_models):
+        col = idx % n_cols + 1
+        axis_num = idx + 1
+        axis_key = f"yaxis{axis_num if axis_num > 1 else ''}"
+        fig.update_layout({axis_key: dict(showticklabels=(col == 1))})
     fig.update_layout(
         title="SCR Heatmap: Strength × Constraint (Cond. C)",
-        height=220 * n_rows,
+        height=max(900, 280 * n_rows),
+        width=1100,
+        autosize=False,
+        margin=dict(l=160, r=40, t=80, b=60),
     )
     return fig
 
@@ -252,6 +390,10 @@ def fig_by_condition(records: list[dict]) -> go.Figure:
         conds = sorted(set(r["condition"] for r in m_recs))
         counts: dict[str, Counter] = defaultdict(Counter)
         for r in m_recs:
+            if r["condition"] == "C" and not (
+                r.get("strength") == "weak" and r.get("user_style") == "with_instruction"
+            ):
+                continue
             counts[f"Cond. {r['condition']}"][r["label"]] += 1
         cats = [f"Cond. {c}" for c in conds]
         for label in present_labels:
@@ -429,5 +571,189 @@ def fig_jailbreak_vs_medium(records: list[dict]) -> go.Figure | None:
         title="Jailbreak vs Default User Template — SCR by Constraint Type (Cond. C)",
         yaxis_title="SCR",
         height=480,
+    )
+    return fig
+
+
+# ── 12. User Style × Constraint Type (interactive, model dropdown) ────────
+
+def fig_user_style_constraint_heatmap(records: list[dict]) -> go.Figure | None:
+    """Interactive heatmap: constraint_type × user_style, with model dropdown.
+    Fixed: Condition C, strength=medium."""
+    c = [r for r in records if r["condition"] == "C" and r["strength"] == DEFAULT_STRENGTH]
+    if not c:
+        return None
+
+    models = sorted(set(short_model(r["model"]) for r in c), key=_model_sort_key)
+    cts = sorted(set(r["constraint_type"] for r in c))
+    STYLE_ORDER = ["with_instruction", "helpfulness", "authority", "jailbreak"]
+    styles = [s for s in STYLE_ORDER if any(r["user_style"] == s for r in c)]
+
+    x_labels = [s.replace("_", " ").title() for s in styles]
+    y_labels = [ct.capitalize() for ct in cts]
+
+    def make_z_and_text(model_filter):
+        z, text = [], []
+        for ct in cts:
+            row_z, row_t = [], []
+            for style in styles:
+                if model_filter is None:
+                    cell = [r for r in c if r["constraint_type"] == ct and r["user_style"] == style]
+                else:
+                    cell = [r for r in c if short_model(r["model"]) == model_filter
+                            and r["constraint_type"] == ct and r["user_style"] == style]
+                scr = compute_scr(cell) if cell else None
+                row_z.append(scr)
+                row_t.append(f"{scr:.0%} (n={len(cell)})" if scr is not None else "—")
+            z.append(row_z)
+            text.append(row_t)
+        return z, text
+
+    all_options = ["All models (averaged)"] + models
+    traces = []
+    for option in all_options:
+        model_filter = None if option == "All models (averaged)" else option
+        z, text = make_z_and_text(model_filter)
+        traces.append(go.Heatmap(
+            z=z, x=x_labels, y=y_labels,
+            text=text, texttemplate="%{text}",
+            zmin=0, zmax=1, colorscale="RdYlGn",
+            colorbar=dict(title="SCR"),
+            hovertemplate="Constraint: %{y}<br>Style: %{x}<br>%{text}<extra></extra>",
+            visible=False,
+        ))
+    traces[0].visible = True
+
+    buttons = []
+    for i, option in enumerate(all_options):
+        visibility = [j == i for j in range(len(all_options))]
+        buttons.append(dict(
+            label=option,
+            method="update",
+            args=[{"visible": visibility},
+                  {"title": f"User Style × Constraint Type — {option} (Cond. C, strength={DEFAULT_STRENGTH})"}],
+        ))
+
+    fig = go.Figure(data=traces)
+    fig.update_layout(
+        title=f"User Style × Constraint Type — All models (averaged) (Cond. C, strength={DEFAULT_STRENGTH})",
+        updatemenus=[dict(
+            buttons=buttons,
+            direction="down",
+            showactive=True,
+            x=0.0, xanchor="left",
+            y=1.15, yanchor="top",
+            pad=dict(r=10, t=10),
+        )],
+        height=max(400, 60 * len(cts) + 150),
+        margin=dict(l=140, r=40, t=120, b=80),
+    )
+    return fig
+
+
+# ── 13. User Style × System Strength (interactive, two dropdowns) ─────────
+
+def fig_user_style_strength_heatmap(records: list[dict]) -> go.Figure | None:
+    """Interactive heatmap: user_style × strength, with model and constraint dropdowns.
+    Condition C only."""
+    c = [r for r in records if r["condition"] == "C"]
+    if not c:
+        return None
+
+    models = sorted(set(short_model(r["model"]) for r in c), key=_model_sort_key)
+    cts = sorted(set(r["constraint_type"] for r in c))
+    STYLE_ORDER = ["with_instruction", "helpfulness", "authority", "jailbreak"]
+    styles = [s for s in STYLE_ORDER if any(r["user_style"] == s for r in c)]
+    strengths = [s for s in STRENGTH_ORDER if any(r["strength"] == s for r in c)]
+
+    x_labels = [s.capitalize() for s in strengths]
+    y_labels = [s.replace("_", " ").title() for s in styles]
+
+    model_options = ["All models"] + models
+    ct_options = ["All constraints"] + cts
+
+    def make_z_and_text(model_filter, ct_filter):
+        z, text = [], []
+        for style in styles:
+            row_z, row_t = [], []
+            for strength in strengths:
+                cell = [r for r in c if r["user_style"] == style and r["strength"] == strength]
+                if model_filter is not None:
+                    cell = [r for r in cell if short_model(r["model"]) == model_filter]
+                if ct_filter is not None:
+                    cell = [r for r in cell if r["constraint_type"] == ct_filter]
+                scr = compute_scr(cell) if cell else None
+                row_z.append(scr)
+                row_t.append(f"{scr:.0%} (n={len(cell)})" if scr is not None else "—")
+            z.append(row_z)
+            text.append(row_t)
+        return z, text
+
+    traces = []
+    trace_index = {}
+    for m_opt in model_options:
+        for ct_opt in ct_options:
+            model_filter = None if m_opt == "All models" else m_opt
+            ct_filter = None if ct_opt == "All constraints" else ct_opt
+            z, text = make_z_and_text(model_filter, ct_filter)
+            idx = len(traces)
+            trace_index[(m_opt, ct_opt)] = idx
+            traces.append(go.Heatmap(
+                z=z, x=x_labels, y=y_labels,
+                text=text, texttemplate="%{text}",
+                zmin=0, zmax=1, colorscale="RdYlGn",
+                colorbar=dict(title="SCR"),
+                hovertemplate="Style: %{y}<br>Strength: %{x}<br>%{text}<extra></extra>",
+                visible=False,
+            ))
+    traces[trace_index[("All models", "All constraints")]].visible = True
+
+    def make_buttons(dim, options, other_default):
+        buttons = []
+        for opt in options:
+            visibility = []
+            for m_opt in model_options:
+                for ct_opt in ct_options:
+                    if dim == "model":
+                        vis = (m_opt == opt and ct_opt == other_default)
+                    else:
+                        vis = (ct_opt == opt and m_opt == other_default)
+                    visibility.append(vis)
+            buttons.append(dict(
+                label=opt, method="update",
+                args=[{"visible": visibility}],
+            ))
+        return buttons
+
+    model_buttons = make_buttons("model", model_options, "All constraints")
+    ct_buttons = make_buttons("ct", ct_options, "All models")
+
+    fig = go.Figure(data=traces)
+    fig.update_layout(
+        title="User Style × System Strength (Cond. C)",
+        updatemenus=[
+            dict(
+                buttons=model_buttons,
+                direction="down", showactive=True,
+                x=0.0, xanchor="left",
+                y=1.20, yanchor="top",
+                pad=dict(r=10, t=10),
+            ),
+            dict(
+                buttons=ct_buttons,
+                direction="down", showactive=True,
+                x=0.35, xanchor="left",
+                y=1.20, yanchor="top",
+                pad=dict(r=10, t=10),
+            ),
+        ],
+        annotations=[
+            dict(text="Model:", x=0.0, xref="paper", y=1.27, yref="paper",
+                 showarrow=False, font=dict(size=12)),
+            dict(text="Constraint:", x=0.35, xref="paper", y=1.27, yref="paper",
+                 showarrow=False, font=dict(size=12)),
+        ],
+        height=max(350, 60 * len(styles) + 200),
+        margin=dict(l=140, r=40, t=160, b=80),
     )
     return fig
