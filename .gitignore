@@ -8,6 +8,6 @@ __pycache__
 .ipynb_checkpoints/
 data/results/
 reports/
-
+data/
 # Lambda AI filesystem credentials — never push to GitHub
 *.sync.env
