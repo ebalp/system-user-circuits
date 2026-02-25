@@ -398,13 +398,18 @@ def fig_by_condition(records: list[dict]) -> go.Figure:
         cats = [f"Cond. {c}" for c in conds]
         for label in present_labels:
             vals = []
+            raw_counts = []
             for cat in cats:
                 total = sum(counts[cat].values()) or 1
-                vals.append(counts[cat].get(label, 0) / total * 100)
+                count = counts[cat].get(label, 0)
+                vals.append(count / total * 100)
+                raw_counts.append(count)
             fig.add_trace(go.Bar(
                 name=label.replace("_", " ").title(), x=cats, y=vals,
                 marker_color=LABEL_COLORS.get(label, "#bdc3c7"),
                 showlegend=(idx == 0),
+                customdata=raw_counts,
+                hovertemplate="%{y:.1f}% (%{customdata} responses)<extra></extra>",
             ), row=row, col=col)
     fig.update_layout(
         barmode="stack",
