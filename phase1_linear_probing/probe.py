@@ -87,6 +87,11 @@ class ProbeResult:
     cv_mode: str
     use_scaler: bool
 
+    # Per-fold data (populated when return_estimator=True)
+    fold_weights: np.ndarray | None = None  # (n_layers, n_folds, d_model) unit-norm
+    fold_scores: np.ndarray | None = None  # (n_layers, n_folds) ROC AUC per fold
+    fold_group_names: list[str] | None = None  # (n_folds,) held-out group per fold
+
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -99,7 +104,7 @@ def _make_pipeline(use_scaler: bool) -> Pipeline:
     if use_scaler:
         steps.append(("scaler", StandardScaler()))
     steps.append(
-        ("clf", LogisticRegression(max_iter=1000, C=1.0, solver="lbfgs"))
+        ("clf", LogisticRegression(max_iter=1000, C=0.005, solver="lbfgs"))
     )
     return Pipeline(steps)
 
@@ -160,6 +165,18 @@ def probe_and_fit(
         scalers: list = []
         classifiers: list = []
 
+        # Determine fold group names once (same split for all layers)
+        fold_group_names: list[str] | None = None
+        if cv_mode == "grouped" and groups is not None:
+            fold_group_names = []
+            X_dummy = np.zeros((len(y), 1))
+            for _, val_idx in cv.split(X_dummy, y, groups):
+                fold_group_names.append(str(groups[val_idx[0]]))
+
+        actual_n_folds = n_folds
+        fold_weights_all = np.zeros((n_layers, n_folds, d_model))
+        fold_scores_all = np.zeros((n_layers, n_folds))
+
         for layer in tqdm(
             range(n_layers),
             desc=f"Probing {pos_name}",
@@ -176,6 +193,7 @@ def probe_and_fit(
                 cv=cv,
                 scoring=_SCORING,
                 n_jobs=-1,
+                return_estimator=True,
                 **cv_kwargs,
             )
 
@@ -192,6 +210,22 @@ def probe_and_fit(
                     ].std(),
                 }
             )
+
+            # -- Per-fold weights and scores --
+            actual_n_folds = len(cv_out["estimator"])
+            if layer == 0:
+                fold_weights_all = np.zeros(
+                    (n_layers, actual_n_folds, d_model)
+                )
+                fold_scores_all = np.zeros((n_layers, actual_n_folds))
+
+            fold_scores_all[layer] = cv_out["test_roc_auc"]
+            for fi, pipe in enumerate(cv_out["estimator"]):
+                w_fold = pipe.named_steps["clf"].coef_[0]
+                norm_fold = np.linalg.norm(w_fold)
+                fold_weights_all[layer, fi] = (
+                    w_fold / norm_fold if norm_fold > 0 else w_fold
+                )
 
             # -- Full-data fit --
             pipe_fit = _make_pipeline(use_scaler)
@@ -220,9 +254,101 @@ def probe_and_fit(
             pos_name=pos_name,
             cv_mode=cv_mode,
             use_scaler=use_scaler,
+            fold_weights=fold_weights_all,
+            fold_scores=fold_scores_all,
+            fold_group_names=fold_group_names,
         )
 
     return results
+
+
+# ── Fold-Level CMD ───────────────────────────────────────────────────────────
+
+
+def compute_fold_cmds(
+    activations: dict[str, np.ndarray],
+    y: np.ndarray,
+    groups: np.ndarray,
+    pos_name: str,
+    layer: int,
+    *,
+    n_folds: int = 8,
+) -> np.ndarray:
+    """Compute CMD (class-mean difference) on each fold's training set.
+
+    For each fold of a GroupKFold split, compute
+    ``mean(X[y==1]) - mean(X[y==0])`` on the training indices, then
+    unit-normalize.
+
+    Parameters
+    ----------
+    activations : dict mapping position name -> (n_samples, n_layers, d_model)
+    y : binary labels, shape (n_samples,)
+    groups : group labels for GroupKFold
+    pos_name : which token position to use
+    layer : which layer to extract
+    n_folds : number of folds (must match n_unique_groups for LOGO)
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+        Maps held-out group name -> unit-norm CMD vector of shape ``(d_model,)``.
+    """
+    X_layer = activations[pos_name][:, layer, :]
+    cv = GroupKFold(n_splits=n_folds)
+
+    cmds: dict[str, np.ndarray] = {}
+    for train_idx, val_idx in cv.split(X_layer, y, groups):
+        held_out = str(groups[val_idx[0]])
+        X_train = X_layer[train_idx]
+        y_train = y[train_idx]
+        cmd = X_train[y_train == 1].mean(axis=0) - X_train[y_train == 0].mean(axis=0)
+        norm = np.linalg.norm(cmd)
+        cmds[held_out] = cmd / norm if norm > 0 else cmd
+
+    return cmds
+
+
+def compute_constraint_cmds(
+    activations: dict[str, np.ndarray],
+    y: np.ndarray,
+    groups: np.ndarray,
+    pos_name: str,
+    layer: int,
+) -> dict[str, np.ndarray]:
+    """Compute CMD using only samples from each individual constraint type.
+
+    For each unique group, restrict to that group's samples and compute
+    ``mean(X[y==1]) - mean(X[y==0])``, then unit-normalize.
+
+    Parameters
+    ----------
+    activations : dict mapping position name -> (n_samples, n_layers, d_model)
+    y : binary labels, shape (n_samples,)
+    groups : group labels (constraint types)
+    pos_name : which token position to use
+    layer : which layer to extract
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+        Maps group name -> unit-norm CMD vector of shape ``(d_model,)``.
+        Groups where one class is absent are omitted.
+    """
+    X_layer = activations[pos_name][:, layer, :]
+    cmds: dict[str, np.ndarray] = {}
+
+    for group_name in np.unique(groups):
+        mask = groups == group_name
+        X_g = X_layer[mask]
+        y_g = y[mask]
+        if y_g.sum() == 0 or y_g.sum() == len(y_g):
+            continue
+        cmd = X_g[y_g == 1].mean(axis=0) - X_g[y_g == 0].mean(axis=0)
+        norm = np.linalg.norm(cmd)
+        cmds[str(group_name)] = cmd / norm if norm > 0 else cmd
+
+    return cmds
 
 
 # ── Control Probe ────────────────────────────────────────────────────────────

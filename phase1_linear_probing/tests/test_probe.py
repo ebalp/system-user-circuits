@@ -13,6 +13,8 @@ from sklearn.preprocessing import StandardScaler
 
 from phase1_linear_probing.probe import (
     ProbeResult,
+    compute_constraint_cmds,
+    compute_fold_cmds,
     load_classifiers,
     load_results,
     make_cv_splitter,
@@ -302,3 +304,185 @@ def test_results_path():
     assert p1.name == "results_grouped_unscaled.joblib"
     assert p2.name == "results_grouped_scaled.joblib"
     assert p3.name == "results_stratified_unscaled.joblib"
+
+
+# ── fold-level data ──────────────────────────────────────────────────────────
+
+
+def test_probe_and_fit_fold_weights_shape(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """fold_weights has shape (n_layers, n_folds, d_model)."""
+    results = probe_and_fit(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        cv_mode="grouped",
+        groups=synthetic_groups,
+        n_folds=4,
+    )
+    pr = results["last_prompt"]
+    assert pr.fold_weights is not None
+    assert pr.fold_weights.shape == (4, 4, 16)  # n_layers, n_folds, d_model
+
+
+def test_probe_and_fit_fold_scores_shape(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """fold_scores has shape (n_layers, n_folds)."""
+    results = probe_and_fit(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        cv_mode="grouped",
+        groups=synthetic_groups,
+        n_folds=4,
+    )
+    pr = results["last_prompt"]
+    assert pr.fold_scores is not None
+    assert pr.fold_scores.shape == (4, 4)
+
+
+def test_probe_and_fit_fold_group_names(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """fold_group_names has one entry per fold for grouped CV."""
+    results = probe_and_fit(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        cv_mode="grouped",
+        groups=synthetic_groups,
+        n_folds=4,
+    )
+    pr = results["last_prompt"]
+    assert pr.fold_group_names is not None
+    assert len(pr.fold_group_names) == 4
+    # Each name should be one of the group values
+    unique_groups = set(synthetic_groups)
+    for name in pr.fold_group_names:
+        assert name in unique_groups
+
+
+def test_probe_and_fit_fold_weights_unit_norm(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """Per-fold probe weights are unit-normalized."""
+    results = probe_and_fit(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        cv_mode="grouped",
+        groups=synthetic_groups,
+        n_folds=4,
+    )
+    pr = results["last_prompt"]
+    norms = np.linalg.norm(pr.fold_weights, axis=2)  # (n_layers, n_folds)
+    np.testing.assert_allclose(norms, 1.0, atol=1e-6)
+
+
+def test_probe_and_fit_stratified_fold_data(
+    synthetic_activations, synthetic_labels
+):
+    """Stratified CV also populates fold_weights/fold_scores (no group names)."""
+    results = probe_and_fit(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        cv_mode="stratified",
+        n_folds=2,
+    )
+    pr = results["last_prompt"]
+    assert pr.fold_weights is not None
+    assert pr.fold_scores is not None
+    assert pr.fold_weights.shape == (4, 2, 16)
+    assert pr.fold_scores.shape == (4, 2)
+    assert pr.fold_group_names is None
+
+
+# ── compute_fold_cmds ────────────────────────────────────────────────────────
+
+
+def test_compute_fold_cmds_shape(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """compute_fold_cmds returns dict with n_folds entries, each (d_model,)."""
+    cmds = compute_fold_cmds(
+        synthetic_activations,
+        synthetic_labels,
+        synthetic_groups,
+        "last_prompt",
+        layer=0,
+        n_folds=4,
+    )
+    assert isinstance(cmds, dict)
+    assert len(cmds) == 4
+    for name, vec in cmds.items():
+        assert isinstance(name, str)
+        assert vec.shape == (16,)
+
+
+def test_compute_fold_cmds_keys_match_groups(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """Dict keys are the unique group names."""
+    cmds = compute_fold_cmds(
+        synthetic_activations,
+        synthetic_labels,
+        synthetic_groups,
+        "last_prompt",
+        layer=0,
+        n_folds=4,
+    )
+    assert set(cmds.keys()) == set(synthetic_groups)
+
+
+def test_compute_fold_cmds_unit_norm(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """CMD vectors are unit-normalized."""
+    cmds = compute_fold_cmds(
+        synthetic_activations,
+        synthetic_labels,
+        synthetic_groups,
+        "last_prompt",
+        layer=1,
+        n_folds=4,
+    )
+    for vec in cmds.values():
+        np.testing.assert_allclose(np.linalg.norm(vec), 1.0, atol=1e-6)
+
+
+# ── compute_constraint_cmds ──────────────────────────────────────────────────
+
+
+def test_compute_constraint_cmds_keys(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """Returns one entry per unique group with both classes present."""
+    cmds = compute_constraint_cmds(
+        synthetic_activations,
+        synthetic_labels,
+        synthetic_groups,
+        "last_prompt",
+        layer=0,
+    )
+    assert isinstance(cmds, dict)
+    # All groups in synthetic_groups have both classes (alternating 0,1)
+    assert set(cmds.keys()) == set(synthetic_groups)
+
+
+def test_compute_constraint_cmds_unit_norm(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """Per-constraint CMD vectors are unit-normalized."""
+    cmds = compute_constraint_cmds(
+        synthetic_activations,
+        synthetic_labels,
+        synthetic_groups,
+        "last_prompt",
+        layer=2,
+    )
+    for vec in cmds.values():
+        assert vec.shape == (16,)
+        np.testing.assert_allclose(np.linalg.norm(vec), 1.0, atol=1e-6)

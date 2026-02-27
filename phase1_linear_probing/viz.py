@@ -1048,6 +1048,392 @@ def plot_metadata_ablation(
     return fig
 
 
+# ── Fold-Level Generalization ─────────────────────────────────────────────────
+
+
+def plot_fold_generalization(
+    fold_weights: np.ndarray,
+    fold_cmds: dict[str, np.ndarray] | np.ndarray,
+    fold_scores: np.ndarray,
+    fold_group_names: list[str],
+    layer: int,
+    *,
+    constraint_cmds: dict[str, np.ndarray] | None = None,
+    save_path: Path | None = None,
+) -> go.Figure:
+    """3x3 fold-level generalization analysis for one layer.
+
+    Parameters
+    ----------
+    fold_weights : (n_folds, d_model)
+        Unit-norm probe directions from each CV fold.
+    fold_cmds : dict[str, ndarray] or (n_folds, d_model)
+        Unit-norm CMD vectors keyed by held-out group name, or a plain array
+        aligned with *fold_group_names*.
+    fold_scores : (n_folds,)
+        Validation ROC AUC per fold.
+    fold_group_names : (n_folds,)
+        Constraint type label for each fold's held-out group.
+    layer : int
+        Layer index shown in the title.
+    constraint_cmds : dict[str, ndarray] or None
+        Per-constraint CMD vectors (computed within each constraint type).
+        If provided, a third row is added.
+    save_path : Path or None
+        If given, figure is saved as HTML.
+    """
+    n_folds = len(fold_group_names)
+
+    # Labels: "w/o {name}" for fold-level axes, bare names for rightmost col
+    wo_names = [f"w/o {name}" for name in fold_group_names]
+    bare_names = list(fold_group_names)
+
+    # Normalise fold_cmds to array aligned with fold_group_names
+    if isinstance(fold_cmds, dict):
+        fold_cmds_arr = np.array([fold_cmds[name] for name in fold_group_names])
+    else:
+        fold_cmds_arr = fold_cmds
+
+    # Cosine similarity matrices
+    cos_probe = cos_sim(fold_weights)
+    cos_cmd = cos_sim(fold_cmds_arr)
+
+    # Mean off-diagonal cosine similarity per fold
+    mask = ~np.eye(n_folds, dtype=bool)
+    mean_cos_probe = np.array([cos_probe[i, mask[i]].mean() for i in range(n_folds)])
+    mean_cos_cmd = np.array([cos_cmd[i, mask[i]].mean() for i in range(n_folds)])
+
+    # Per-fold CMD-probe cosine similarity
+    cmd_probe_cos = np.sum(fold_weights * fold_cmds_arr, axis=1)
+
+    # Per-constraint CMD data (rows 3-4)
+    has_constraint = constraint_cmds is not None
+    n_rows = 4 if has_constraint else 2
+
+    if has_constraint:
+        # Filter to constraints present in both fold_group_names and constraint_cmds
+        cnames = [n for n in fold_group_names if n in constraint_cmds]
+        constraint_cmds_arr = np.array([constraint_cmds[n] for n in cnames])
+        cos_constraint = cos_sim(constraint_cmds_arr)
+        n_c = len(cnames)
+        mask_c = ~np.eye(n_c, dtype=bool)
+        mean_cos_constraint = np.array(
+            [cos_constraint[i, mask_c[i]].mean() for i in range(n_c)]
+        )
+        # cos(per-constraint CMD, corresponding fold CMD w/o that constraint)
+        constraint_vs_fold_cmd = np.array([
+            float(np.dot(constraint_cmds[n], fold_cmds_arr[i]))
+            for i, n in enumerate(fold_group_names)
+            if n in constraint_cmds
+        ])
+        # cos(per-constraint CMD, corresponding fold probe w/o that constraint)
+        constraint_vs_fold_probe = np.array([
+            float(np.dot(constraint_cmds[n], fold_weights[i]))
+            for i, n in enumerate(fold_group_names)
+            if n in constraint_cmds
+        ])
+
+    subplot_titles = [
+        "Probe direction similarity (fold × fold)",
+        "Mean probe cos sim per fold",
+        "Generalization AUC per constraint",
+        "Fold CMD similarity (fold × fold)",
+        "Mean fold CMD cos sim per fold",
+        "Fold CMD–Probe cos sim per fold",
+    ]
+    if has_constraint:
+        subplot_titles += [
+            "Per-constraint CMD similarity",
+            "Mean per-constraint CMD cos sim",
+            "Per-constraint CMD vs fold CMD",
+            "",  # row 4, col 1 (empty)
+            "",  # row 4, col 2 (empty)
+            "Per-constraint CMD vs fold probe",
+        ]
+
+    row_heights = (
+        [0.3, 0.3, 0.3, 0.1] if n_rows == 4 else None
+    )
+    fig = make_subplots(
+        rows=n_rows,
+        cols=3,
+        subplot_titles=subplot_titles,
+        vertical_spacing=0.08,
+        horizontal_spacing=0.08,
+        column_widths=[0.4, 0.3, 0.3],
+        row_heights=row_heights,
+    )
+
+    # ── Row 1: Probe directions ──────────────────────────────────────────
+
+    # Top-left: probe cosine similarity heatmap
+    fig.add_trace(
+        go.Heatmap(
+            z=cos_probe,
+            x=wo_names,
+            y=wo_names,
+            colorscale="RdBu",
+            zmid=0,
+            zmin=-1,
+            zmax=1,
+            text=np.round(cos_probe, 2).astype(str),
+            texttemplate="%{text}",
+            colorbar=dict(title="cos", x=0.33, len=0.22, y=0.88),
+            hovertemplate="%{y} vs %{x}<br>cos=%{z:.3f}<extra></extra>",
+        ),
+        row=1,
+        col=1,
+    )
+
+    # Top-middle: mean off-diagonal probe cos sim
+    mean_probe_overall = float(np.mean(mean_cos_probe))
+    fig.add_trace(
+        go.Bar(
+            x=wo_names,
+            y=mean_cos_probe,
+            marker_color=[
+                "#d62728" if v < mean_probe_overall else "#1f77b4"
+                for v in mean_cos_probe
+            ],
+            showlegend=False,
+            hovertemplate="%{x}<br>mean cos=%{y:.3f}<extra></extra>",
+        ),
+        row=1,
+        col=2,
+    )
+    fig.add_hline(
+        y=mean_probe_overall,
+        line_dash="dash",
+        line_color="black",
+        line_width=1.5,
+        annotation_text=f"mean={mean_probe_overall:.3f}",
+        annotation_position="top right",
+        row=1,
+        col=2,
+    )
+
+    # Top-right: validation AUC per constraint (bare names)
+    mean_auc = float(np.mean(fold_scores))
+    fig.add_trace(
+        go.Bar(
+            x=bare_names,
+            y=fold_scores,
+            marker_color=[
+                "#d62728" if s < mean_auc else "#1f77b4" for s in fold_scores
+            ],
+            showlegend=False,
+            hovertemplate="%{x}<br>AUC=%{y:.3f}<extra></extra>",
+        ),
+        row=1,
+        col=3,
+    )
+    fig.add_hline(
+        y=mean_auc,
+        line_dash="dash",
+        line_color="black",
+        line_width=1.5,
+        annotation_text=f"mean={mean_auc:.3f}",
+        annotation_position="top right",
+        row=1,
+        col=3,
+    )
+
+    # ── Row 2: Fold CMD directions ───────────────────────────────────────
+
+    # Mid-left: fold CMD cosine similarity heatmap
+    fig.add_trace(
+        go.Heatmap(
+            z=cos_cmd,
+            x=wo_names,
+            y=wo_names,
+            colorscale="RdBu",
+            zmid=0,
+            zmin=-1,
+            zmax=1,
+            text=np.round(cos_cmd, 2).astype(str),
+            texttemplate="%{text}",
+            colorbar=dict(title="cos", x=0.33, len=0.22, y=0.6),
+            hovertemplate="%{y} vs %{x}<br>cos=%{z:.3f}<extra></extra>",
+        ),
+        row=2,
+        col=1,
+    )
+
+    # Mid-middle: mean off-diagonal fold CMD cos sim
+    mean_cmd_overall = float(np.mean(mean_cos_cmd))
+    fig.add_trace(
+        go.Bar(
+            x=wo_names,
+            y=mean_cos_cmd,
+            marker_color=[
+                "#d62728" if v < mean_cmd_overall else "#9467bd"
+                for v in mean_cos_cmd
+            ],
+            showlegend=False,
+            hovertemplate="%{x}<br>mean cos=%{y:.3f}<extra></extra>",
+        ),
+        row=2,
+        col=2,
+    )
+    fig.add_hline(
+        y=mean_cmd_overall,
+        line_dash="dash",
+        line_color="black",
+        line_width=1.5,
+        annotation_text=f"mean={mean_cmd_overall:.3f}",
+        annotation_position="top right",
+        row=2,
+        col=2,
+    )
+
+    # Mid-right: fold CMD–Probe cosine similarity (w/o labels)
+    mean_cmd_probe = float(np.mean(cmd_probe_cos))
+    fig.add_trace(
+        go.Bar(
+            x=wo_names,
+            y=cmd_probe_cos,
+            marker_color="#2ca02c",
+            showlegend=False,
+            hovertemplate="%{x}<br>cos(CMD,probe)=%{y:.3f}<extra></extra>",
+        ),
+        row=2,
+        col=3,
+    )
+    fig.add_hline(
+        y=mean_cmd_probe,
+        line_dash="dash",
+        line_color="black",
+        line_width=1.5,
+        annotation_text=f"mean={mean_cmd_probe:.3f}",
+        annotation_position="top right",
+        row=2,
+        col=3,
+    )
+
+    # ── Row 3: Per-constraint CMD (only if constraint_cmds provided) ─────
+
+    if has_constraint:
+        # Bottom-left: per-constraint CMD cosine similarity heatmap
+        fig.add_trace(
+            go.Heatmap(
+                z=cos_constraint,
+                x=cnames,
+                y=cnames,
+                colorscale="RdBu",
+                zmid=0,
+                zmin=-1,
+                zmax=1,
+                text=np.round(cos_constraint, 2).astype(str),
+                texttemplate="%{text}",
+                colorbar=dict(title="cos", x=0.33, len=0.22, y=0.32),
+                hovertemplate="%{y} vs %{x}<br>cos=%{z:.3f}<extra></extra>",
+            ),
+            row=3,
+            col=1,
+        )
+
+        # Bottom-middle: mean off-diagonal per-constraint CMD cos sim
+        mean_constraint_overall = float(np.mean(mean_cos_constraint))
+        fig.add_trace(
+            go.Bar(
+                x=cnames,
+                y=mean_cos_constraint,
+                marker_color=[
+                    "#d62728" if v < mean_constraint_overall else "#8c564b"
+                    for v in mean_cos_constraint
+                ],
+                showlegend=False,
+                hovertemplate="%{x}<br>mean cos=%{y:.3f}<extra></extra>",
+            ),
+            row=3,
+            col=2,
+        )
+        fig.add_hline(
+            y=mean_constraint_overall,
+            line_dash="dash",
+            line_color="black",
+            line_width=1.5,
+            annotation_text=f"mean={mean_constraint_overall:.3f}",
+            annotation_position="top right",
+            row=3,
+            col=2,
+        )
+
+        # Row 3 right: per-constraint CMD vs fold CMD cos sim
+        mean_c_vs_fold_cmd = float(np.mean(constraint_vs_fold_cmd))
+        fig.add_trace(
+            go.Bar(
+                x=cnames,
+                y=constraint_vs_fold_cmd,
+                marker_color="#ff7f0e",
+                showlegend=False,
+                hovertemplate=(
+                    "%{x}<br>cos(constraint CMD, fold CMD)=%{y:.3f}"
+                    "<extra></extra>"
+                ),
+            ),
+            row=3,
+            col=3,
+        )
+        fig.add_hline(
+            y=mean_c_vs_fold_cmd,
+            line_dash="dash",
+            line_color="black",
+            line_width=1.5,
+            annotation_text=f"mean={mean_c_vs_fold_cmd:.3f}",
+            annotation_position="top right",
+            row=3,
+            col=3,
+        )
+
+        # ── Row 4: Per-constraint CMD vs fold probe ──────────────────────
+
+        # Row 4 right: per-constraint CMD vs fold probe cos sim
+        mean_c_vs_fold_probe = float(np.mean(constraint_vs_fold_probe))
+        fig.add_trace(
+            go.Bar(
+                x=cnames,
+                y=constraint_vs_fold_probe,
+                marker_color="#e377c2",
+                showlegend=False,
+                hovertemplate=(
+                    "%{x}<br>cos(constraint CMD, fold probe)=%{y:.3f}"
+                    "<extra></extra>"
+                ),
+            ),
+            row=4,
+            col=3,
+        )
+        fig.add_hline(
+            y=mean_c_vs_fold_probe,
+            line_dash="dash",
+            line_color="black",
+            line_width=1.5,
+            annotation_text=f"mean={mean_c_vs_fold_probe:.3f}",
+            annotation_position="top right",
+            row=4,
+            col=3,
+        )
+
+    # Consistent y-axis [0, 1] for all bar subplots
+    for row in range(1, n_rows + 1):
+        for col in (2, 3):
+            fig.update_yaxes(range=[0, 1], row=row, col=col)
+
+    fig.update_layout(
+        title_text=(
+            f"Fold-Level Generalization Analysis — Layer {layer}<br>"
+            f"<sub>{n_folds} folds (LOGO by constraint type)</sub>"
+        ),
+        width=1400,
+        height=1600 if n_rows == 4 else 450 * n_rows,
+        template="plotly_white",
+    )
+
+    _save_fig(fig, save_path)
+    return fig
+
+
 # ── Summary Table ────────────────────────────────────────────────────────────
 
 

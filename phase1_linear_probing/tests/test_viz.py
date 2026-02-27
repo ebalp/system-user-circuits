@@ -16,6 +16,7 @@ from viz import (
     plot_cosine_curves,
     plot_cosine_heatmaps,
     plot_direction_agreement,
+    plot_fold_generalization,
     plot_metadata_ablation,
     plot_metadata_importance,
     plot_probe_comparison,
@@ -236,3 +237,72 @@ def test_plot_direction_agreement_returns_figure():
     w2 /= np.linalg.norm(w2, axis=1, keepdims=True)
     fig = plot_direction_agreement(w1, w2, "last_prompt")
     assert isinstance(fig, go.Figure)
+
+
+def _make_fold_cmds_dict(n_folds: int = 4, d_model: int = 16, names=None):
+    """Create a dict of unit-norm CMD vectors keyed by group name."""
+    if names is None:
+        names = ["format", "language", "emoji", "capitalization"][:n_folds]
+    w = _make_weights(n_folds, d_model)
+    return {name: w[i] for i, name in enumerate(names)}
+
+
+def test_plot_fold_generalization_returns_figure():
+    rng = np.random.default_rng(42)
+    n_folds, d_model = 4, 16
+    fold_weights = _make_weights(n_folds, d_model)
+    fold_group_names = ["format", "language", "emoji", "capitalization"]
+    fold_cmds = _make_fold_cmds_dict(n_folds, d_model, fold_group_names)
+    fold_scores = rng.uniform(0.6, 0.95, n_folds)
+    fig = plot_fold_generalization(
+        fold_weights, fold_cmds, fold_scores, fold_group_names, layer=15
+    )
+    assert isinstance(fig, go.Figure)
+
+
+def test_plot_fold_generalization_with_array():
+    """Also accepts a plain ndarray for backward compat."""
+    rng = np.random.default_rng(42)
+    n_folds, d_model = 4, 16
+    fold_weights = _make_weights(n_folds, d_model)
+    fold_cmds_arr = _make_weights(n_folds, d_model)
+    fold_scores = rng.uniform(0.6, 0.95, n_folds)
+    fold_group_names = ["format", "language", "emoji", "capitalization"]
+    fig = plot_fold_generalization(
+        fold_weights, fold_cmds_arr, fold_scores, fold_group_names, layer=15
+    )
+    assert isinstance(fig, go.Figure)
+
+
+def test_plot_fold_generalization_with_constraint_cmds():
+    """Third row is added when constraint_cmds is provided."""
+    rng = np.random.default_rng(42)
+    n_folds, d_model = 4, 16
+    fold_group_names = ["format", "language", "emoji", "capitalization"]
+    fold_weights = _make_weights(n_folds, d_model)
+    fold_cmds = _make_fold_cmds_dict(n_folds, d_model, fold_group_names)
+    fold_scores = rng.uniform(0.6, 0.95, n_folds)
+    constraint_cmds = _make_fold_cmds_dict(n_folds, d_model, fold_group_names)
+    fig = plot_fold_generalization(
+        fold_weights, fold_cmds, fold_scores, fold_group_names,
+        layer=15, constraint_cmds=constraint_cmds,
+    )
+    assert isinstance(fig, go.Figure)
+
+
+def test_plot_fold_generalization_with_save(tmp_path):
+    rng = np.random.default_rng(42)
+    n_folds, d_model = 4, 16
+    fold_weights = _make_weights(n_folds, d_model)
+    fold_group_names = ["format", "language", "emoji", "capitalization"]
+    fold_cmds = _make_fold_cmds_dict(n_folds, d_model, fold_group_names)
+    fold_scores = rng.uniform(0.6, 0.95, n_folds)
+    constraint_cmds = _make_fold_cmds_dict(n_folds, d_model, fold_group_names)
+    save_path = tmp_path / "fold_gen.html"
+    fig = plot_fold_generalization(
+        fold_weights, fold_cmds, fold_scores, fold_group_names,
+        layer=15, constraint_cmds=constraint_cmds, save_path=save_path,
+    )
+    assert isinstance(fig, go.Figure)
+    assert save_path.exists()
+    assert save_path.stat().st_size > 0
