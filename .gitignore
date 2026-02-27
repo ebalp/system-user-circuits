@@ -12,3 +12,4 @@ data/
 # Lambda AI filesystem credentials — never push to GitHub
 *.sync.env
 notes/
+plans/

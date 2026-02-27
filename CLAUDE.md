@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Lambda AI Instance Setup
 
-If working on an Lambda AI ubuntu instance read CLAUDE_LAMBDA.md for setup instructions and knowledge about the flow for bucket data sync.
+If working on a Lambda AI ubuntu instance read CLAUDE_LAMBDA.md for setup instructions and bucket data sync flow.
 
 ## Git Conventions
 
@@ -12,93 +12,67 @@ Do not add `Co-Authored-By` trailers to commit messages.
 
 ## Project Overview
 
-This is the **Instruction Hierarchy Evaluation System** — a research platform for evaluating how LLMs handle conflicting instructions between system prompts and user messages. The project is organized in phases; currently only **Phase 0 (Behavioral Analysis)** is implemented under `phase0_behavioral_analysis/`.
+**Instruction Hierarchy Evaluation System** — a research platform studying how LLMs handle conflicting instructions between system prompts and user messages.
+
+### Phases
+
+| Phase | Directory | What it does |
+|-------|-----------|-------------|
+| **Phase 0** | `phase0_behavioral_analysis/` | Behavioral experiments: generates conflicting prompts (4 conditions A-D), calls HF Inference API, classifies compliance, computes metrics (SCR, Hierarchy Index). Results stored as JSONL. |
+| **Phase 1** | `phase1_linear_probing/` | Mechanistic analysis: trains per-layer linear probes on residual-stream activations to find directions separating "followed system" vs "followed user". Includes metadata baselines, grouped CV, and direction analysis. |
+
+Each phase has its own `README.md` with detailed module maps, function references, and workflows. Read the relevant README when working on that phase.
+
+### Data Flow Across Phases
+
+Phase 0 produces `data/results/{model}_results.jsonl` → Phase 1 reads these via `load_results()`, filters to Condition C (hierarchy conflict), extracts activations, and trains probes.
 
 ## Commands
 
-### Environment setup
+### Environment Setup
 
-The project uses `uv`. The `.venv` lives at the repo root on the local instance disk — it is ephemeral and must be recreated on each new instance (takes ~1 min via `uv sync`).
+The project uses `uv`. The `.venv` lives at the repo root.
 
-On a new instance, `./lambda-sync.sh <config>.sync.env setup` handles everything (uv install, Python 3.12, `uv sync`). If you need to re-run manually from the repo root:
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
 uv python install 3.12
 uv sync
 ```
 
-To run scripts or tools:
-```bash
-uv run python <script.py>
-uv run pytest
-```
-
-Or activate for interactive work:
-```bash
-source .venv/bin/activate
-```
+To run scripts: `uv run python <script.py>` or `uv run pytest`. Or activate: `source .venv/bin/activate`.
 
 ### Running Tests
 
-All test commands from `phase0_behavioral_analysis/`:
 ```bash
-# All tests
+# Phase 0 (from phase0_behavioral_analysis/)
 uv run pytest
 
-# Single test file
-uv run pytest tests/test_config.py
-
-# Single test by name
-uv run pytest tests/test_config.py -k "test_name"
-
-# Verbose output
-uv run pytest -v
+# Phase 1 (from repo root)
+uv run pytest phase1_linear_probing/tests/ -v
 ```
 
-### Running Experiments
+### Running Phase 0 Experiments
+
 ```bash
-# From phase0_behavioral_analysis/
-# Source your config first to load HF_TOKEN: source <config>.sync.env
+# Source env for HF_TOKEN, then from phase0_behavioral_analysis/
+source <config>.sync.env
 uv run python run_experiments.py
 ```
 
-### Generating Reports
+### Generating Phase 0 Reports
+
 ```bash
 # From phase0_behavioral_analysis/
 uv run python generate_report.py --results-dir data/results --output reports/report.html
 ```
 
-## Architecture
+## Key Concepts
 
-### Experiment Design (4 Conditions)
+- **4 Conditions**: A (system baseline), B (user baseline), C (hierarchy conflict — main test), D (recency control)
+- **Constraint types**: language, format, starting_word, capitalization, emoji, disclaimer, list_format, self_reference
+- **Counterbalancing**: both `a_to_b` and `b_to_a` directions for conditions C and D
+- **Grouped CV** (Phase 1): `GroupKFold` by `constraint_type` prevents leakage; `stratified` mode available for comparison
+- **Experiment hashing**: SHA-256 deduplication for resumable Phase 0 runs; Phase 1 `run_id` hashes config + data contents
 
-The system tests models under four experimental conditions:
+## Testing
 
-- **Condition A** (System-only baseline): System prompt has a constraint, user has only a task. Measures SBR (System Baseline Rate).
-- **Condition B** (User-only baseline): Generic system prompt, user has constraint + task. Measures UCR (User Compliance Rate).
-- **Condition C** (Hierarchy conflict): System and user have *conflicting* constraints. Measures SCR (System Compliance Rate) and Hierarchy Index.
-- **Condition D** (Recency conflict): User message contains two contradictory constraints in sequence. Measures recency effect.
-
-Counterbalancing tests both directions (a_to_b and b_to_a) for conditions C and D to detect capability bias.
-
-### Data Flow
-
-1. **Config** (`config/experiment.yaml`) → `src/config.py` loads and validates YAML into typed dataclasses (`ExperimentConfig`, `ConstraintType`, `ExperimentPair`, etc.)
-2. **Prompt generation** → `src/prompts.py` (`PromptGenerator`) expands config into all prompt combinations, or `src/experiment.py` (`ExperimentRunner.generate_experiment_keys()`) generates `ExperimentKey` objects for the dedup-based runner
-3. **API calls** → `src/api_client.py` (`HFClient`) calls HuggingFace Inference API with retry/backoff. Strips `<think>` blocks from Qwen3 models.
-4. **Classification** → `src/classifiers.py` classifies responses: `LanguageClassifier` (langdetect), `FormatClassifier` (JSON/YAML/plain), `StartingWordClassifier`. `compute_label()` determines compliance label (`followed_system`, `followed_user`, `followed_both`, `followed_neither`).
-5. **Results** → Stored as JSONL in `data/results/{model_safe_name}_results.jsonl` with full metadata per record
-6. **Metrics** → `src/metrics.py` (`MetricsCalculator`) computes SCR, UCR, SBR, Hierarchy Index, Conflict Resolution Rate, Recency Effect, with Wilson CIs and directional breakdowns
-7. **Reporting** → `src/reporting.py` (`ReportGenerator`) produces matplotlib charts and markdown; `src/report/` generates interactive HTML reports
-
-### Key Concepts
-
-- **Constraint types**: Defined in config with templates (`instruction_template`, `negative_template`) and an options pool. Supported classifiers: `language`, `format`, `yaml`, `starting_word`.
-- **System templates** define strength levels (weak/medium/strong) with `{instruction}` and `{negative}` placeholders.
-- **User templates** define styles (with_instruction/polite/jailbreak) with `{instruction}` and `{task}` placeholders.
-- **Experiment hashing**: Each experiment is uniquely identified via SHA-256 hash of all parameters for deduplication and resumability.
-- **Go/no-go thresholds**: Hierarchy Index > 0.7, Conflict Resolution > 0.8, adjusted asymmetry ≤ 0.15.
-
-### Testing
-
-Tests use `pytest` with `hypothesis` for property-based testing (especially in `test_config.py`). Test files mirror source modules. Tests import from `src.*` using relative package imports.
+Phase 0 uses `pytest` + `hypothesis` for property-based testing. Phase 1 tests use synthetic data (no GPU or model needed). Test files mirror source modules in both phases.

@@ -17,10 +17,15 @@ from sklearn.inspection import permutation_importance
 from sklearn.model_selection import (
     RandomizedSearchCV,
     StratifiedKFold,
-    cross_val_score,
+    cross_validate,
 )
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+
+from probe import make_cv_splitter
+
+
+_SCORING = ["roc_auc", "balanced_accuracy"]
 
 
 # ── Feature construction ─────────────────────────────────────────────────────
@@ -29,17 +34,12 @@ def _one_hot(val, categories):
     return [int(val == c) for c in categories]
 
 
-def build_category_lists(df):
+def build_category_lists(df, categorical_cols=["constraint_type", "strength", "user_style", "task_id"]):
     """Extract sorted unique values for each categorical column."""
-    return {
-        "constraint_type": sorted(df["constraint_type"].unique()),
-        "strength": sorted(df["strength"].unique()),
-        "user_style": sorted(df["user_style"].unique()),
-        "task_id": sorted(df["task_id"].unique()),
-    }
+    return {col: sorted(df[col].unique()) for col in categorical_cols}
 
 
-def build_metadata_features(df, position_maps, cats):
+def build_metadata_features(df, position_maps, cats, *, exclude_groups=None):
     """Build the metadata feature matrix from dataframe rows and token position maps.
 
     Parameters
@@ -51,83 +51,154 @@ def build_metadata_features(df, position_maps, cats):
         Per-sample token position dicts (from find_token_positions).
     cats : dict
         Output of build_category_lists.
+    exclude_groups : set[str] or None
+        Feature group names to exclude. Valid names: ``"length_feats"``,
+        ``"constraint_type"``, ``"strength"``, ``"user_style"``, ``"task_id"``,
+        ``"direction"``.
 
     Returns
     -------
     X : np.ndarray of shape (n_samples, n_features), dtype float32
     """
+    excl = exclude_groups or set()
     rows = []
     for pm, (_, row) in zip(position_maps, df.iterrows()):
-        rows.append([
-            pm["last_prompt"] + 1,
-            pm["mean_system"][1],
-            pm["mean_user"][1] - pm["mean_user"][0],
-            pm["mean_user"][0],
-            *_one_hot(row["constraint_type"], cats["constraint_type"]),
-            *_one_hot(row["strength"], cats["strength"]),
-            *_one_hot(row["user_style"], cats["user_style"]),
-            *_one_hot(row["task_id"], cats["task_id"]),
-            int(row["direction"] == "b_to_a"),
-        ])
+        feats = []
+        if "length_feats" not in excl:
+            feats += [
+                pm["last_prompt"] + 1,
+                pm["mean_system"][1],
+                pm["mean_user"][1] - pm["mean_user"][0],
+                pm["mean_user"][0],
+            ]
+        if "constraint_type" not in excl:
+            feats += _one_hot(row["constraint_type"], cats["constraint_type"])
+        if "strength" not in excl:
+            feats += _one_hot(row["strength"], cats["strength"])
+        if "user_style" not in excl:
+            feats += _one_hot(row["user_style"], cats["user_style"])
+        if "task_id" not in excl:
+            feats += _one_hot(row["task_id"], cats["task_id"])
+        if "direction" not in excl:
+            feats += [int(row["direction"] == "b_to_a")]
+        rows.append(feats)
     return np.array(rows, dtype=np.float32)
 
 
-def get_feature_names(cats):
+def get_feature_names(cats, *, exclude_groups=None):
     """Return ordered list of feature names matching build_metadata_features columns."""
-    return (
-        ["total_tokens", "sys_len", "user_len", "user_start"]
-        + [f"ctype_{c}" for c in cats["constraint_type"]]
-        + [f"strength_{s}" for s in cats["strength"]]
-        + [f"style_{s}" for s in cats["user_style"]]
-        + [f"task_{t}" for t in cats["task_id"]]
-        + ["dir_b_to_a"]
-    )
+    excl = exclude_groups or set()
+    names = []
+    if "length_feats" not in excl:
+        names += ["total_tokens", "sys_len", "user_len", "user_start"]
+    if "constraint_type" not in excl:
+        names += [f"ctype_{c}" for c in cats["constraint_type"]]
+    if "strength" not in excl:
+        names += [f"strength_{s}" for s in cats["strength"]]
+    if "user_style" not in excl:
+        names += [f"style_{s}" for s in cats["user_style"]]
+    if "task_id" not in excl:
+        names += [f"task_{t}" for t in cats["task_id"]]
+    if "direction" not in excl:
+        names += ["dir_b_to_a"]
+    return names
 
 
-def get_feature_groups(cats):
-    """Return dict mapping group name -> list of column indices."""
-    n_ctype = len(cats["constraint_type"])
-    n_str = len(cats["strength"])
-    n_sty = len(cats["user_style"])
-    n_task = len(cats["task_id"])
+def get_feature_groups(cats, *, exclude_groups=None):
+    """Return dict mapping group name -> list of column indices.
 
-    i0_ctype = 4
-    i0_str = i0_ctype + n_ctype
-    i0_sty = i0_str + n_str
-    i0_task = i0_sty + n_sty
-    i0_dir = i0_task + n_task
+    If *exclude_groups* is given, the excluded groups are omitted and indices
+    are recomputed so they match the matrix returned by
+    ``build_metadata_features(..., exclude_groups=exclude_groups)``.
+    """
+    excl = exclude_groups or set()
+    groups = {}
+    idx = 0
 
-    return {
-        "length_feats": list(range(0, 4)),
-        "constraint_type": list(range(i0_ctype, i0_str)),
-        "strength": list(range(i0_str, i0_sty)),
-        "user_style": list(range(i0_sty, i0_task)),
-        "task_id": list(range(i0_task, i0_dir)),
-        "direction": [i0_dir],
+    def _add(name, size):
+        nonlocal idx
+        if name not in excl:
+            groups[name] = list(range(idx, idx + size))
+            idx += size
+
+    _add("length_feats", 4)
+    _add("constraint_type", len(cats["constraint_type"]))
+    _add("strength", len(cats["strength"]))
+    _add("user_style", len(cats["user_style"]))
+    _add("task_id", len(cats["task_id"]))
+    _add("direction", 1)
+
+    return groups
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _build_multi_metric_result(cv_out, estimator_name):
+    """Build a multi-metric result dict from cross_validate output.
+
+    Includes backward-compatible aliases (mean, std, scores) pointing to
+    roc_auc values.
+    """
+    result = {
+        "roc_auc_mean": cv_out["test_roc_auc"].mean(),
+        "roc_auc_std": cv_out["test_roc_auc"].std(),
+        "roc_auc_scores": cv_out["test_roc_auc"],
+        "balanced_accuracy_mean": cv_out["test_balanced_accuracy"].mean(),
+        "balanced_accuracy_std": cv_out["test_balanced_accuracy"].std(),
+        "balanced_accuracy_scores": cv_out["test_balanced_accuracy"],
+        "estimator_name": estimator_name,
     }
+    # Backward compatibility aliases
+    result["mean"] = result["roc_auc_mean"]
+    result["std"] = result["roc_auc_std"]
+    result["scores"] = result["roc_auc_scores"]
+    return result
 
 
 # ── Linear control ───────────────────────────────────────────────────────────
 
-def run_linear_control(X, y, *, n_folds=5, metric="roc_auc", random_state=42):
+def run_linear_control(
+    X, y, *,
+    cv_mode="stratified",
+    groups=None,
+    n_folds=5,
+    random_state=42,
+):
     """Run linear logistic regression CV on metadata features.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Feature matrix of shape (n_samples, n_features).
+    y : np.ndarray
+        Binary labels of shape (n_samples,).
+    cv_mode : str
+        ``"stratified"`` or ``"grouped"``.
+    groups : np.ndarray or None
+        Group labels for GroupKFold (required if cv_mode="grouped").
+    n_folds : int
+        Number of CV folds.
+    random_state : int
+        Seed for StratifiedKFold shuffle.
 
     Returns
     -------
-    dict with keys: mean, std, scores (per-fold array), estimator_name
+    dict
+        Keys: roc_auc_mean, roc_auc_std, roc_auc_scores,
+        balanced_accuracy_mean, balanced_accuracy_std,
+        balanced_accuracy_scores, estimator_name.
+        Backward-compat aliases: mean, std, scores (point to roc_auc values).
     """
-    cv = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=random_state)
+    cv = make_cv_splitter(cv_mode, n_folds, random_state)
+    cv_kwargs = {"groups": groups} if cv_mode == "grouped" else {}
     pipe = Pipeline([
         ("scaler", StandardScaler()),
         ("clf", LogisticRegression(max_iter=1000, C=1.0, solver="lbfgs")),
     ])
-    scores = cross_val_score(pipe, X, y, cv=cv, scoring=metric, n_jobs=-1)
-    return {
-        "mean": scores.mean(),
-        "std": scores.std(),
-        "scores": scores,
-        "estimator_name": "LogisticRegression",
-    }
+    cv_out = cross_validate(
+        pipe, X, y, cv=cv, scoring=_SCORING, n_jobs=-1, **cv_kwargs,
+    )
+    return _build_multi_metric_result(cv_out, "LogisticRegression")
 
 
 # ── Boosted control (shared helpers) ─────────────────────────────────────────
@@ -142,8 +213,12 @@ def _get_boosted_param_distributions():
     }
 
 
-def _make_boosted_search(*, metric, n_search_iter, inner_folds, random_state):
-    """Create a RandomizedSearchCV wrapping HistGradientBoostingClassifier."""
+def _make_boosted_search(*, n_search_iter, inner_folds, random_state):
+    """Create a RandomizedSearchCV wrapping HistGradientBoostingClassifier.
+
+    Inner CV always uses StratifiedKFold (for hyperparameter tuning).
+    Scoring is hardcoded to ``"roc_auc"`` for refit selection.
+    """
     inner_cv = StratifiedKFold(
         n_splits=inner_folds, shuffle=True, random_state=random_state
     )
@@ -159,7 +234,7 @@ def _make_boosted_search(*, metric, n_search_iter, inner_folds, random_state):
         _get_boosted_param_distributions(),
         n_iter=n_search_iter,
         cv=inner_cv,
-        scoring=metric,
+        scoring="roc_auc",
         random_state=random_state,
         n_jobs=-1,
         refit=True,
@@ -168,50 +243,68 @@ def _make_boosted_search(*, metric, n_search_iter, inner_folds, random_state):
 
 def run_boosted_control(
     X, y, *,
+    cv_mode="stratified",
+    groups=None,
     n_folds=5,
-    metric="roc_auc",
     n_search_iter=30,
     inner_folds=3,
     random_state=42,
 ):
     """Run nested-CV boosted tree classifier on metadata features.
 
-    Outer loop: n_folds StratifiedKFold (same splits as probe).
-    Inner loop: RandomizedSearchCV with inner_folds and n_search_iter draws.
+    Outer loop: configurable CV splitter (stratified or grouped).
+    Inner loop: RandomizedSearchCV with StratifiedKFold and n_search_iter draws.
 
     HistGradientBoostingClassifier uses built-in early stopping, so max_iter
     is set high and n_iter_no_change controls when to stop adding trees.
 
+    Parameters
+    ----------
+    X : np.ndarray
+        Feature matrix of shape (n_samples, n_features).
+    y : np.ndarray
+        Binary labels of shape (n_samples,).
+    cv_mode : str
+        ``"stratified"`` or ``"grouped"``.
+    groups : np.ndarray or None
+        Group labels for GroupKFold (required if cv_mode="grouped").
+    n_folds : int
+        Number of outer CV folds.
+    n_search_iter : int
+        Number of hyperparameter search iterations.
+    inner_folds : int
+        Number of inner CV folds for hyperparameter tuning.
+    random_state : int
+        Seed for reproducibility.
+
     Returns
     -------
-    dict with keys: mean, std, scores (per-fold array), estimator_name
+    dict
+        Keys: roc_auc_mean, roc_auc_std, roc_auc_scores,
+        balanced_accuracy_mean, balanced_accuracy_std,
+        balanced_accuracy_scores, estimator_name.
+        Backward-compat aliases: mean, std, scores (point to roc_auc values).
     """
-    outer_cv = StratifiedKFold(
-        n_splits=n_folds, shuffle=True, random_state=random_state
-    )
+    outer_cv = make_cv_splitter(cv_mode, n_folds, random_state)
+    cv_kwargs = {"groups": groups} if cv_mode == "grouped" else {}
 
     search = _make_boosted_search(
-        metric=metric,
         n_search_iter=n_search_iter,
         inner_folds=inner_folds,
         random_state=random_state,
     )
 
-    scores = cross_val_score(
-        search, X, y, cv=outer_cv, scoring=metric, n_jobs=1,
+    cv_out = cross_validate(
+        search, X, y, cv=outer_cv, scoring=_SCORING, n_jobs=1, **cv_kwargs,
     )
 
-    return {
-        "mean": scores.mean(),
-        "std": scores.std(),
-        "scores": scores,
-        "estimator_name": "HistGradientBoosting (nested CV)",
-    }
+    return _build_multi_metric_result(
+        cv_out, "HistGradientBoosting (nested CV)"
+    )
 
 
 def fit_boosted_importances(
     X, y, *,
-    metric="roc_auc",
     n_search_iter=30,
     inner_folds=3,
     n_repeats=5,
@@ -230,7 +323,6 @@ def fit_boosted_importances(
         best_params (dict)
     """
     search = _make_boosted_search(
-        metric=metric,
         n_search_iter=n_search_iter,
         inner_folds=inner_folds,
         random_state=random_state,
@@ -238,7 +330,7 @@ def fit_boosted_importances(
     search.fit(X, y)
     perm = permutation_importance(
         search.best_estimator_, X, y,
-        scoring=metric,
+        scoring="roc_auc",
         n_repeats=n_repeats,
         random_state=random_state,
         n_jobs=-1,
@@ -255,10 +347,11 @@ def fit_boosted_importances(
 def run_group_ablation(
     X, y, feature_groups, *,
     classifier="linear",
+    cv_mode="stratified",
+    groups=None,
     n_folds=5,
-    metric="roc_auc",
-    baseline_mean=None,
-    baseline_std=None,
+    baseline_roc_auc_mean=None,
+    baseline_roc_auc_std=None,
     random_state=42,
     **boosted_kwargs,
 ):
@@ -267,29 +360,48 @@ def run_group_ablation(
     Parameters
     ----------
     classifier : "linear" or "boosted"
-    baseline_mean, baseline_std : float or None
+    cv_mode : str
+        ``"stratified"`` or ``"grouped"``.
+    groups : np.ndarray or None
+        Group labels for GroupKFold (required if cv_mode="grouped").
+    n_folds : int
+        Number of CV folds.
+    baseline_roc_auc_mean, baseline_roc_auc_std : float or None
         If provided, used as the "none (baseline)" row. Otherwise computed.
     **boosted_kwargs : forwarded to run_boosted_control (n_search_iter, etc.)
 
     Returns
     -------
-    pd.DataFrame with columns: group_dropped, mean, std, drop
+    pd.DataFrame with columns: group_dropped,
+        roc_auc_mean, roc_auc_std, roc_auc_drop,
+        balanced_accuracy_mean, balanced_accuracy_std, balanced_accuracy_drop
     """
     run_fn = run_linear_control if classifier == "linear" else run_boosted_control
-    run_kw = dict(n_folds=n_folds, metric=metric, random_state=random_state)
+    run_kw = dict(
+        cv_mode=cv_mode, groups=groups, n_folds=n_folds,
+        random_state=random_state,
+    )
     if classifier == "boosted":
         run_kw.update(boosted_kwargs)
 
-    if baseline_mean is None:
+    if baseline_roc_auc_mean is None:
         res = run_fn(X, y, **run_kw)
-        baseline_mean = res["mean"]
-        baseline_std = res["std"]
+        baseline_roc_auc_mean = res["roc_auc_mean"]
+        baseline_roc_auc_std = res["roc_auc_std"]
+        baseline_bacc_mean = res["balanced_accuracy_mean"]
+        baseline_bacc_std = res["balanced_accuracy_std"]
+    else:
+        baseline_bacc_mean = None
+        baseline_bacc_std = None
 
     rows = [{
         "group_dropped": "none (baseline)",
-        "mean": baseline_mean,
-        "std": baseline_std,
-        "drop": 0.0,
+        "roc_auc_mean": baseline_roc_auc_mean,
+        "roc_auc_std": baseline_roc_auc_std,
+        "roc_auc_drop": 0.0,
+        "balanced_accuracy_mean": baseline_bacc_mean,
+        "balanced_accuracy_std": baseline_bacc_std,
+        "balanced_accuracy_drop": 0.0,
     }]
 
     for grp_name, grp_idx in feature_groups.items():
@@ -298,9 +410,16 @@ def run_group_ablation(
         res = run_fn(X[:, mask], y, **run_kw)
         rows.append({
             "group_dropped": grp_name,
-            "mean": res["mean"],
-            "std": res["std"],
-            "drop": baseline_mean - res["mean"],
+            "roc_auc_mean": res["roc_auc_mean"],
+            "roc_auc_std": res["roc_auc_std"],
+            "roc_auc_drop": baseline_roc_auc_mean - res["roc_auc_mean"],
+            "balanced_accuracy_mean": res["balanced_accuracy_mean"],
+            "balanced_accuracy_std": res["balanced_accuracy_std"],
+            "balanced_accuracy_drop": (
+                baseline_bacc_mean - res["balanced_accuracy_mean"]
+                if baseline_bacc_mean is not None
+                else None
+            ),
         })
 
     return pd.DataFrame(rows)
