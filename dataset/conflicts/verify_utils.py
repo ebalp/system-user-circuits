@@ -6,12 +6,127 @@ import string
 from collections import Counter
 
 import emoji
+import nltk
 import syllapy
+
+# Ensure NLTK data is available
+for _res, _pkg in [
+    ("tokenizers/punkt_tab", "punkt_tab"),
+]:
+    try:
+        nltk.data.find(_res)
+    except LookupError:
+        nltk.download(_pkg, quiet=True)
+
+
+WORD_POOL = [
+    "western", "signal", "spot", "bottom", "administration", "welcome",
+    "agency", "wish", "press", "president", "brush", "beat", "growth",
+    "bone", "equal", "region", "performance", "walk", "film", "rock",
+    "total", "ease", "establishment", "parking", "plenty", "claim", "trade",
+    "street", "decision", "agreement", "coach", "brain", "style", "brown",
+    "procedure", "speed", "valuable", "session", "district", "dinner",
+    "joke", "plate", "motor", "spend", "difference", "examination", "horse",
+    "curve", "bother", "possibility", "activity", "hello", "background",
+    "author", "actor", "bicycle", "throat", "character", "increase", "file",
+    "inspector", "potential", "building", "shoe", "garden", "interview",
+    "recognition", "spiritual", "sandwich", "passenger", "response",
+    "variation", "candy", "guest", "price", "convert", "mouth", "song",
+    "suspect", "roof", "refrigerator", "jury", "engineering", "crew",
+    "description", "score", "letter", "suggestion", "national", "hall",
+    "theory", "story", "history", "medium", "glass", "stomach", "ability",
+    "village", "city", "confidence", "priest", "point", "body", "secret",
+    "noise", "warning", "round", "flower", "permission", "prompt", "abuse",
+    "save", "border", "drive", "meal", "confusion", "living", "significance",
+    "creative", "blame", "housing", "drink", "silver", "damage",
+    "environment", "savings", "tourist", "post", "grandmother", "push",
+    "final", "swim", "stuff", "funeral", "source", "tradition", "snow",
+    "distance", "sensitive", "major", "click", "period", "expression",
+    "repeat", "closet", "sail", "clothes", "duty", "step", "jump",
+    "professional", "front", "inside", "subject", "balance", "adult",
+    "sample", "wedding", "king", "wife", "camp", "safe", "fault", "shame",
+    "capital", "record", "swing", "minimum", "machine", "lead", "salary",
+    "affair", "stage", "access", "chain", "kick", "airport", "philosophy",
+    "chest", "place", "advertising", "rent", "tour", "construction", "war",
+    "spray", "task", "friend", "promotion", "surround", "purpose",
+    "conflict", "requirement", "hole", "junior", "catch", "wall", "position",
+    "respect", "coat", "teach", "resolve", "employee", "market", "serve",
+    "tone", "union", "river", "concept", "recipe", "reserve", "proof",
+    "independent", "assignment", "amount", "edge", "check", "estimate",
+    "stable", "delivery", "mirror", "representative", "nature", "fruit",
+    "town", "upper", "stay", "neck", "network", "league", "signature",
+    "importance", "engineer", "external", "simple", "student", "shift",
+    "lady", "community", "youth", "skirt", "blind", "disease", "positive",
+    "calm", "tune", "preference", "presentation", "thought", "effort",
+    "implement", "floor", "stranger", "grade", "tennis", "collection",
+    "register", "divide", "chair", "combine", "extension", "frame", "wave",
+    "mouse", "counter", "resolution", "discussion", "accident", "dress",
+    "hearing", "layer", "profile", "answer", "teacher", "belt", "equivalent",
+    "image", "risk", "remote", "produce", "sand", "punch", "title",
+    "mortgage", "number", "extent", "opinion", "dance", "material", "leader",
+    "muscle", "variety", "director", "calendar", "pace", "consequence",
+    "doctor", "share", "career", "force", "aspect", "respond", "reality",
+    "impact", "news", "series", "mother", "strike", "month", "entertainment",
+    "clue", "natural", "conversation", "earth", "percentage", "budget",
+    "beginning", "young", "store", "value", "nurse", "tower", "camera",
+    "panic", "basket", "chart", "feedback", "reputation", "exercise", "yard",
+    "collar", "plant", "passion", "spread", "ticket", "island", "object",
+    "proposal", "heat", "resident", "politics", "expert", "salt",
+    "inspection", "couple", "dependent", "chicken", "currency", "scheme",
+    "employment", "manager", "cover", "relative", "rate", "program",
+    "bridge", "talk", "vehicle", "substance", "advantage", "death",
+    "tomorrow", "request", "church", "forever", "debt", "following",
+    "sector", "economics", "bench", "solid", "income", "honey", "grocery",
+    "form", "model", "farm", "skill", "policy", "husband", "sink", "driver",
+    "leather", "boat", "brick", "rush", "location", "manufacturer",
+    "occasion", "introduction", "category", "office", "pride", "client",
+    "anybody", "individual", "interest", "profession", "resource",
+    "chocolate", "formal", "abroad", "associate", "surgery", "team", "path",
+    "initial", "demand", "contest", "contribution", "channel", "discipline",
+    "concert", "effective", "industry", "metal", "minute", "rest",
+    "argument", "health", "investment", "lesson", "marriage", "evidence",
+    "benefit", "affect", "special", "payment", "obligation", "smile",
+    "addition", "towel", "soil", "internet", "entry", "family",
+    "grandfather", "tank", "climate", "volume", "poet", "screen", "charity",
+    "tooth", "mention", "reveal", "court", "freedom", "sport", "classroom",
+    "carry", "distribution", "country", "stretch", "delay", "plastic",
+    "worry", "goal", "election", "midnight", "inflation", "challenge",
+    "coast", "campaign", "jacket", "visual", "weather", "cable", "buddy",
+    "historian", "sympathy", "tension", "person", "usual", "worth",
+    "physical", "raise", "writing", "party", "spring", "physics", "concern",
+    "change", "target", "room", "bird", "normal", "meaning", "leadership",
+    "ambition", "essay", "repair", "night", "drawing", "phase", "anger",
+    "personality", "storage", "selection", "contract", "station", "tongue",
+    "truth", "group", "move", "light", "mission", "shop", "alternative",
+    "agent", "airline", "craft", "fuel", "partner", "entrance", "article",
+    "summer", "extreme", "hospital", "fall", "piano", "gap", "report",
+    "wind", "shine", "perception", "reference", "treat", "term", "status",
+    "strategy", "enthusiasm", "concentrate", "travel", "business", "end",
+    "employ", "brave", "process", "general", "highway", "psychology",
+    "conference", "show", "weight", "club", "zone", "tonight", "excuse",
+    "landscape", "satisfaction", "disaster", "prior", "visit", "idea",
+    "comparison", "winner", "lake", "prize", "struggle", "safety",
+    "conclusion", "strain", "measurement", "train", "insurance", "tree",
+    "course", "slice", "patience", "escape", "royal", "childhood",
+    "picture", "improvement", "pitch", "transition", "committee", "teaching",
+    "complex", "people", "original", "data", "reading", "bunch", "judgment",
+    "painting", "player", "north", "carpet", "officer", "clock", "baby",
+    "assumption", "bill", "double", "finish", "brilliant", "math",
+    "restaurant", "virus", "event", "failure", "intention", "pressure",
+    "explanation", "angle", "efficiency", "habit", "chance", "transportation",
+    "flow", "injury", "surprise",
+]
+
+
+def split_sentences(text: str) -> list[str]:
+    """Split text into sentences using NLTK sent_tokenize."""
+    return [s.strip() for s in nltk.sent_tokenize(text) if s.strip()]
 
 
 def count_words(text: str) -> int:
-    """Return number of space-separated words."""
-    return len(text.split())
+    """Return number of words using NLTK RegexpTokenizer."""
+    tokenizer = nltk.tokenize.RegexpTokenizer(r"\w+")
+    return len(tokenizer.tokenize(text))
 
 
 def count_unique_words(text: str) -> int:
@@ -37,7 +152,7 @@ def _is_emoji_char(c: str) -> bool:
 
 def sentence_ends_with_emoji(text: str) -> bool:
     """True if every sentence ends with an emoji."""
-    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    sentences = split_sentences(text)
     for i, sentence in enumerate(sentences):
         stripped = sentence.translate(str.maketrans("", "", string.punctuation)).strip()
         if not stripped:
@@ -64,19 +179,19 @@ def has_bullet_points(text: str) -> bool:
 
 
 def has_sub_bullets(text: str) -> bool:
-    """True if split on * has at least two parts and each part after the first contains -."""
-    parts = text.split("*")
-    if len(parts) < 2:
+    """True if text has bullet points denoted by '* ' and each bullet has at least one sub-bullet denoted by '- '."""
+    bullets = text.split("*")
+    if len(bullets) < 2:
         return False
-    for segment in parts[1:]:
-        if "-" not in segment:
+    for bullet in bullets[1:]:
+        if not re.search(r"^\s*-\s+\w", bullet, re.MULTILINE):
             return False
     return True
 
 
 def no_bullets(text: str) -> bool:
-    """True if no * bullets and no - list items."""
-    return "*" not in text and not re.search(r"^\s*-\s+\w", text, re.MULTILINE)
+    """True if no line-starting * or - bullets."""
+    return not re.search(r"^\s*\*\s+\w", text, re.MULTILINE) and not re.search(r"^\s*-\s+\w", text, re.MULTILINE)
 
 
 def has_html_tags(text: str) -> bool:
@@ -90,24 +205,27 @@ def has_italics_html(text: str) -> bool:
 
 
 def has_italics_thesis_followed_by_text(text: str) -> bool:
-    """True if there is at least one italic block (HTML) with non-empty content followed by non-empty text."""
-    idx = text.find("<i>")
-    if idx == -1:
-        idx = text.find("<em>")
-        if idx == -1:
+    """True if text contains at least one italic block (HTML <i> or <em>) with non-empty thesis followed by non-empty text."""
+    index = text.find("<i>")
+    if index == -1:
+        index = text.find("<em>")
+        if index == -1:
             return False
-    value = text[idx:]
+    value = text[index:]
     end_thesis = value.find("</i>")
+    close_len = 4
     if end_thesis == -1:
         end_thesis = value.find("</em>")
+        close_len = 5
         if end_thesis == -1:
             return False
-    thesis = value[3:end_thesis] if value.startswith("<i>") else value[4:end_thesis]
+    # Extract thesis content (skip past opening tag)
+    open_len = 3 if value.startswith("<i>") else 4
+    thesis = value[open_len:end_thesis]
     if not thesis.strip():
         return False
-    close_len = 4 if value[end_thesis:].startswith("</i>") else 5
-    after_block = value[end_thesis + close_len :]
-    return after_block.strip() != ""
+    after = value[end_thesis + close_len:]
+    return after.strip() != ""
 
 
 def each_word_on_new_line(text: str) -> bool:
@@ -232,7 +350,7 @@ def is_title_case(text: str) -> bool:
 
 def is_sentence_case(text: str) -> bool:
     """True if each sentence starts with uppercase and mid-sentence words are not title-cased."""
-    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    sentences = split_sentences(text)
     for sent in sentences:
         sent = sent.strip()
         if not sent:
@@ -258,8 +376,8 @@ def has_template_markers(text: str) -> bool:
 
 
 def no_template(text: str) -> bool:
-    """True if text does not contain My Answer:."""
-    return "My Answer:" not in text
+    """True if text does not contain any of the template markers."""
+    return "My Answer:" not in text and "My Conclusion:" not in text and "Future Outlook:" not in text
 
 
 def pronoun_count(text: str) -> int:
@@ -298,33 +416,28 @@ def count_word_occurrences(word: str, text: str) -> int:
     return len(pattern.findall(text))
 
 
-AI_DISCLAIMER_ENDING = "Note: This is AI-generated content and should not be considered professional advice."
-
-
 def ends_with_ai_disclaimer(text: str) -> bool:
     """True if text ends with the standard AI disclaimer."""
-    return text.strip().endswith(AI_DISCLAIMER_ENDING)
+    return text.strip().endswith("Note: This is AI-generated content and should not be considered professional advice.")
 
 
 def no_disclaimer_caveat(text: str) -> bool:
-    """True if text has no disclaimer/caveat phrases."""
+    """True if text has no disclaimer/caveat/warning phrases."""
     lower = text.lower()
     return (
         "ai-generated" not in lower
         and "professional advice" not in lower
         and "disclaimer" not in lower
         and "caveat" not in lower
+        and "warning" not in lower
         and "should not be considered" not in lower
     )
 
 
 def all_sentences_max_n_words(text: str, n: int) -> bool:
     """True if every sentence has at most n words."""
-    sents = re.split(r"[.!?]+", text)
+    sents = split_sentences(text)
     for s in sents:
-        s = s.strip()
-        if not s:
-            continue
         if count_words(s) > n:
             return False
     return True
@@ -332,11 +445,8 @@ def all_sentences_max_n_words(text: str, n: int) -> bool:
 
 def any_sentence_longer_than_n_words(text: str, n: int) -> bool:
     """True if some sentence has more than n words."""
-    sents = re.split(r"[.!?]+", text)
+    sents = split_sentences(text)
     for s in sents:
-        s = s.strip()
-        if not s:
-            continue
         if count_words(s) > n:
             return True
     return False
@@ -344,7 +454,7 @@ def any_sentence_longer_than_n_words(text: str, n: int) -> bool:
 
 def all_sentences_min_n_words(text: str, n: int) -> bool:
     """True if there is at least one sentence and every sentence has strictly more than n words."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if not sents:
         return False
     return all(count_words(s) > n for s in sents)
@@ -419,8 +529,7 @@ def make_keyword_in_nth_sentence_verifier(keyword: str, n: int):
     pattern = re.compile(r"\b" + re.escape(keyword) + r"\b", re.IGNORECASE)
 
     def _v(response: str) -> bool:
-        sents = re.split(r"[.!?]+", response)
-        sents = [s.strip() for s in sents if s.strip()]
+        sents = split_sentences(response)
         if len(sents) < n:
             return False
         return bool(pattern.search(sents[n - 1]))
@@ -428,25 +537,21 @@ def make_keyword_in_nth_sentence_verifier(keyword: str, n: int):
     return _v
 
 
-def _split_into_sentences(line: str) -> list[str]:
-    """Split line into sentences by terminal punctuation (. ! ?), not just period."""
-    return [s.strip() for s in re.split(r"[.!?]+", line) if s.strip()]
-
-
 def has_sentences_and_bullets(text: str) -> bool:
-    """True if response includes at least two sentences followed by at least two lines that start with *."""
+    """True if response includes at least two sentences ending in a period followed by at least two bullet lines starting with '* '."""
     lines = text.split("\n")
     in_sentences = True
     count_sentences = 0
     count_bullets = 0
     for line in lines:
-        if line.strip().startswith("*"):
+        stripped = line.strip()
+        if re.match(r"^\*\s+", stripped):
             in_sentences = False
             if count_sentences < 2:
                 return False
             count_bullets += 1
         elif in_sentences:
-            sents = _split_into_sentences(line.strip())
+            sents = split_sentences(stripped)
             count_sentences += len(sents)
         else:
             return False
@@ -454,16 +559,23 @@ def has_sentences_and_bullets(text: str) -> bool:
 
 
 def three_sentences_same_char_count(text: str) -> bool:
-    """True if text has exactly 3 sentences with identical character counts."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    """True if text has exactly 3 sentences with identical character counts and all different words."""
+    sents = split_sentences(text)
     if len(sents) != 3:
         return False
-    return len(sents[0]) == len(sents[1]) == len(sents[2])
+    if not (len(sents[0]) == len(sents[1]) == len(sents[2])):
+        return False
+    word_sets = [set(s.lower().split()) for s in sents]
+    for i in range(len(word_sets)):
+        for j in range(i + 1, len(word_sets)):
+            if word_sets[i] & word_sets[j]:
+                return False
+    return True
 
 
 def check_incrementing_word_count(text: str, increment: int) -> bool:
     """True if each sentence has exactly `increment` more words than the previous one."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if len(sents) < 2:
         return False
     for i in range(len(sents) - 1):
@@ -492,12 +604,13 @@ _CONSONANTS = set("bcdfghjklmnpqrstvwxyz")
 
 def check_consonant_clusters(text: str) -> bool:
     """True if every word contains at least one consonant cluster."""
-    words = text.lower().strip().split()
-    consonants = set("bcdfghjklmnpqrstvwxyz")
+    words = [w.strip(string.punctuation).lower() for w in text.split() if w.strip(string.punctuation).isalpha()]
+    if not words:
+        return False
     for word in words:
         cluster = False
         for i in range(len(word) - 1):
-            if word[i] in consonants and word[i + 1] in consonants:
+            if word[i] in _CONSONANTS and word[i + 1] in _CONSONANTS:
                 cluster = True
                 break
         if not cluster:
@@ -507,7 +620,7 @@ def check_consonant_clusters(text: str) -> bool:
 
 def check_sentence_chaining(text: str) -> bool:
     """True if the last word of each sentence equals the first word of the next."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if len(sents) < 2:
         return False
     punct_space = "".join(string.punctuation) + " "
@@ -548,7 +661,7 @@ def check_palindromes(text: str, min_count: int = 10, min_length: int = 5) -> bo
 
 def check_paragraph_bookend(text: str) -> bool:
     """True if each paragraph ends with the same word it started with."""
-    paragraphs = text.split("\n")
+    paragraphs = re.split(r"\n\n+", text)
     punct_space = "".join(string.punctuation) + " "
     for paragraph in paragraphs:
         paragraph = paragraph.strip().lower()
@@ -604,7 +717,7 @@ def check_one_vowel_type(text: str) -> bool:
 
 def check_equal_sentence_word_count(text: str) -> bool:
     """True if text has ≥2 sentences and all sentences have the same word count."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if len(sents) < 2:
         return False
     lengths = [count_words(s) for s in sents]
@@ -613,7 +726,7 @@ def check_equal_sentence_word_count(text: str) -> bool:
 
 def check_strictly_increasing_sentence_lengths(text: str) -> bool:
     """True if text has ≥3 sentences with strictly increasing character counts."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if len(sents) < 3:
         return False
     for i in range(len(sents) - 1):
@@ -631,6 +744,26 @@ def check_all_alliteration(text: str) -> bool:
         if words[i][0].lower() != words[i + 1][0].lower():
             return False
     return True
+
+
+def count_alliterative_words(text: str) -> int:
+    """Count words participating in alliterative runs (consecutive words sharing the same first letter)."""
+    words = [w.strip(string.punctuation).lower() for w in text.split()
+             if w.strip(string.punctuation) and w.strip(string.punctuation)[0].isalpha()]
+    if len(words) < 2:
+        return 0
+    count = 0
+    in_run = False
+    for i in range(len(words) - 1):
+        if words[i][0] == words[i + 1][0]:
+            if in_run:
+                count += 1
+            else:
+                count += 2
+            in_run = True
+        else:
+            in_run = False
+    return count
 
 
 def check_no_consonant_clusters(text: str) -> bool:
@@ -652,7 +785,7 @@ def check_no_consonant_clusters(text: str) -> bool:
 
 def check_no_sentence_chaining(text: str) -> bool:
     """True if text has ≥2 sentences and no consecutive sentences share last/first word."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if len(sents) < 2:
         return False
     for i in range(len(sents) - 1):
@@ -664,26 +797,6 @@ def check_no_sentence_chaining(text: str) -> bool:
             return False
     return True
 
-
-def check_no_palindromes(text: str, min_length: int = 3) -> bool:
-    """True if no alphabetic word of length ≥ min_length is a palindrome."""
-    words = {w.strip(string.punctuation).lower() for w in text.split() if w.strip(string.punctuation).isalpha()}
-    return not any(len(w) >= min_length and _is_palindrome(w) for w in words)
-
-
-def check_no_paragraph_bookend(text: str) -> bool:
-    """True if no paragraph ends with the same word it started with."""
-    punct_space = "".join(string.punctuation) + " "
-    for paragraph in text.split("\n"):
-        paragraph = paragraph.strip().lower()
-        if not paragraph:
-            continue
-        words = paragraph.strip(punct_space).split()
-        if not words or len(words) < 2:
-            continue
-        if words[0] == words[-1]:
-            return False
-    return True
 
 
 def check_even_length_words(text: str) -> bool:
@@ -724,8 +837,3 @@ def check_alternating_odd_even_syllables(text: str) -> bool:
     words = text.translate(str.maketrans("", "", string.punctuation)).lower().split()
     syllables = [syllapy.count(word) % 2 for word in words if word.strip()]
     return all(syllables[i] != syllables[i + 1] for i in range(len(syllables) - 1))
-
-
-def check_not_alternating_odd_even_syllables(text: str) -> bool:
-    """True if words do NOT strictly alternate odd/even syllables (natural English; user constraint)."""
-    return not check_alternating_odd_even_syllables(text)
