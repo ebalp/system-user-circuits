@@ -1,0 +1,26 @@
+# Lambda Cloud configuration for vLLM deployment
+# Used by: --backend lambda in run_experiments.py
+
+ssh_key_name: "enrique-macbook"
+
+defaults:
+  region: us-east-1
+  vllm_port: 8000
+  max_launch_retries: 5
+  launch_retry_delay: 60
+  readiness_timeout: 900  # 15 min for model download + load
+  concurrent_per_model: 10  # vLLM handles batching natively
+
+model_gpu_map:
+  meta-llama/Llama-3.1-8B-Instruct:
+    instance_type: gpu_1x_a10
+    vllm_args: "--max-model-len 4096"
+  meta-llama/Llama-3.3-70B-Instruct:
+    instance_type: gpu_8x_a100
+    vllm_args: "--tensor-parallel-size 8 --max-model-len 4096"
+  Qwen/Qwen2.5-7B-Instruct:
+    instance_type: gpu_1x_a10
+    vllm_args: "--max-model-len 4096"
+  _default:
+    instance_type: gpu_1x_a100
+    vllm_args: "--max-model-len 4096"
