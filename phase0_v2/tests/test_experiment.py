@@ -1,7 +1,7 @@
 """Test experiment hashing, dedup, and record building."""
 
 import pytest
-from phase0_v2.src.experiment import ExperimentKey, compute_experiment_hash, build_record
+from phase0_v2.src.experiment import ExperimentKey, compute_experiment_hash, build_record, recompute_hash_from_record
 from phase0_v2.src.prompts import Prompt
 from phase0_v2.src.config import (
     ExperimentConfig, ApiConfig, GenerationConfig, CounterbalancingConfig,
@@ -17,6 +17,7 @@ class TestHashComputation:
             task_id="t1", task_source="synthetic",
             condition="C", direction="a_to_b", system_style="compliance",
             user_style="jailbreak", temperature=0.0, max_tokens=512,
+            system_prompt="Avoid word a.", user_prompt="Use word a.",
         )
         assert compute_experiment_hash(key) == compute_experiment_hash(key)
 
@@ -26,6 +27,7 @@ class TestHashComputation:
             task_id="x", task_source="synthetic",
             condition="A", direction="none", system_style=None,
             user_style="task_only", temperature=0.0, max_tokens=512,
+            system_prompt="sys", user_prompt="usr",
         )
         assert len(compute_experiment_hash(key)) == 16
 
@@ -36,6 +38,7 @@ class TestHashComputation:
             task_id="t1", task_source="synthetic",
             condition="C", direction="a_to_b", system_style="compliance",
             user_style="jailbreak", temperature=0.0, max_tokens=512,
+            system_prompt="sys", user_prompt="usr",
         )
         h1 = compute_experiment_hash(ExperimentKey(**base))
         h2 = compute_experiment_hash(ExperimentKey(**{**base, "direction": "b_to_a"}))
@@ -48,6 +51,7 @@ class TestHashComputation:
             task_id="t1", task_source="synthetic",
             condition="C", direction="a_to_b", system_style="bare",
             user_style="jailbreak", temperature=0.0, max_tokens=512,
+            system_prompt="sys", user_prompt="usr",
         )
         h1 = compute_experiment_hash(ExperimentKey(**base))
         h2 = compute_experiment_hash(ExperimentKey(**{**base, "system_style": "authority"}))
@@ -60,6 +64,7 @@ class TestHashComputation:
             task_id="t1", task_source="synthetic",
             condition="C", direction="a_to_b", system_style="compliance",
             user_style="jailbreak", temperature=0.0, max_tokens=512,
+            system_prompt="sys", user_prompt="usr",
         )
         h1 = compute_experiment_hash(ExperimentKey(**base))
         h2 = compute_experiment_hash(ExperimentKey(**{**base, "model": "model_b"}))
@@ -71,9 +76,52 @@ class TestHashComputation:
             task_id="x", task_source="synthetic",
             condition="A", direction="none", system_style=None,
             user_style="task_only", temperature=0.0, max_tokens=512,
+            system_prompt="sys", user_prompt="usr",
         )
         h = compute_experiment_hash(key)
         assert all(c in "0123456789abcdef" for c in h)
+
+    def test_differs_on_prompt_change(self):
+        base = dict(
+            model="test", conflict_id="fw",
+            instruction_args_json='{"word1": "a"}',
+            task_id="t1", task_source="synthetic",
+            condition="C", direction="a_to_b", system_style="compliance",
+            user_style="jailbreak", temperature=0.0, max_tokens=512,
+            system_prompt="Avoid word a.", user_prompt="Use word a.",
+        )
+        h1 = compute_experiment_hash(ExperimentKey(**base))
+        h2 = compute_experiment_hash(ExperimentKey(**{**base, "system_prompt": "CHANGED prompt."}))
+        assert h1 != h2
+
+    def test_recompute_hash_from_record(self):
+        """Round-trip: build_record fields -> recompute_hash_from_record matches."""
+        key = ExperimentKey(
+            model="test-model", conflict_id="forbidden_words",
+            instruction_args_json='{"word1":"a","word2":"b","word3":"c"}',
+            task_id="t1", task_source="synthetic",
+            condition="C", direction="a_to_b", system_style="bare",
+            user_style="with_instruction", temperature=0.0, max_tokens=512,
+            system_prompt="Avoid a, b, c.", user_prompt="Use a, b, c.",
+        )
+        expected_hash = compute_experiment_hash(key)
+
+        rec = {
+            "model": "test-model",
+            "conflict_id": "forbidden_words",
+            "instruction_args": {"word1": "a", "word2": "b", "word3": "c"},
+            "task_id": "t1",
+            "task_source": "synthetic",
+            "condition": "C",
+            "direction": "a_to_b",
+            "system_style": "bare",
+            "user_style": "with_instruction",
+            "temperature": 0.0,
+            "max_tokens": 512,
+            "system_prompt": "Avoid a, b, c.",
+            "user_prompt": "Use a, b, c.",
+        }
+        assert recompute_hash_from_record(rec) == expected_hash
 
 
 def _make_minimal_config():

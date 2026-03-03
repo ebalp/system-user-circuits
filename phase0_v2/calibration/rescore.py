@@ -118,6 +118,11 @@ def main(argv: list[str] | None = None) -> None:
         help="Comma-separated conflict IDs to reverify (default: all). Only used with --reverify.",
     )
     parser.add_argument(
+        "--recompute-hashes",
+        action="store_true",
+        help="Recompute experiment_hash for each record using current hash formula (includes prompt text)",
+    )
+    parser.add_argument(
         "--model-config", default=None,
         help="Model ID to load per-model thresholds from experiment config",
     )
@@ -139,6 +144,20 @@ def main(argv: list[str] | None = None) -> None:
         _run_reverify(records, args)
     else:
         _run_rescore(records, args)
+
+
+def _recompute_hashes(output_records: list[dict]) -> int:
+    """Recompute experiment_hash for all records. Returns count of changed hashes."""
+    from ..src.experiment import recompute_hash_from_record
+
+    changed = 0
+    for rec in output_records:
+        old_hash = rec.get("experiment_hash", "")
+        new_hash = recompute_hash_from_record(rec)
+        if old_hash != new_hash:
+            rec["experiment_hash"] = new_hash
+            changed += 1
+    return changed
 
 
 def _run_reverify(records: list[dict], args) -> None:
@@ -192,6 +211,11 @@ def _run_reverify(records: list[dict], args) -> None:
 
         output_records.append(updated)
 
+    # Recompute hashes if requested
+    hashes_changed = 0
+    if args.recompute_hashes:
+        hashes_changed = _recompute_hashes(output_records)
+
     # Write output
     output_path = Path(args.output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -212,6 +236,8 @@ def _run_reverify(records: list[dict], args) -> None:
 
     total_changes = sum(len(v) for v in changes.values())
     print(f"Labels changed:     {total_changes}")
+    if args.recompute_hashes:
+        print(f"Hashes recomputed:  {hashes_changed}")
 
     if changes:
         print(f"\n{'conflict_id':<40} {'changed':>8}")
@@ -326,6 +352,11 @@ def _run_rescore(records: list[dict], args) -> None:
         updated["label"] = new_label
         output_records.append(updated)
 
+    # Recompute hashes if requested
+    hashes_changed = 0
+    if args.recompute_hashes:
+        hashes_changed = _recompute_hashes(output_records)
+
     # Write output
     output_path = Path(args.output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -344,6 +375,8 @@ def _run_rescore(records: list[dict], args) -> None:
 
     total_changes = sum(len(v) for v in changes.values())
     print(f"Labels changed:     {total_changes}")
+    if args.recompute_hashes:
+        print(f"Hashes recomputed:  {hashes_changed}")
 
     if changes:
         print(f"\n{'conflict_id':<40} {'old_thresh':>10} {'new_thresh':>10} {'changed':>8}")

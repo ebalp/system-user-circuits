@@ -193,6 +193,8 @@ class TestCrossModuleConsistency:
             user_style=p.user_style,
             temperature=0.0,
             max_tokens=512,
+            system_prompt=p.system_message,
+            user_prompt=p.user_message,
         )
         h = compute_experiment_hash(key)
         assert len(h) == 16

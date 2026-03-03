@@ -41,6 +41,8 @@ class ExperimentKey:
     user_style: str
     temperature: float
     max_tokens: int
+    system_prompt: str
+    user_prompt: str
 
 
 def compute_experiment_hash(key: ExperimentKey) -> str:
@@ -60,9 +62,38 @@ def compute_experiment_hash(key: ExperimentKey) -> str:
         "user_style": key.user_style,
         "temperature": key.temperature,
         "max_tokens": key.max_tokens,
+        "system_prompt": key.system_prompt,
+        "user_prompt": key.user_prompt,
     }
     canonical_json = json.dumps(canonical, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical_json.encode()).hexdigest()[:16]
+
+
+def recompute_hash_from_record(rec: dict) -> str:
+    """Recompute experiment hash from a JSONL record's stored fields.
+
+    Builds an ExperimentKey from the record and returns the hash using
+    the current formula. Useful for migrating old records after the hash
+    formula changes (e.g. adding prompt text).
+    """
+    key = ExperimentKey(
+        model=rec["model"],
+        conflict_id=rec["conflict_id"],
+        instruction_args_json=json.dumps(
+            rec.get("instruction_args", {}), sort_keys=True, separators=(",", ":")
+        ),
+        task_id=rec["task_id"],
+        task_source=rec.get("task_source", "synthetic"),
+        condition=rec["condition"],
+        direction=rec["direction"],
+        system_style=rec.get("system_style"),
+        user_style=rec.get("user_style", "with_instruction"),
+        temperature=rec.get("temperature", 0.0),
+        max_tokens=rec.get("max_tokens", 512),
+        system_prompt=rec.get("system_prompt", ""),
+        user_prompt=rec.get("user_prompt", ""),
+    )
+    return compute_experiment_hash(key)
 
 
 def _make_experiment_key(
@@ -83,6 +114,8 @@ def _make_experiment_key(
         user_style=prompt.user_style,
         temperature=config.generation.temperature,
         max_tokens=config.generation.max_tokens,
+        system_prompt=prompt.system_message,
+        user_prompt=prompt.user_message,
     )
 
 
