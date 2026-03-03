@@ -183,17 +183,31 @@ class TestModelConfig:
         with pytest.raises(ValueError, match="Model entry missing 'id'"):
             load_config(config_path)
 
-    def test_real_config_first_model_has_thresholds(self, config):
-        """The first model in experiment.yaml should have thresholds."""
+    def test_dict_model_has_thresholds_and_excludes(self, tmp_path):
+        """Dict model entry with thresholds and exclude_conflicts is parsed correctly."""
+        models = [
+            {
+                "id": "my-model",
+                "thresholds": {"first_vs_third_person": 0.182},
+                "exclude_conflicts": ["max_word_repeat"],
+            }
+        ]
+        config_path = _make_test_config(models, str(tmp_path))
+        config = load_config(config_path)
         mc = config.models[0]
-        assert mc.id == "meta-llama/Llama-3.1-8B-Instruct"
+        assert mc.id == "my-model"
         assert "first_vs_third_person" in mc.thresholds
         assert mc.thresholds["first_vs_third_person"] == pytest.approx(0.182)
         assert "max_word_repeat" in mc.exclude_conflicts
 
-    def test_real_config_other_models_have_defaults(self, config):
+    def test_plain_string_model_has_empty_defaults(self, tmp_path):
         """Models without explicit config should have empty defaults."""
-        # Find the 70B model
-        mc_70b = next(m for m in config.models if "70B" in m.id)
-        assert mc_70b.thresholds == {}
-        assert mc_70b.exclude_conflicts == []
+        models = [
+            {"id": "model-with-config", "thresholds": {"foo": 0.5}},
+            "model-without-config",
+        ]
+        config_path = _make_test_config(models, str(tmp_path))
+        config = load_config(config_path)
+        mc = next(m for m in config.models if m.id == "model-without-config")
+        assert mc.thresholds == {}
+        assert mc.exclude_conflicts == []
