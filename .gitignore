@@ -13,3 +13,4 @@ data/
 *.sync.env
 notes/
 plans/
+phase0_v2/calibration/output/

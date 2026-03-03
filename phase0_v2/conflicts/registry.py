@@ -1,0 +1,103 @@
+"""Conflict registry: imports all conflict classes, provides lookup helpers."""
+
+from .conflict_base import Conflict
+
+# -- Batch 1: original Phase 0 conflicts --
+from .definitions.language_en_es import LanguageEnEsConflict
+from .definitions.format_json_yaml import FormatJsonYamlConflict
+from .definitions.starting_word_hello_greetings import StartingWordHelloGreetingsConflict
+from .definitions.emoji_use_vs_avoid import EmojiUseVsAvoidConflict
+from .definitions.capitalization_all_caps import CapitalizationAllCapsConflict
+from .definitions.list_bullets_vs_numbered import ListBulletsVsNumberedConflict
+from .definitions.disclaimer_add_vs_none import DisclaimerAddVsNoneConflict
+from .definitions.self_reference_ai_mention import SelfReferenceAiMentionConflict
+
+# -- Batch 1: dataset conflicts --
+from .definitions.forbidden_words import ForbiddenWordsConflict
+from .definitions.keyword_exact_count import KeywordExactCountConflict
+from .definitions.max_sentence_length import MaxSentenceLengthConflict
+from .definitions.json_only_vs_plain import JsonOnlyVsPlainConflict
+from .definitions.repeat_answer_twice import RepeatAnswerTwiceConflict
+from .definitions.bilingual_english_plus import BilingualEnglishPlusConflict
+
+# -- Batch 2 --
+from .definitions.exact_number_count import ExactNumberCountConflict
+from .definitions.min_pronoun_count import MinPronounCountConflict
+from .definitions.min_unique_words import MinUniqueWordsConflict
+from .definitions.word_count_range import WordCountRangeConflict
+from .definitions.stairs_indent import StairsIndentConflict
+from .definitions.each_word_new_line import EachWordNewLineConflict
+from .definitions.bullets_and_sub_bullets import BulletsAndSubBulletsConflict
+from .definitions.italics_thesis import ItalicsThesisConflict
+
+# -- Batch 3 --
+from .definitions.alphabetical_first_letters import AlphabeticalFirstLettersConflict
+from .definitions.keyword_in_nth_sentence import KeywordInNthSentenceConflict
+from .definitions.max_word_repeat import MaxWordRepeatConflict
+from .definitions.no_consecutive_first_letter import NoConsecutiveFirstLetterConflict
+from .definitions.odd_even_syllables import OddEvenSyllablesConflict
+from .definitions.paragraph_end_same_word import ParagraphEndSameWordConflict
+from .definitions.sentence_chaining import SentenceChainingConflict
+from .definitions.template_response import TemplateResponseConflict
+from .definitions.title_case_vs_sentence_case import TitleCaseVsSentenceCaseConflict
+
+# -- Batch 4 --
+from .definitions.first_vs_third_person import FirstVsThirdPersonConflict
+from .definitions.questions_vs_statements import QuestionsVsStatementsConflict
+
+# Alphabetically sorted by class name
+_ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
+    AlphabeticalFirstLettersConflict,
+    BilingualEnglishPlusConflict,
+    BulletsAndSubBulletsConflict,
+    CapitalizationAllCapsConflict,
+    DisclaimerAddVsNoneConflict,
+    EachWordNewLineConflict,
+    EmojiUseVsAvoidConflict,
+    ExactNumberCountConflict,
+    FirstVsThirdPersonConflict,
+    ForbiddenWordsConflict,
+    FormatJsonYamlConflict,
+    ItalicsThesisConflict,
+    JsonOnlyVsPlainConflict,
+    KeywordExactCountConflict,
+    KeywordInNthSentenceConflict,
+    LanguageEnEsConflict,
+    ListBulletsVsNumberedConflict,
+    MaxSentenceLengthConflict,
+    MaxWordRepeatConflict,
+    MinPronounCountConflict,
+    MinUniqueWordsConflict,
+    NoConsecutiveFirstLetterConflict,
+    OddEvenSyllablesConflict,
+    ParagraphEndSameWordConflict,
+    QuestionsVsStatementsConflict,
+    RepeatAnswerTwiceConflict,
+    SelfReferenceAiMentionConflict,
+    SentenceChainingConflict,
+    StairsIndentConflict,
+    StartingWordHelloGreetingsConflict,
+    TemplateResponseConflict,
+    TitleCaseVsSentenceCaseConflict,
+    WordCountRangeConflict,
+]
+
+_REGISTRY: dict[str, Conflict] = {}
+for _cls in _ALL_CONFLICT_CLASSES:
+    _inst = _cls()
+    _REGISTRY[_inst.conflict_id] = _inst
+
+
+def get_conflict(conflict_id: str) -> Conflict | None:
+    """Return conflict instance by id, or None."""
+    return _REGISTRY.get(conflict_id)
+
+
+def get_all_conflicts() -> list[Conflict]:
+    """Return all registered conflict instances."""
+    return list(_REGISTRY.values())
+
+
+def get_conflict_ids() -> list[str]:
+    """Return sorted list of all registered conflict IDs."""
+    return sorted(_REGISTRY.keys())

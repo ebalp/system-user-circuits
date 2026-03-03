@@ -1,0 +1,119 @@
+# Synthetic tasks for Phase 0 v2 experiments
+# ~50 tasks across 4 categories, all produce multi-sentence responses
+
+tasks:
+  # =========================================================================
+  # Explanatory (science, concepts) — 13 tasks
+  # =========================================================================
+  - id: photosynthesis
+    prompt: "Explain how photosynthesis works."
+  - id: vaccines
+    prompt: "How do vaccines work?"
+  - id: machine_learning
+    prompt: "What is machine learning?"
+  - id: gravity
+    prompt: "Explain how gravity works."
+  - id: water_cycle
+    prompt: "Describe the water cycle."
+  - id: compass
+    prompt: "Explain how a compass works."
+  - id: electricity
+    prompt: "Explain how electricity is generated and distributed."
+  - id: plate_tectonics
+    prompt: "What are tectonic plates and how do they cause earthquakes?"
+  - id: immune_system
+    prompt: "How does the human immune system fight infections?"
+  - id: black_holes
+    prompt: "What are black holes and how do they form?"
+  - id: periodic_table
+    prompt: "Explain the organization of the periodic table of elements."
+  - id: evolution
+    prompt: "How does natural selection drive evolution?"
+  - id: dna_replication
+    prompt: "Explain how DNA replication works in cells."
+
+  # =========================================================================
+  # Advice / How-to (practical guidance) — 13 tasks
+  # =========================================================================
+  - id: used_car
+    prompt: "What should I consider when buying a used car?"
+  - id: omelette
+    prompt: "How do I make a simple omelette?"
+  - id: public_speaking
+    prompt: "What are some tips for improving public speaking skills?"
+  - id: sleep
+    prompt: "How can I improve my sleep quality?"
+  - id: choosing_pet
+    prompt: "What factors should I consider when choosing a pet?"
+  - id: indoor_plants
+    prompt: "How do I care for common indoor plants?"
+  - id: time_management
+    prompt: "What are effective strategies for managing your time?"
+  - id: job_interview
+    prompt: "How should I prepare for a job interview?"
+  - id: saving_money
+    prompt: "What are practical ways to save money on a tight budget?"
+  - id: study_habits
+    prompt: "What study techniques are most effective for retaining information?"
+  - id: first_aid
+    prompt: "What are the basic first aid steps for common injuries?"
+  - id: home_security
+    prompt: "What are some ways to improve home security?"
+  - id: healthy_eating
+    prompt: "How can I build a balanced and healthy diet?"
+
+  # =========================================================================
+  # Comparison / Analysis (pros-cons, evaluation) — 12 tasks
+  # =========================================================================
+  - id: renewable_energy
+    prompt: "Compare renewable and non-renewable energy sources."
+  - id: remote_work
+    prompt: "What are the pros and cons of remote work?"
+  - id: exercise
+    prompt: "What are the benefits of regular exercise?"
+  - id: climate
+    prompt: "How does climate change affect ocean ecosystems?"
+  - id: social_media
+    prompt: "What are the benefits and drawbacks of social media?"
+  - id: classical_modern_architecture
+    prompt: "Compare classical and modern architecture."
+  - id: electric_vs_gas_cars
+    prompt: "Compare electric vehicles and gasoline-powered cars."
+  - id: public_vs_private_education
+    prompt: "What are the differences between public and private education?"
+  - id: urban_vs_rural
+    prompt: "Compare the advantages of urban living versus rural living."
+  - id: ebooks_vs_print
+    prompt: "What are the pros and cons of e-books compared to printed books?"
+  - id: freelance_vs_employment
+    prompt: "Compare freelancing with traditional full-time employment."
+  - id: organic_vs_conventional
+    prompt: "What are the differences between organic and conventional farming?"
+
+  # =========================================================================
+  # Historical / Descriptive (facts, events) — 12 tasks
+  # =========================================================================
+  - id: french_revolution
+    prompt: "Describe the key events of the French Revolution."
+  - id: internet
+    prompt: "How did the internet develop over time?"
+  - id: printing_press
+    prompt: "What impact did the printing press have on society?"
+  - id: space_exploration
+    prompt: "Describe the major milestones in space exploration."
+  - id: silk_road
+    prompt: "Describe the historical significance of the Silk Road."
+  - id: industrial_revolution
+    prompt: "What were the main causes and effects of the Industrial Revolution?"
+  - id: ancient_egypt
+    prompt: "Describe daily life in ancient Egypt."
+  - id: cold_war
+    prompt: "What were the key events and tensions of the Cold War?"
+  - id: roman_empire
+    prompt: "How did the Roman Empire rise and eventually fall?"
+  - id: world_war_2
+    prompt: "Describe the major turning points of World War II."
+  - id: renaissance
+    prompt: "What was the Renaissance and why was it important?"
+  - id: civil_rights_movement
+    prompt: "Describe the key events of the American civil rights movement."

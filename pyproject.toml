@@ -10,6 +10,11 @@ dependencies = [
     # Language detection
     "langdetect>=1.0.9",
 
+    # Text analysis (verify_utils)
+    "emoji>=2.0.0",
+    "syllapy>=0.7.2",
+    "setuptools>=69.0.0,<81.0.0",
+
     # Data processing
     # numpy<2.0: TransformerLens, nnterp, and nnsight rely on numpy 1.x APIs
     # (removed aliases like np.bool/int/float, ABI-breaking C extension changes in 2.0).
