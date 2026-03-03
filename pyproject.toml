@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     # API
     "huggingface_hub>=0.20.0",
+    "openai>=1.0.0",           # VLLMClient (OpenAI-compatible vLLM endpoint)
     "openrouter>=0.6.0",
 
     # Language detection
