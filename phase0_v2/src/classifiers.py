@@ -11,8 +11,13 @@ def classify_response(
     conflict,  # Conflict instance
     direction: str,  # "a_to_b", "b_to_a", or "none"
     args: dict,
+    threshold: float | None = None,
 ) -> tuple[str, float]:
     """Classify response using conflict's verify functions.
+
+    Args:
+        threshold: Optional override for the conflict's verify_threshold.
+            If None, uses the conflict's default threshold.
 
     Returns (label, confidence) where label is one of:
     "followed_system", "followed_user", "followed_neither", "followed_both".
@@ -27,8 +32,8 @@ def classify_response(
     # Must store args before verification (verify fns read stored args)
     conflict.build_system_prompt(direction=dir_code, **args)
 
-    sys_ok = conflict.verify_followed_system(response, direction=dir_code)
-    usr_ok = conflict.verify_followed_user(response, direction=dir_code)
+    sys_ok = conflict.verify_followed_system(response, direction=dir_code, threshold=threshold)
+    usr_ok = conflict.verify_followed_user(response, direction=dir_code, threshold=threshold)
 
     if sys_ok and not usr_ok:
         return "followed_system", 1.0

@@ -45,18 +45,28 @@ from .definitions.title_case_vs_sentence_case import TitleCaseVsSentenceCaseConf
 from .definitions.first_vs_third_person import FirstVsThirdPersonConflict
 from .definitions.questions_vs_statements import QuestionsVsStatementsConflict
 
+# -- Batch 5 --
+from .definitions.active_vs_passive_voice import ActiveVsPassiveVoiceConflict
+from .definitions.direct_answer_vs_hedging import DirectAnswerVsHedgingConflict
+from .definitions.formal_vs_casual_tone import FormalVsCasualToneConflict
+from .definitions.numbered_sections_vs_prose import NumberedSectionsVsProseConflict
+from .definitions.short_paragraphs_vs_single_block import ShortParagraphsVsSingleBlockConflict
+
 # Alphabetically sorted by class name
 _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
+    ActiveVsPassiveVoiceConflict,
     AlphabeticalFirstLettersConflict,
     BilingualEnglishPlusConflict,
     BulletsAndSubBulletsConflict,
     CapitalizationAllCapsConflict,
+    DirectAnswerVsHedgingConflict,
     DisclaimerAddVsNoneConflict,
     EachWordNewLineConflict,
     EmojiUseVsAvoidConflict,
     ExactNumberCountConflict,
     FirstVsThirdPersonConflict,
     ForbiddenWordsConflict,
+    FormalVsCasualToneConflict,
     FormatJsonYamlConflict,
     ItalicsThesisConflict,
     JsonOnlyVsPlainConflict,
@@ -69,12 +79,14 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     MinPronounCountConflict,
     MinUniqueWordsConflict,
     NoConsecutiveFirstLetterConflict,
+    NumberedSectionsVsProseConflict,
     OddEvenSyllablesConflict,
     ParagraphEndSameWordConflict,
     QuestionsVsStatementsConflict,
     RepeatAnswerTwiceConflict,
     SelfReferenceAiMentionConflict,
     SentenceChainingConflict,
+    ShortParagraphsVsSingleBlockConflict,
     StairsIndentConflict,
     StartingWordHelloGreetingsConflict,
     TemplateResponseConflict,

@@ -1,10 +1,22 @@
 # Phase 0 v2 experiment configuration
 
 models:
-  - meta-llama/Llama-3.1-8B-Instruct
+  - id: meta-llama/Llama-3.1-8B-Instruct
+    thresholds:
+      first_vs_third_person: 0.182
+      title_case_vs_sentence_case: 0.420
+      sentence_chaining: 0.750
+      alphabetical_first_letters: 0.060
+      no_consecutive_first_letter: 0.073
+      paragraph_end_same_word: 0.200
+      max_word_repeat: 0.909
+    exclude_conflicts:
+      - max_word_repeat
+      - repeat_answer_twice
+      - italics_thesis
   # - google/gemma-3-27b-it
-  - meta-llama/Llama-3.3-70B-Instruct
-  - meta-llama/Llama-3.2-1B-Instruct
+  - id: meta-llama/Llama-3.3-70B-Instruct
+  - id: meta-llama/Llama-3.2-1B-Instruct
   # - Qwen/Qwen2.5-7B-Instruct
   #- openai/gpt-oss-20b
 

@@ -235,3 +235,125 @@ class TestThresholdAndScoring:
     def test_default_threshold_is_0_8(self):
         c = DummyConflict()
         assert c.verify_threshold == 0.8
+
+
+def _inverted_user_fn(response: str) -> float:
+    """Returns 1 - fraction of 'g' words (inverted score)."""
+    words = response.split()
+    if not words:
+        return 1.0
+    return 1.0 - sum(1 for w in words if w.startswith("g")) / len(words)
+
+
+_inverted_user_fn.is_inverted = True  # type: ignore[attr-defined]
+
+
+class DummyFloatInvertedConflict(Conflict):
+    """Float conflict with an inverted user verify fn for threshold override testing."""
+    conflict_id = "test_float_inverted"
+    system_template = "System says {word}."
+    user_template = "User wants {word}."
+    counterbalance_quality = "none"
+    arg_keys = ["word"]
+    verify_threshold = 0.7
+
+    def verify_system_fn(response: str) -> float:
+        """Returns fraction of words starting with 'g' (direct score)."""
+        words = response.split()
+        if not words:
+            return 0.0
+        return sum(1 for w in words if w.startswith("g")) / len(words)
+
+    verify_user_fn = _inverted_user_fn
+
+
+class TestThresholdOverride:
+    def test_threshold_override_takes_precedence(self):
+        """Explicit threshold parameter overrides class attribute."""
+        c = DummyFloatConflict()
+        c.build_system_prompt(direction="a", word="x")
+        # 2/4 = 0.50 is the score. Default threshold 0.7 -> False
+        assert c.verify_followed_system("good great bad bad", direction="a") is False
+        # With threshold override 0.5 -> score >= 0.5 -> True
+        assert c.verify_followed_system("good great bad bad", direction="a", threshold=0.5) is True
+
+    def test_threshold_none_uses_default(self):
+        """threshold=None behaves identically to no parameter."""
+        c = DummyFloatConflict()
+        c.build_system_prompt(direction="a", word="x")
+        result_default = c.verify_followed_system("good great grand bad", direction="a")
+        result_none = c.verify_followed_system("good great grand bad", direction="a", threshold=None)
+        assert result_default == result_none
+
+    def test_threshold_override_with_inverted(self):
+        """Inverted check uses > (1 - override) with overridden threshold."""
+        c = DummyFloatInvertedConflict()
+        c.build_system_prompt(direction="a", word="x")
+        # Response: "good bad bad bad" -> g fraction = 0.25
+        # User fn is inverted, returns 1 - 0.25 = 0.75
+        # Default threshold 0.7: inverted check is score > (1 - 0.7) = score > 0.3 -> 0.75 > 0.3 -> True
+        assert c.verify_followed_user("good bad bad bad", direction="a") is True
+        # With threshold override 0.3: inverted check is score > (1 - 0.3) = score > 0.7 -> 0.75 > 0.7 -> True
+        assert c.verify_followed_user("good bad bad bad", direction="a", threshold=0.3) is True
+        # With threshold override 0.2: inverted check is score > (1 - 0.2) = score > 0.8 -> 0.75 > 0.8 -> False
+        assert c.verify_followed_user("good bad bad bad", direction="a", threshold=0.2) is False
+
+    def test_threshold_override_system_and_user_independent(self):
+        """Threshold override applies to both system and user verify calls."""
+        c = DummyFloatConflict()
+        c.build_system_prompt(direction="a", word="x")
+        # "good bad" -> system score 0.5, user score (b-words) 0.5
+        # Default threshold 0.7 -> both False
+        assert c.verify_followed_system("good bad", direction="a") is False
+        assert c.verify_followed_user("good bad", direction="a") is False
+        # With threshold 0.5 -> both True (score >= 0.5)
+        assert c.verify_followed_system("good bad", direction="a", threshold=0.5) is True
+        assert c.verify_followed_user("good bad", direction="a", threshold=0.5) is True
+
+    def test_threshold_override_does_not_affect_bool_verify(self):
+        """Threshold parameter is ignored for bool-returning verify functions."""
+        c = DummyConflict()
+        c.build_system_prompt(direction="a", word="x")
+        # Bool verify fn: "system" in response -> True regardless of threshold
+        assert c.verify_followed_system("system output", direction="a", threshold=0.99) is True
+        assert c.verify_followed_system("random text", direction="a", threshold=0.01) is False
+
+
+class TestPerModelExclusion:
+    def test_exclude_conflicts_filters_prompts(self):
+        """Model with exclude_conflicts produces fewer prompts."""
+        from phase0_v2.src.config import ModelConfig
+        from phase0_v2.conflicts.registry import get_all_conflicts
+
+        mc_full = ModelConfig(id="model-full")
+        mc_excl = ModelConfig(id="model-excl", exclude_conflicts=["max_word_repeat"])
+
+        all_conflicts = get_all_conflicts()
+        full_conflicts = [c for c in all_conflicts if c.conflict_id not in set(mc_full.exclude_conflicts)]
+        excl_conflicts = [c for c in all_conflicts if c.conflict_id not in set(mc_excl.exclude_conflicts)]
+
+        assert len(excl_conflicts) == len(full_conflicts) - 1
+
+    def test_exclude_multiple_conflicts(self):
+        """Excluding multiple conflicts removes all of them."""
+        from phase0_v2.src.config import ModelConfig
+        from phase0_v2.conflicts.registry import get_all_conflicts
+
+        excluded = ["max_word_repeat", "emoji_use_vs_avoid"]
+        mc = ModelConfig(id="model-excl", exclude_conflicts=excluded)
+
+        all_conflicts = get_all_conflicts()
+        filtered = [c for c in all_conflicts if c.conflict_id not in set(mc.exclude_conflicts)]
+
+        assert len(filtered) == len(all_conflicts) - 2
+
+    def test_empty_exclude_returns_all(self):
+        """Empty exclude_conflicts list returns all conflicts."""
+        from phase0_v2.src.config import ModelConfig
+        from phase0_v2.conflicts.registry import get_all_conflicts
+
+        mc = ModelConfig(id="model-full")
+        all_conflicts = get_all_conflicts()
+        filtered = [c for c in all_conflicts if c.conflict_id not in set(mc.exclude_conflicts)]
+
+        assert len(filtered) == len(all_conflicts)

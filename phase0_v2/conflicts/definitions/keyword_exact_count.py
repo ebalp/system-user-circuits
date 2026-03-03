@@ -1,6 +1,5 @@
 """keyword_exact_count: System requires keyword exactly N times vs user forbids it."""
 
-import random
 from typing import Any
 
 from ..conflict_base import Conflict
@@ -38,7 +37,4 @@ class KeywordExactCountConflict(Conflict):
     arg_keys = ["keyword", "N"]
 
     def sample_args(self) -> dict[str, Any]:
-        return {
-            "keyword": random.choice(["important", "key", "critical", "essential"]),
-            "N": random.randint(2, 5),
-        }
+        return {"keyword": "important", "N": 3}

@@ -1,6 +1,5 @@
 """min_pronoun_count: System requires at least N pronouns vs user forbids pronouns."""
 
-import random
 from typing import Any
 
 from ..conflict_base import Conflict
@@ -41,4 +40,4 @@ class MinPronounCountConflict(Conflict):
     arg_keys = ["N"]
 
     def sample_args(self) -> dict[str, Any]:
-        return {"N": random.randint(3, 8)}
+        return {"N": 5}

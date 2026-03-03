@@ -52,6 +52,14 @@ class CounterbalancingConfig:
 
 
 @dataclass
+class ModelConfig:
+    """Per-model configuration."""
+    id: str
+    thresholds: dict[str, float] = field(default_factory=dict)
+    exclude_conflicts: list[str] = field(default_factory=list)
+
+
+@dataclass
 class ThresholdsConfig:
     """Thresholds for go/no-go decision."""
     hierarchy_index: float
@@ -70,7 +78,7 @@ class TaskSourceConfig:
 class ExperimentConfig:
     """Complete experiment configuration for Phase 0 v2."""
     api: ApiConfig
-    models: list[str]
+    models: list[ModelConfig]
     system_templates: dict[str, SystemTemplate]  # keyed by name
     user_templates: dict[str, UserTemplate]       # keyed by name
     tasks: list[Task]
@@ -167,9 +175,29 @@ def load_config(path: str | Path) -> ExperimentConfig:
         asymmetry_warning=th_data["asymmetry_warning"],
     )
 
+    # Parse models (backwards-compatible: accepts plain strings or dicts)
+    raw_models = data["models"]
+    models: list[ModelConfig] = []
+    for entry in raw_models:
+        if isinstance(entry, str):
+            # Backwards compatible: plain model ID string
+            models.append(ModelConfig(id=entry))
+        elif isinstance(entry, dict):
+            # New format: {id: ..., thresholds: {...}, exclude_conflicts: [...]}
+            model_id = entry.get("id")
+            if not model_id:
+                raise ValueError(f"Model entry missing 'id': {entry}")
+            models.append(ModelConfig(
+                id=model_id,
+                thresholds=entry.get("thresholds", {}),
+                exclude_conflicts=entry.get("exclude_conflicts", []),
+            ))
+        else:
+            raise ValueError(f"Invalid model entry type {type(entry)}: {entry}")
+
     config = ExperimentConfig(
         api=api,
-        models=data["models"],
+        models=models,
         system_templates=system_templates,
         user_templates=user_templates,
         tasks=tasks,
@@ -247,5 +275,18 @@ def validate_config(config: ExperimentConfig) -> list[str]:
             f"Default user style '{config.default_user_style}' not found in user_templates. "
             f"Available: {sorted(config.user_templates.keys())}"
         )
+
+    # Validate model configs
+    from phase0_v2.conflicts.registry import get_conflict_ids
+    valid_ids = set(get_conflict_ids())
+    for mc in config.models:
+        for cid in mc.exclude_conflicts:
+            if cid not in valid_ids:
+                import warnings
+                warnings.warn(f"Model '{mc.id}' excludes unknown conflict '{cid}'")
+        for cid in mc.thresholds:
+            if cid not in valid_ids:
+                import warnings
+                warnings.warn(f"Model '{mc.id}' has threshold for unknown conflict '{cid}'")
 
     return errors

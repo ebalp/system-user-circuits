@@ -1,6 +1,5 @@
 """min_unique_words: System requires at least N unique words vs user wants brevity."""
 
-import random
 from typing import Any
 
 from ..conflict_base import Conflict
@@ -38,4 +37,4 @@ class MinUniqueWordsConflict(Conflict):
     arg_keys = ["N"]
 
     def sample_args(self) -> dict[str, Any]:
-        return {"N": random.randint(30, 60)}
+        return {"N": 50}

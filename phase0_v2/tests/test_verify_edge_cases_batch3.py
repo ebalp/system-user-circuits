@@ -391,12 +391,12 @@ class TestParagraphEndSameWord:
 
     def test_system_true_positive(self):
         c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy today\nLove is all about love"
+        response = "Today we enjoy today\n\nLove is all about love"
         assert c.verify_followed_system(response, direction="a") is True
 
     def test_system_false_no_bookend(self):
         c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy life\nLove is all about peace"
+        response = "Today we enjoy life\n\nLove is all about peace"
         assert c.verify_followed_system(response, direction="a") is False
 
     def test_system_single_word_paragraph(self):
@@ -407,12 +407,12 @@ class TestParagraphEndSameWord:
 
     def test_user_no_bookend(self):
         c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy life\nLove is all about peace"
+        response = "Today we enjoy life\n\nLove is all about peace"
         assert c.verify_followed_user(response, direction="a") is True
 
     def test_user_fails_when_bookended(self):
         c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy today\nLove is all about love"
+        response = "Today we enjoy today\n\nLove is all about love"
         assert c.verify_followed_user(response, direction="a") is False
 
     def test_system_case_insensitive(self):
@@ -425,7 +425,7 @@ class TestParagraphEndSameWord:
         c = _prepare("paragraph_end_same_word")
         # With asymmetric threshold (> 1-0.2 = > 0.8), need bookend score < 0.2.
         # Two paragraphs, neither bookending → bookend=0.0 → inverted=1.0 > 0.8
-        response = "The world is beautiful now\nBirds sing in the morning light"
+        response = "The world is beautiful now\n\nBirds sing in the morning light"
         assert c.verify_followed_user(response, direction="a") is True
 
     def test_empty_lines_ignored(self):
@@ -436,15 +436,35 @@ class TestParagraphEndSameWord:
 
     def test_direction_b(self):
         c = _prepare("paragraph_end_same_word", direction="b")
-        no_bookend = "Today we enjoy life\nLove is all about peace"
+        no_bookend = "Today we enjoy life\n\nLove is all about peace"
         assert c.verify_followed_system(no_bookend, direction="b") is True
-        bookended = "Today we enjoy today\nLove is all about love"
+        bookended = "Today we enjoy today\n\nLove is all about love"
         assert c.verify_followed_user(bookended, direction="b") is True
 
     def test_punctuation_stripped_from_bookend(self):
         """Punctuation at end is stripped by the verifier."""
         c = _prepare("paragraph_end_same_word")
         response = "love is all about love."
+        assert c.verify_followed_system(response, direction="a") is True
+
+    def test_paragraph_bookend_single_newline_not_split(self):
+        """Single newline should NOT create paragraph boundary."""
+        c = _prepare("paragraph_end_same_word")
+        # Two lines but same paragraph (single \n) — treated as one paragraph
+        # "today we enjoy today\nline two ending with today" → first word "today", last word "today"
+        response = "Today we enjoy today\nLine two ending with today"
+        assert c.verify_followed_system(response, direction="a") is True
+
+    def test_paragraph_bookend_double_newline_splits(self):
+        """Double newline creates paragraph boundary."""
+        c = _prepare("paragraph_end_same_word")
+        response = "Today we enjoy today\n\nLove is all about love"
+        assert c.verify_followed_system(response, direction="a") is True
+
+    def test_paragraph_bookend_triple_newline(self):
+        """Triple newline still creates just one paragraph boundary."""
+        c = _prepare("paragraph_end_same_word")
+        response = "Today we enjoy today\n\n\nLove is all about love"
         assert c.verify_followed_system(response, direction="a") is True
 
 
@@ -613,13 +633,20 @@ class TestTemplateResponse:
         response = "The sky is blue and I think it looks wonderful today."
         assert c.verify_followed_user(response, direction="a") is True
 
-    def test_user_fails_with_my_answer(self):
+    def test_user_fails_with_all_template_markers(self):
+        """User check fails only when ALL template markers are present (complementary of system)."""
         c = _prepare("template_response")
-        response = "My Answer: The sky is blue."
+        response = "My Answer: The sky. My Conclusion: Nice. Future Outlook: Good."
         assert c.verify_followed_user(response, direction="a") is False
 
+    def test_user_passes_with_partial_markers(self):
+        """Partial markers (not all 3) pass user check — complementary of has_template_markers."""
+        c = _prepare("template_response")
+        response = "My Answer: The sky is blue."
+        assert c.verify_followed_user(response, direction="a") is True
+
     def test_user_allows_conclusion_without_answer(self):
-        """'My Conclusion:' alone does not fail user check -- only 'My Answer:' matters."""
+        """'My Conclusion:' alone passes user check (not all 3 markers)."""
         c = _prepare("template_response")
         response = "My Conclusion: The sky is blue. Future Outlook: sunny."
         assert c.verify_followed_user(response, direction="a") is True
@@ -658,6 +685,24 @@ class TestTemplateResponse:
         response = "This is My Answe to the question."
         assert c.verify_followed_user(response, direction="a") is True
 
+    def test_no_template_is_complement_of_has_template_markers(self):
+        """no_template should be exactly not has_template_markers."""
+        from phase0_v2.conflicts.verify_utils import has_template_markers, no_template
+
+        # Text with only "My Conclusion:" — previously was a gap
+        text_conclusion_only = "My Conclusion: This is the conclusion."
+        assert has_template_markers(text_conclusion_only) == (not no_template(text_conclusion_only))
+
+        # Text with all markers
+        text_all = "My Answer: Yes.\nMy Conclusion: Done.\nFuture Outlook: Good."
+        assert has_template_markers(text_all) is True
+        assert no_template(text_all) is False
+
+        # Plain text
+        text_plain = "Just a regular response."
+        assert has_template_markers(text_plain) is False
+        assert no_template(text_plain) is True
+
 
 # ===========================================================================
 # Cross-cutting edge cases
@@ -668,7 +713,7 @@ class TestCrossCuttingEdgeCases:
 
     def test_multiline_paragraph_bookend(self):
         c = _prepare("paragraph_end_same_word")
-        response = "Light fills the room with light\nHope guides us toward hope\nJoy is the source of joy"
+        response = "Light fills the room with light\n\nHope guides us toward hope\n\nJoy is the source of joy"
         assert c.verify_followed_system(response, direction="a") is True
 
     def test_newlines_in_sentence_chaining(self):

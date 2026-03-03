@@ -1,6 +1,5 @@
 """max_sentence_length: System enforces short sentences vs user requests long ones."""
 
-import random
 from typing import Any
 
 from ..conflict_base import Conflict
@@ -42,5 +41,4 @@ class MaxSentenceLengthConflict(Conflict):
     arg_keys = ["N", "min_words"]
 
     def sample_args(self) -> dict[str, Any]:
-        n = random.randint(6, 10)
-        return {"N": n, "min_words": random.randint(n + 2, 16)}
+        return {"N": 8, "min_words": 12}

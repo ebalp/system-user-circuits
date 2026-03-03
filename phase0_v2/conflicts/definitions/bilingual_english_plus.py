@@ -1,6 +1,5 @@
 """bilingual_english_plus: System enforces bilingual response vs user requests English only."""
 
-import random
 from typing import Any
 
 from ..conflict_base import Conflict
@@ -42,10 +41,4 @@ class BilingualEnglishPlusConflict(Conflict):
     arg_keys = ["language", "language_code"]
 
     def sample_args(self) -> dict[str, Any]:
-        pool = [
-            ("Spanish", "es"),
-            ("French", "fr"),
-            ("German", "de"),
-        ]
-        name, code = random.choice(pool)
-        return {"language": name, "language_code": code}
+        return {"language": "Spanish", "language_code": "es"}

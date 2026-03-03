@@ -1,7 +1,11 @@
 """Test configuration loading and validation."""
 
+import os
+import tempfile
 import pytest
-from phase0_v2.src.config import load_config
+import yaml
+from pathlib import Path
+from phase0_v2.src.config import load_config, ModelConfig
 
 
 @pytest.fixture
@@ -15,6 +19,8 @@ class TestConfigLoading:
 
     def test_models_present(self, config):
         assert len(config.models) >= 1
+        assert isinstance(config.models[0], ModelConfig)
+        assert isinstance(config.models[0].id, str)
 
     def test_tasks_loaded(self, config):
         assert len(config.tasks) >= 50, f"Expected ~50 tasks, got {len(config.tasks)}"
@@ -78,3 +84,116 @@ class TestConditions:
 
     def test_five_user_styles(self, config):
         assert len(config.user_styles_to_test) == 5
+
+
+def _make_test_config(models_section, tmpdir):
+    """Create a minimal experiment YAML with the given models section.
+
+    Returns the path to the config file.
+    """
+    # Create a tasks file
+    tasks_file = os.path.join(tmpdir, "tasks.yaml")
+    with open(tasks_file, "w") as f:
+        yaml.dump({"tasks": [{"id": "t1", "prompt": "Hello."}]}, f)
+
+    config_data = {
+        "models": models_section,
+        "api": {"timeout": 60, "max_retries": 3, "concurrent_per_model": 1},
+        "system_templates": {"bare": "{system_instruction}"},
+        "user_templates": {"with_instruction": "{user_instruction}\n\n{task}"},
+        "conditions": ["A", "B", "C", "D"],
+        "condition_c_system_styles": ["bare"],
+        "user_styles_to_test": ["with_instruction"],
+        "default_system_style": "bare",
+        "default_user_style": "with_instruction",
+        "counterbalancing": {"enabled": False},
+        "generation": {"temperature": 0.0, "max_tokens": 512, "instances_per_cell": 1},
+        "task_sources": {"synthetic": {"file": "tasks.yaml"}},
+        "thresholds": {"hierarchy_index": 0.7, "conflict_resolution": 0.8, "asymmetry_warning": 0.15},
+        "seed": 42,
+    }
+    config_path = os.path.join(tmpdir, "experiment.yaml")
+    with open(config_path, "w") as f:
+        yaml.dump(config_data, f)
+    return config_path
+
+
+class TestModelConfig:
+    def test_string_format_backward_compatible(self, tmp_path):
+        """Plain string model ID creates ModelConfig with defaults."""
+        config_path = _make_test_config(["model-a", "model-b"], str(tmp_path))
+        config = load_config(config_path)
+        assert len(config.models) == 2
+        assert isinstance(config.models[0], ModelConfig)
+        assert config.models[0].id == "model-a"
+        assert config.models[0].thresholds == {}
+        assert config.models[0].exclude_conflicts == []
+
+    def test_dict_format(self, tmp_path):
+        """Dict format with thresholds and exclude_conflicts."""
+        models = [
+            {
+                "id": "model-a",
+                "thresholds": {"first_vs_third_person": 0.2},
+                "exclude_conflicts": ["max_word_repeat"],
+            }
+        ]
+        config_path = _make_test_config(models, str(tmp_path))
+        config = load_config(config_path)
+        assert config.models[0].id == "model-a"
+        assert config.models[0].thresholds == {"first_vs_third_person": 0.2}
+        assert config.models[0].exclude_conflicts == ["max_word_repeat"]
+
+    def test_dict_format_minimal(self, tmp_path):
+        """Dict with only id, no thresholds or excludes."""
+        models = [{"id": "model-a"}]
+        config_path = _make_test_config(models, str(tmp_path))
+        config = load_config(config_path)
+        assert config.models[0].id == "model-a"
+        assert config.models[0].thresholds == {}
+        assert config.models[0].exclude_conflicts == []
+
+    def test_mixed_format(self, tmp_path):
+        """Mix of string and dict model entries."""
+        models = [
+            "model-a",
+            {"id": "model-b", "thresholds": {"emoji_use_vs_avoid": 0.5}},
+            "model-c",
+        ]
+        config_path = _make_test_config(models, str(tmp_path))
+        config = load_config(config_path)
+        assert len(config.models) == 3
+        assert config.models[0].id == "model-a"
+        assert config.models[0].thresholds == {}
+        assert config.models[1].id == "model-b"
+        assert config.models[1].thresholds == {"emoji_use_vs_avoid": 0.5}
+        assert config.models[2].id == "model-c"
+
+    def test_invalid_model_entry(self, tmp_path):
+        """Non-string, non-dict raises ValueError."""
+        models = [42]
+        config_path = _make_test_config(models, str(tmp_path))
+        with pytest.raises(ValueError, match="Invalid model entry type"):
+            load_config(config_path)
+
+    def test_dict_missing_id_raises(self, tmp_path):
+        """Dict without 'id' key raises ValueError."""
+        models = [{"thresholds": {"foo": 0.5}}]
+        config_path = _make_test_config(models, str(tmp_path))
+        with pytest.raises(ValueError, match="Model entry missing 'id'"):
+            load_config(config_path)
+
+    def test_real_config_first_model_has_thresholds(self, config):
+        """The first model in experiment.yaml should have thresholds."""
+        mc = config.models[0]
+        assert mc.id == "meta-llama/Llama-3.1-8B-Instruct"
+        assert "first_vs_third_person" in mc.thresholds
+        assert mc.thresholds["first_vs_third_person"] == pytest.approx(0.182)
+        assert "max_word_repeat" in mc.exclude_conflicts
+
+    def test_real_config_other_models_have_defaults(self, config):
+        """Models without explicit config should have empty defaults."""
+        # Find the 70B model
+        mc_70b = next(m for m in config.models if "70B" in m.id)
+        assert mc_70b.thresholds == {}
+        assert mc_70b.exclude_conflicts == []

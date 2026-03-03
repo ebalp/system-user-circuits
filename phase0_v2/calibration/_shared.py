@@ -32,11 +32,22 @@ class ConflictThresholdInfo:
     sides: dict[str, dict[str, SideInfo]] = field(default_factory=dict)
 
 
-def build_conflict_threshold_map() -> dict[str, ConflictThresholdInfo]:
-    """Build per-conflict threshold and inversion metadata from the registry."""
+def build_conflict_threshold_map(
+    threshold_overrides: dict[str, float] | None = None,
+) -> dict[str, ConflictThresholdInfo]:
+    """Build per-conflict threshold and inversion metadata from the registry.
+
+    Args:
+        threshold_overrides: Optional per-conflict threshold overrides. Maps
+            conflict_id to threshold float. Overrides the conflict class's
+            default verify_threshold.
+    """
     result = {}
     for conflict in get_all_conflicts():
-        info = ConflictThresholdInfo(threshold=conflict.verify_threshold)
+        effective_threshold = conflict.verify_threshold
+        if threshold_overrides and conflict.conflict_id in threshold_overrides:
+            effective_threshold = threshold_overrides[conflict.conflict_id]
+        info = ConflictThresholdInfo(threshold=effective_threshold)
 
         # Direction "a"
         info.sides["a"] = {
@@ -103,3 +114,23 @@ def compute_label(sys_result: bool, usr_result: bool) -> str:
         return "followed_both"
     else:
         return "followed_neither"
+
+
+def load_model_thresholds(config_path: str, model_id: str) -> dict[str, float]:
+    """Load per-model thresholds from experiment config YAML.
+
+    Args:
+        config_path: Path to the experiment.yaml config file.
+        model_id: Model ID to look up in the config's models list.
+
+    Returns:
+        Dictionary mapping conflict_id to threshold float, or empty dict
+        if the model is not found or has no thresholds.
+    """
+    from ..src.config import load_config
+
+    config = load_config(config_path)
+    for mc in config.models:
+        if mc.id == model_id:
+            return mc.thresholds
+    return {}

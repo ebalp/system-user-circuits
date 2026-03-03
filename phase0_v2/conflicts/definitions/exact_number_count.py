@@ -1,6 +1,5 @@
 """exact_number_count: System requires exactly N numbers vs user forbids numbers."""
 
-import random
 from typing import Any
 
 from ..conflict_base import Conflict
@@ -40,4 +39,4 @@ class ExactNumberCountConflict(Conflict):
     arg_keys = ["N"]
 
     def sample_args(self) -> dict[str, Any]:
-        return {"N": random.randint(2, 8)}
+        return {"N": 3}

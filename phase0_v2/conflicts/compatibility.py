@@ -17,6 +17,7 @@ INCOMPATIBLE: dict[str, set[str]] = {
     "odd_even_syllables":          {"coding", "math"},
     "first_vs_third_person":       {"coding", "math"},
     "questions_vs_statements":     {"coding", "math"},
+    "active_vs_passive_voice":     {"coding", "math"},
 }
 
 # All other conflict IDs — explicitly reviewed as compatible with all categories.
@@ -46,6 +47,10 @@ EXPLICITLY_COMPATIBLE: set[str] = {
     "max_word_repeat",
     "title_case_vs_sentence_case",
     "template_response",
+    "direct_answer_vs_hedging",
+    "formal_vs_casual_tone",
+    "numbered_sections_vs_prose",
+    "short_paragraphs_vs_single_block",
 }
 
 

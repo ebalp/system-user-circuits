@@ -203,7 +203,7 @@ class TestCrossModuleConsistency:
         assert uncovered == []
 
     def test_all_42_conflicts_registered(self):
-        assert len(get_all_conflicts()) == 33
+        assert len(get_all_conflicts()) == 38
 
     def test_prompt_count_scales_with_tasks(self, generator):
         """3 tasks should give 3x the prompts of 1 task."""
@@ -281,10 +281,10 @@ class TestRequireInvertible:
             assert cid in filtered_ids
 
     def test_filtered_count(self):
-        """33 total - 3 non-invertible = 30 invertible."""
+        """38 total - 3 non-invertible = 35 invertible."""
         all_conflicts = get_all_conflicts()
         filtered = [c for c in all_conflicts if c.supports_counterbalancing()]
-        assert len(filtered) == 30
+        assert len(filtered) == 35
 
     def test_config_parses_require_invertible(self):
         """Config correctly parses require_invertible field."""

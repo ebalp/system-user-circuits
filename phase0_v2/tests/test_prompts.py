@@ -231,7 +231,8 @@ class TestSeedIsolation:
     def test_different_seed_different_args(self, config):
         """Different global seed produces different sampled args for parameterized conflicts."""
         task = Task(id="test_task", prompt="Explain photosynthesis.")
-        conflict = get_conflict("forbidden_words")
+        # Use max_word_repeat which still has randomized sample_args
+        conflict = get_conflict("max_word_repeat")
 
         gen1 = PromptGenerator(config)
         prompts1 = gen1.generate_for_conflict(conflict, [task])

@@ -26,6 +26,7 @@ from ._shared import (
     build_conflict_threshold_map,
     direction_to_verify_code,
     apply_threshold,
+    load_model_thresholds,
     ConflictThresholdInfo,
 )
 from ..conflicts.registry import get_all_conflicts
@@ -751,6 +752,14 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--conflict", default=None, help="Filter to single conflict_id"
     )
+    parser.add_argument(
+        "--model-config", default=None,
+        help="Model ID to load per-model thresholds from experiment config",
+    )
+    parser.add_argument(
+        "--config", default="phase0_v2/config/experiment.yaml",
+        help="Path to experiment config (used with --model-config)",
+    )
     args = parser.parse_args(argv)
 
     output_dir = Path(args.output_dir)
@@ -763,7 +772,16 @@ def main(argv: list[str] | None = None) -> None:
     if args.conflict:
         print(f"Filtering to conflict: {args.conflict}")
 
-    threshold_map = build_conflict_threshold_map()
+    # Load per-model thresholds if --model-config is specified
+    threshold_overrides = None
+    if args.model_config:
+        threshold_overrides = load_model_thresholds(args.config, args.model_config)
+        if threshold_overrides:
+            print(f"Using per-model thresholds for '{args.model_config}': {len(threshold_overrides)} overrides")
+        else:
+            print(f"No thresholds found for model '{args.model_config}' in {args.config}")
+
+    threshold_map = build_conflict_threshold_map(threshold_overrides=threshold_overrides)
     constraint_labels = _build_constraint_labels()
 
     # Constraint legend

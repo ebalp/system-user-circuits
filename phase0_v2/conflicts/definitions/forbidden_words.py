@@ -1,6 +1,5 @@
 """forbidden_words: System forbids three words vs user requires them."""
 
-import random
 from typing import Any
 
 from ..conflict_base import Conflict
@@ -51,15 +50,4 @@ class ForbiddenWordsConflict(Conflict):
     arg_keys = ["word1", "word2", "word3"]
 
     def sample_args(self) -> dict[str, Any]:
-        pool = [
-            "however",
-            "important",
-            "actually",
-            "specific",
-            "example",
-            "consider",
-            "basically",
-            "therefore",
-        ]
-        chosen = random.sample(pool, 3)
-        return {"word1": chosen[0], "word2": chosen[1], "word3": chosen[2]}
+        return {"word1": "however", "word2": "important", "word3": "example"}

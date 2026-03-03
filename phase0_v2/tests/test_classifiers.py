@@ -46,3 +46,25 @@ class TestClassifyResponse:
         label, conf = classify_response("text", c, "none", {})
         # Exact label depends on verify fn behavior, but types are correct
         assert isinstance(label, str) and isinstance(conf, float)
+
+
+class TestClassifyResponseThreshold:
+    def test_threshold_none_same_as_default(self):
+        """threshold=None produces identical results to no threshold."""
+        c = get_conflict("forbidden_words")
+        args = {"word1": "algorithm", "word2": "complexity", "word3": "optimization"}
+        response = "Machine learning is powerful."
+        label_default, conf_default = classify_response(response, c, "a_to_b", args)
+        label_none, conf_none = classify_response(response, c, "a_to_b", args, threshold=None)
+        assert label_default == label_none
+        assert conf_default == conf_none
+
+    def test_threshold_parameter_accepted(self):
+        """classify_response accepts threshold parameter without error."""
+        c = get_conflict("forbidden_words")
+        args = {"word1": "algorithm", "word2": "complexity", "word3": "optimization"}
+        label, conf = classify_response(
+            "Machine learning is powerful.", c, "a_to_b", args, threshold=0.5,
+        )
+        assert label in {"followed_system", "followed_user", "followed_neither", "followed_both"}
+        assert 0.0 <= conf <= 1.0

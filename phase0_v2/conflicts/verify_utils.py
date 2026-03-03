@@ -6,17 +6,150 @@ import string
 from collections import Counter
 
 import emoji
+import nltk
 import syllapy
+
+# Ensure NLTK data is available
+for _res, _pkg in [("tokenizers/punkt_tab", "punkt_tab")]:
+    try:
+        nltk.data.find(_res)
+    except LookupError:
+        nltk.download(_pkg, quiet=True)
+
+
+def split_sentences(text: str) -> list[str]:
+    """Split text into sentences using NLTK sent_tokenize."""
+    return [s.strip() for s in nltk.sent_tokenize(text) if s.strip()]
 
 
 def count_words(text: str) -> int:
-    """Return number of space-separated words."""
-    return len(text.split())
+    """Return number of words using NLTK RegexpTokenizer."""
+    tokenizer = nltk.tokenize.RegexpTokenizer(r"\w+")
+    return len(tokenizer.tokenize(text))
 
 
 def count_unique_words(text: str) -> int:
     """Return number of unique words (lowercased, punctuation stripped)."""
     return len(set(w.strip(string.punctuation).lower() for w in text.split() if w.strip()))
+
+
+WORD_POOL = [
+    "western", "signal", "spot", "bottom", "administration", "welcome",
+    "agency", "wish", "press", "president", "brush", "beat", "growth",
+    "bone", "equal", "region", "performance", "walk", "film", "rock",
+    "total", "ease", "establishment", "parking", "plenty", "claim", "trade",
+    "street", "decision", "agreement", "coach", "brain", "style", "brown",
+    "procedure", "speed", "valuable", "session", "district", "dinner",
+    "joke", "plate", "motor", "spend", "difference", "examination", "horse",
+    "curve", "bother", "possibility", "activity", "hello", "background",
+    "author", "actor", "bicycle", "throat", "character", "increase", "file",
+    "inspector", "potential", "building", "shoe", "garden", "interview",
+    "recognition", "spiritual", "sandwich", "passenger", "response",
+    "variation", "candy", "guest", "price", "convert", "mouth", "song",
+    "suspect", "roof", "refrigerator", "jury", "engineering", "crew",
+    "description", "score", "letter", "suggestion", "national", "hall",
+    "theory", "story", "history", "medium", "glass", "stomach", "ability",
+    "village", "city", "confidence", "priest", "point", "body", "secret",
+    "noise", "warning", "round", "flower", "permission", "prompt", "abuse",
+    "save", "border", "drive", "meal", "confusion", "living", "significance",
+    "creative", "blame", "housing", "drink", "silver", "damage",
+    "environment", "savings", "tourist", "post", "grandmother", "push",
+    "final", "swim", "stuff", "funeral", "source", "tradition", "snow",
+    "distance", "sensitive", "major", "click", "period", "expression",
+    "repeat", "closet", "sail", "clothes", "duty", "step", "jump",
+    "professional", "front", "inside", "subject", "balance", "adult",
+    "sample", "wedding", "king", "wife", "camp", "safe", "fault", "shame",
+    "capital", "record", "swing", "minimum", "machine", "lead", "salary",
+    "affair", "stage", "access", "chain", "kick", "airport", "philosophy",
+    "chest", "place", "advertising", "rent", "tour", "construction", "war",
+    "spray", "task", "friend", "promotion", "surround", "purpose",
+    "conflict", "requirement", "hole", "junior", "catch", "wall", "position",
+    "respect", "coat", "teach", "resolve", "employee", "market", "serve",
+    "tone", "union", "river", "concept", "recipe", "reserve", "proof",
+    "independent", "assignment", "amount", "edge", "check", "estimate",
+    "stable", "delivery", "mirror", "representative", "nature", "fruit",
+    "town", "upper", "stay", "neck", "network", "league", "signature",
+    "importance", "engineer", "external", "simple", "student", "shift",
+    "lady", "community", "youth", "skirt", "blind", "disease", "positive",
+    "calm", "tune", "preference", "presentation", "thought", "effort",
+    "implement", "floor", "stranger", "grade", "tennis", "collection",
+    "register", "divide", "chair", "combine", "extension", "frame", "wave",
+    "mouse", "counter", "resolution", "discussion", "accident", "dress",
+    "hearing", "layer", "profile", "answer", "teacher", "belt", "equivalent",
+    "image", "risk", "remote", "produce", "sand", "punch", "title",
+    "mortgage", "number", "extent", "opinion", "dance", "material", "leader",
+    "muscle", "variety", "director", "calendar", "pace", "consequence",
+    "doctor", "share", "career", "force", "aspect", "respond", "reality",
+    "impact", "news", "series", "mother", "strike", "month", "entertainment",
+    "clue", "natural", "conversation", "earth", "percentage", "budget",
+    "beginning", "young", "store", "value", "nurse", "tower", "camera",
+    "panic", "basket", "chart", "feedback", "reputation", "exercise", "yard",
+    "collar", "plant", "passion", "spread", "ticket", "island", "object",
+    "proposal", "heat", "resident", "politics", "expert", "salt",
+    "inspection", "couple", "dependent", "chicken", "currency", "scheme",
+    "employment", "manager", "cover", "relative", "rate", "program",
+    "bridge", "talk", "vehicle", "substance", "advantage", "death",
+    "tomorrow", "request", "church", "forever", "debt", "following",
+    "sector", "economics", "bench", "solid", "income", "honey", "grocery",
+    "form", "model", "farm", "skill", "policy", "husband", "sink", "driver",
+    "leather", "boat", "brick", "rush", "location", "manufacturer",
+    "occasion", "introduction", "category", "office", "pride", "client",
+    "anybody", "individual", "interest", "profession", "resource",
+    "chocolate", "formal", "abroad", "associate", "surgery", "team", "path",
+    "initial", "demand", "contest", "contribution", "channel", "discipline",
+    "concert", "effective", "industry", "metal", "minute", "rest",
+    "argument", "health", "investment", "lesson", "marriage", "evidence",
+    "benefit", "affect", "special", "payment", "obligation", "smile",
+    "addition", "towel", "soil", "internet", "entry", "family",
+    "grandfather", "tank", "climate", "volume", "poet", "screen", "charity",
+    "tooth", "mention", "reveal", "court", "freedom", "sport", "classroom",
+    "carry", "distribution", "country", "stretch", "delay", "plastic",
+    "worry", "goal", "election", "midnight", "inflation", "challenge",
+    "coast", "campaign", "jacket", "visual", "weather", "cable", "buddy",
+    "historian", "sympathy", "tension", "person", "usual", "worth",
+    "physical", "raise", "writing", "party", "spring", "physics", "concern",
+    "change", "target", "room", "bird", "normal", "meaning", "leadership",
+    "ambition", "essay", "repair", "night", "drawing", "phase", "anger",
+    "personality", "storage", "selection", "contract", "station", "tongue",
+    "truth", "group", "move", "light", "mission", "shop", "alternative",
+    "agent", "airline", "craft", "fuel", "partner", "entrance", "article",
+    "summer", "extreme", "hospital", "fall", "piano", "gap", "report",
+    "wind", "shine", "perception", "reference", "treat", "term", "status",
+    "strategy", "enthusiasm", "concentrate", "travel", "business", "end",
+    "employ", "brave", "process", "general", "highway", "psychology",
+    "conference", "show", "weight", "club", "zone", "tonight", "excuse",
+    "landscape", "satisfaction", "disaster", "prior", "visit", "idea",
+    "comparison", "winner", "lake", "prize", "struggle", "safety",
+    "conclusion", "strain", "measurement", "train", "insurance", "tree",
+    "course", "slice", "patience", "escape", "royal", "childhood",
+    "picture", "improvement", "pitch", "transition", "committee", "teaching",
+    "complex", "people", "original", "data", "reading", "bunch", "judgment",
+    "painting", "player", "north", "carpet", "officer", "clock", "baby",
+    "assumption", "bill", "double", "finish", "brilliant", "math",
+    "restaurant", "virus", "event", "failure", "intention", "pressure",
+    "explanation", "angle", "efficiency", "habit", "chance", "transportation",
+    "flow", "injury", "surprise",
+]
+
+
+def count_alliterative_words(text: str) -> int:
+    """Count words participating in alliterative runs (consecutive words sharing first letter)."""
+    words = [w.strip(string.punctuation).lower() for w in text.split()
+             if w.strip(string.punctuation) and w.strip(string.punctuation)[0].isalpha()]
+    if len(words) < 2:
+        return 0
+    count = 0
+    in_run = False
+    for i in range(len(words) - 1):
+        if words[i][0] == words[i + 1][0]:
+            if in_run:
+                count += 1
+            else:
+                count += 2
+            in_run = True
+        else:
+            in_run = False
+    return count
 
 
 def count_numbers(text: str) -> int:
@@ -37,7 +170,7 @@ def _is_emoji_char(c: str) -> bool:
 
 def sentence_ends_with_emoji(text: str) -> bool:
     """True if every sentence ends with an emoji."""
-    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    sentences = split_sentences(text)
     for i, sentence in enumerate(sentences):
         stripped = sentence.translate(str.maketrans("", "", string.punctuation)).strip()
         if not stripped:
@@ -291,7 +424,7 @@ def is_title_case(text: str) -> float:
 
 def score_sentence_case(text: str) -> float:
     """Fraction of sentences in correct sentence case (first word caps, rest lowercase)."""
-    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    sentences = split_sentences(text)
     checked = 0
     good = 0
     for sent in sentences:
@@ -330,8 +463,8 @@ def has_template_markers(text: str) -> bool:
 
 
 def no_template(text: str) -> bool:
-    """True if text does not contain My Answer:."""
-    return "My Answer:" not in text
+    """True if text does not contain any of the template markers."""
+    return not has_template_markers(text)
 
 
 _FIRST_PERSON_RE = re.compile(r"\b(I|me|my|mine|myself)\b", re.IGNORECASE)
@@ -426,11 +559,7 @@ def no_disclaimer_caveat(text: str) -> bool:
 
 def all_sentences_max_n_words(text: str, n: int) -> bool:
     """True if every sentence has at most n words."""
-    sents = re.split(r"[.!?]+", text)
-    for s in sents:
-        s = s.strip()
-        if not s:
-            continue
+    for s in split_sentences(text):
         if count_words(s) > n:
             return False
     return True
@@ -438,11 +567,7 @@ def all_sentences_max_n_words(text: str, n: int) -> bool:
 
 def any_sentence_longer_than_n_words(text: str, n: int) -> bool:
     """True if some sentence has more than n words."""
-    sents = re.split(r"[.!?]+", text)
-    for s in sents:
-        s = s.strip()
-        if not s:
-            continue
+    for s in split_sentences(text):
         if count_words(s) > n:
             return True
     return False
@@ -450,7 +575,7 @@ def any_sentence_longer_than_n_words(text: str, n: int) -> bool:
 
 def all_sentences_min_n_words(text: str, n: int) -> bool:
     """True if there is at least one sentence and every sentence has strictly more than n words."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if not sents:
         return False
     return all(count_words(s) > n for s in sents)
@@ -537,8 +662,7 @@ def make_keyword_in_nth_sentence_verifier(keyword: str, n: int):
     pattern = re.compile(r"\b" + re.escape(keyword) + r"\b", re.IGNORECASE)
 
     def _v(response: str) -> bool:
-        sents = re.split(r"[.!?]+", response)
-        sents = [s.strip() for s in sents if s.strip()]
+        sents = split_sentences(response)
         if len(sents) < n:
             return False
         return bool(pattern.search(sents[n - 1]))
@@ -547,8 +671,8 @@ def make_keyword_in_nth_sentence_verifier(keyword: str, n: int):
 
 
 def _split_into_sentences(line: str) -> list[str]:
-    """Split line into sentences by terminal punctuation (. ! ?), not just period."""
-    return [s.strip() for s in re.split(r"[.!?]+", line) if s.strip()]
+    """Split line into sentences using NLTK sent_tokenize."""
+    return split_sentences(line)
 
 
 def has_sentences_and_bullets(text: str) -> bool:
@@ -573,7 +697,7 @@ def has_sentences_and_bullets(text: str) -> bool:
 
 def three_sentences_same_char_count(text: str) -> bool:
     """True if text has exactly 3 sentences with identical character counts."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if len(sents) != 3:
         return False
     return len(sents[0]) == len(sents[1]) == len(sents[2])
@@ -581,7 +705,7 @@ def three_sentences_same_char_count(text: str) -> bool:
 
 def check_incrementing_word_count(text: str, increment: int) -> bool:
     """True if each sentence has exactly `increment` more words than the previous one."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if len(sents) < 2:
         return False
     for i in range(len(sents) - 1):
@@ -636,7 +760,7 @@ def check_consonant_clusters(text: str) -> bool:
 
 def score_sentence_chaining(text: str) -> float:
     """Fraction of sentence transitions where last word equals first word of next."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if len(sents) < 2:
         return 0.0
     transitions = len(sents) - 1
@@ -676,7 +800,7 @@ def check_palindromes(text: str, min_count: int = 10, min_length: int = 5) -> bo
 
 def score_paragraph_bookend(text: str) -> float:
     """Fraction of non-empty paragraphs that bookend (first word == last word)."""
-    paragraphs = [p.strip().lower() for p in text.split("\n") if p.strip()]
+    paragraphs = [p.strip().lower() for p in re.split(r"\n\n+", text) if p.strip()]
     if not paragraphs:
         return 0.0
     punct_space = "".join(string.punctuation) + " "
@@ -744,7 +868,7 @@ def check_one_vowel_type(text: str) -> bool:
 
 def check_equal_sentence_word_count(text: str) -> bool:
     """True if text has ≥2 sentences and all sentences have the same word count."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if len(sents) < 2:
         return False
     lengths = [count_words(s) for s in sents]
@@ -753,7 +877,7 @@ def check_equal_sentence_word_count(text: str) -> bool:
 
 def check_strictly_increasing_sentence_lengths(text: str) -> bool:
     """True if text has ≥3 sentences with strictly increasing character counts."""
-    sents = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sents = split_sentences(text)
     if len(sents) < 3:
         return False
     for i in range(len(sents) - 1):

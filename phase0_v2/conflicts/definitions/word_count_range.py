@@ -1,6 +1,5 @@
 """word_count_range: System requires word count in range vs user wants under N words."""
 
-import random
 from typing import Any
 
 from ..conflict_base import Conflict
@@ -38,10 +37,4 @@ class WordCountRangeConflict(Conflict):
     arg_keys = ["min_n", "max_n", "under_n"]
 
     def sample_args(self) -> dict[str, Any]:
-        min_n = random.randint(80, 120)
-        under_n = min_n - random.randint(15, 35)
-        return {
-            "min_n": min_n,
-            "max_n": min_n + random.randint(20, 80),
-            "under_n": under_n,
-        }
+        return {"min_n": 100, "max_n": 150, "under_n": 30}

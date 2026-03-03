@@ -134,9 +134,12 @@ def main():
         return
 
     # Select models
-    models = config.models
+    model_configs = config.models
     if args.model:
-        models = [args.model]
+        model_configs = [mc for mc in model_configs if mc.id == args.model]
+        if not model_configs:
+            logger.error("Model '%s' not found in config", args.model)
+            return
 
     # Run experiments with parallelization across and within models
     client = HFClient()
@@ -148,26 +151,43 @@ def main():
         per_model_concurrency=concurrent_per_model,
     )
 
-    # Build work items: (model, prompt, conflict) tuples, skipping completed
-    work_items: list[tuple[str, object, object]] = []
+    # Build work items: (model_id, prompt, conflict, threshold_overrides) tuples, skipping completed
+    work_items: list[tuple[str, object, object, dict | None]] = []
     skipped = 0
-    for model in models:
-        completed_counts = runner.load_completed_hash_counts(model)
+    for model_config in model_configs:
+        model_id = model_config.id
+
+        # Filter prompts to exclude this model's excluded conflicts
+        excluded = set(model_config.exclude_conflicts)
+        if excluded:
+            model_prompts = [p for p in all_prompts if p.conflict_id not in excluded]
+            logger.info(
+                "Model %s: excluded %d conflicts (%s), %d/%d prompts remain",
+                model_id, len(excluded), ", ".join(sorted(excluded)),
+                len(model_prompts), len(all_prompts),
+            )
+        else:
+            model_prompts = all_prompts
+
+        # Get threshold overrides for this model
+        threshold_overrides = model_config.thresholds if model_config.thresholds else None
+
+        completed_counts = runner.load_completed_hash_counts(model_id)
         logger.info(
             "Model %s: %d experiments already completed",
-            model, sum(completed_counts.values()),
+            model_id, sum(completed_counts.values()),
         )
-        for prompt in all_prompts:
+        for prompt in model_prompts:
             conflict = get_conflict(prompt.conflict_id)
             if conflict is None:
                 logger.warning("Conflict not found: %s", prompt.conflict_id)
                 continue
-            key = _make_experiment_key(prompt, model, config)
+            key = _make_experiment_key(prompt, model_id, config)
             h = compute_experiment_hash(key)
             if completed_counts.get(h, 0) > 0:
                 skipped += 1
                 continue
-            work_items.append((model, prompt, conflict))
+            work_items.append((model_id, prompt, conflict, threshold_overrides))
 
     logger.info("Pending: %d, Already done: %d", len(work_items), skipped)
 
@@ -180,7 +200,7 @@ def main():
     by_model: dict[str, list] = defaultdict(list)
     for item in work_items:
         by_model[item[0]].append(item)
-    interleaved: list[tuple[str, object, object]] = []
+    interleaved: list[tuple[str, object, object, dict | None]] = []
     queues = list(by_model.values())
     while any(queues):
         for q in queues:
@@ -189,22 +209,26 @@ def main():
     work_items = interleaved
 
     # Per-model semaphores (rate limiting) and locks (safe file writes)
-    model_semaphores = {m: threading.Semaphore(concurrent_per_model) for m in models}
-    model_locks = {m: threading.Lock() for m in models}
+    model_ids = [mc.id for mc in model_configs]
+    model_semaphores = {m: threading.Semaphore(concurrent_per_model) for m in model_ids}
+    model_locks = {m: threading.Lock() for m in model_ids}
 
     def run_one(item: tuple) -> dict | None:
-        model, prompt, conflict = item
-        with model_semaphores[model]:
-            record = runner.run_single(prompt, conflict, model)
+        model_id, prompt, conflict, threshold_overrides = item
+        with model_semaphores[model_id]:
+            record = runner.run_single(
+                prompt, conflict, model_id,
+                threshold_overrides=threshold_overrides,
+            )
             # Skip saving records with errors so they can be retried next run
             if record.get("error"):
                 logger.warning("Skipping save for %s: %s", record.get("prompt_id"), record["error"][:80])
                 return record
-            with model_locks[model]:
-                runner.append_record(model, record)
+            with model_locks[model_id]:
+                runner.append_record(model_id, record)
             return record
 
-    max_workers = len(models) * concurrent_per_model
+    max_workers = len(model_configs) * concurrent_per_model
     completed_count = 0
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -215,8 +239,8 @@ def main():
                 future.result()
                 completed_count += 1
             except Exception as e:
-                model, prompt, _ = item
-                logger.error("Error running %s on %s: %s", prompt.id, model, e)
+                model_id, prompt, _, _ = item
+                logger.error("Error running %s on %s: %s", prompt.id, model_id, e)
 
     logger.info("Completed: %d, Skipped: %d", completed_count, skipped)
 

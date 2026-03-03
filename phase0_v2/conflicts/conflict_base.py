@@ -155,6 +155,7 @@ class Conflict:
 
     def _dispatch_verify(
         self, response: str, direction: str, attr_a: str, attr_b: str,
+        threshold: float | None = None,
     ) -> bool:
         """Dispatch verification: call fn, apply threshold if float, pass through if bool.
 
@@ -164,14 +165,19 @@ class Conflict:
         Since inverted_score = 1 - direct_score, these are mutually exclusive.
 
         Functions marked with is_inverted=True get the easy threshold.
+
+        Args:
+            threshold: Optional override for verify_threshold. If None, uses
+                the conflict's verify_threshold attribute.
         """
         fn = self._get_verify_fn(direction, attr_a, attr_b)
         result = self._call_verify_fn(response, direction, attr_a, attr_b)
         if isinstance(result, float):
+            effective_threshold = threshold if threshold is not None else self.verify_threshold
             if getattr(fn, "is_inverted", False):
-                return result > (1.0 - self.verify_threshold)
+                return result > (1.0 - effective_threshold)
             else:
-                return result >= self.verify_threshold
+                return result >= effective_threshold
         return result
 
     def _dispatch_score(
@@ -183,16 +189,34 @@ class Conflict:
             return 1.0 if result else 0.0
         return result
 
-    def verify_followed_system(self, response: str, direction: str = "a") -> bool:
-        """True if response satisfies the system constraint for the given direction."""
+    def verify_followed_system(
+        self, response: str, direction: str = "a",
+        threshold: float | None = None,
+    ) -> bool:
+        """True if response satisfies the system constraint for the given direction.
+
+        Args:
+            threshold: Optional override for verify_threshold. If None, uses
+                the conflict's verify_threshold attribute.
+        """
         return self._dispatch_verify(
             response, direction, "_verify_system_fn", "_verify_inverse_system_fn",
+            threshold=threshold,
         )
 
-    def verify_followed_user(self, response: str, direction: str = "a") -> bool:
-        """True if response satisfies the user (conflict) instruction for the given direction."""
+    def verify_followed_user(
+        self, response: str, direction: str = "a",
+        threshold: float | None = None,
+    ) -> bool:
+        """True if response satisfies the user (conflict) instruction for the given direction.
+
+        Args:
+            threshold: Optional override for verify_threshold. If None, uses
+                the conflict's verify_threshold attribute.
+        """
         return self._dispatch_verify(
             response, direction, "_verify_user_fn", "_verify_inverse_user_fn",
+            threshold=threshold,
         )
 
     def score_system(self, response: str, direction: str = "a") -> float:

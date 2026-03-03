@@ -1,6 +1,5 @@
 """keyword_in_nth_sentence: System requires keyword in Nth sentence vs user forbids keyword."""
 
-import random
 from typing import Any
 
 from ..conflict_base import Conflict
@@ -44,7 +43,4 @@ class KeywordInNthSentenceConflict(Conflict):
     arg_keys = ["keyword", "N"]
 
     def sample_args(self) -> dict[str, Any]:
-        return {
-            "keyword": random.choice(["important", "key", "critical", "main"]),
-            "N": random.randint(2, 6),
-        }
+        return {"keyword": "important", "N": 3}

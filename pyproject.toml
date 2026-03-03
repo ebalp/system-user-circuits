@@ -12,6 +12,7 @@ dependencies = [
 
     # Text analysis (verify_utils)
     "emoji>=2.0.0",
+    "nltk>=3.8.0",
     "syllapy>=0.7.2",
     "setuptools>=69.0.0,<81.0.0",
 

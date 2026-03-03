@@ -37,6 +37,7 @@ from ._shared import (
     direction_to_verify_code,
     apply_threshold,
     compute_label,
+    load_model_thresholds,
 )
 
 
@@ -115,6 +116,14 @@ def main(argv: list[str] | None = None) -> None:
         "--conflicts",
         default=None,
         help="Comma-separated conflict IDs to reverify (default: all). Only used with --reverify.",
+    )
+    parser.add_argument(
+        "--model-config", default=None,
+        help="Model ID to load per-model thresholds from experiment config",
+    )
+    parser.add_argument(
+        "--config", default="phase0_v2/config/experiment.yaml",
+        help="Path to experiment config (used with --model-config)",
     )
     args = parser.parse_args(argv)
 
@@ -228,13 +237,27 @@ def _run_rescore(records: list[dict], args) -> None:
     """Re-apply thresholds to stored scores."""
     threshold_overrides = _parse_thresholds(args.thresholds)
     global_threshold = args.global_threshold
-    threshold_map = build_conflict_threshold_map()
+
+    # Load per-model thresholds if --model-config is specified
+    model_thresholds: dict[str, float] = {}
+    if args.model_config:
+        model_thresholds = load_model_thresholds(args.config, args.model_config)
+        if model_thresholds:
+            print(f"Using per-model thresholds for '{args.model_config}': {len(model_thresholds)} overrides")
+        else:
+            print(f"No thresholds found for model '{args.model_config}' in {args.config}")
+
+    # Merge: CLI --thresholds take precedence over model config thresholds
+    merged_overrides = dict(model_thresholds)
+    merged_overrides.update(threshold_overrides)
+
+    threshold_map = build_conflict_threshold_map(threshold_overrides=merged_overrides)
 
     if global_threshold is not None:
         print(f"Global threshold: {global_threshold}")
-    if threshold_overrides:
-        print(f"Per-conflict overrides: {threshold_overrides}")
-    if global_threshold is None and not threshold_overrides:
+    if merged_overrides:
+        print(f"Per-conflict overrides: {merged_overrides}")
+    if global_threshold is None and not merged_overrides:
         print("No threshold overrides — using current registry thresholds (verification run)")
 
     total = 0
@@ -271,8 +294,8 @@ def _run_rescore(records: list[dict], args) -> None:
         old_threshold = info.threshold
         if global_threshold is not None:
             effective_threshold = global_threshold
-        elif cid in threshold_overrides:
-            effective_threshold = threshold_overrides[cid]
+        elif cid in merged_overrides:
+            effective_threshold = merged_overrides[cid]
         else:
             effective_threshold = old_threshold
 
