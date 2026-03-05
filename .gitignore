@@ -12,5 +12,6 @@ data/
 # Lambda AI filesystem credentials — never push to GitHub
 *.sync.env
 notes/
-plans/
-phase0_v2/calibration/output/
+#plans/
+phase0_v2/calibration/output*
+lambda_cloud/Lambda Cloud API spec 1.9.3.json
