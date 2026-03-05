@@ -23,7 +23,13 @@ uv run python -m lambda_cloud.scripts.snatch --setup
 # Bootstrap an existing instance
 uv run python -m lambda_cloud.scripts.setup_instance --ip <ip>
 
-# Launch vLLM with SSH tunnel
+# Check vLLM status
+uv run python -m lambda_cloud.scripts.launch_vllm --ip <ip> --status
+
+# Stop vLLM
+uv run python -m lambda_cloud.scripts.launch_vllm --ip <ip> --stop
+
+# Launch vLLM (reads vllm_args from config)
 uv run python -m lambda_cloud.scripts.launch_vllm --ip <ip> --model meta-llama/Llama-3.1-8B-Instruct --tunnel
 ```
 
