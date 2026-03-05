@@ -64,12 +64,11 @@ ssh.upload_file("local.txt", "/home/ubuntu/remote.txt")
 tunnel = ssh.open_tunnel(8000, 8000)    # local port forwarding
 ```
 
-### Safety nets
+### Two modes: managed vs existing instance
 
-`LambdaCloudManager` ensures instances are always terminated — even on crashes:
-- Context manager `__exit__`
-- `atexit` handler
-- SIGINT/SIGTERM signal handlers
+**Managed (auto-launch + auto-terminate):** Use `LambdaCloudManager` as a context manager. It launches an instance, runs your code, and terminates the instance when done. Safety nets ensure the instance is always terminated — even on Ctrl+C, crashes, or unhandled exceptions — via `__exit__`, `atexit`, and SIGINT/SIGTERM handlers. In `run_experiments.py`, this is `--backend lambda` without `--ip`.
+
+**Existing instance:** Use `--ip` to connect to an instance you've already launched (e.g. via `snatch`). The instance is never terminated automatically — you manage its lifecycle yourself. This is the mode used by `launch_vllm.py`, `setup_instance.py`, and `run_experiments.py --backend lambda --ip <ip>`.
 
 ## Configuration
 
