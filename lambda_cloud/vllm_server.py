@@ -16,10 +16,19 @@ logger = logging.getLogger(__name__)
 def install_vllm(ssh: SSHConnection, venv_path: str = "/home/ubuntu/vllm-venv") -> None:
     """Create a virtualenv and install vLLM on the remote instance.
 
+    Skips if vLLM is already installed in the venv.
+
     Args:
         ssh: Active SSH connection to the instance.
         venv_path: Path for the Python virtualenv on the remote.
     """
+    # Check if vLLM is already installed
+    check = ssh.run(f"test -x {venv_path}/bin/vllm && echo installed || echo missing",
+                    timeout=10, check=False)
+    if "installed" in check.stdout:
+        logger.info("vLLM already installed in %s on %s, skipping", venv_path, ssh.ip)
+        return
+
     logger.info("Installing vLLM in %s on %s", venv_path, ssh.ip)
     ssh.run(f"python3 -m venv {venv_path}", timeout=60)
     ssh.run(f"{venv_path}/bin/pip install --upgrade pip", timeout=120)
@@ -51,7 +60,7 @@ def start_vllm(
         f"--host 0.0.0.0 --port {port} {extra_args}"
     )
     # Redirect logs so we can debug remotely
-    ssh.run_background(f"bash -c '{cmd} > /var/log/vllm-server.log 2>&1'")
+    ssh.run_background(f"bash -c '{cmd} > /home/ubuntu/vllm-server.log 2>&1'")
     logger.info("vLLM started in background on %s", ssh.ip)
 
 
@@ -91,6 +100,41 @@ def wait_for_vllm_ready(
         time.sleep(interval)
     logger.warning("vLLM not ready on %s:%d after %ds", ssh.ip, port, timeout)
     return False
+
+
+def vllm_status(ssh: SSHConnection, port: int = 8000) -> dict | None:
+    """Check if vLLM is running and what model is served.
+
+    Returns:
+        Dict with 'pid', 'model', and 'cmdline' if running, None otherwise.
+    """
+    # Check for running process (character class trick avoids pgrep matching itself)
+    result = ssh.run("pgrep -fa '[v]llm serve' || true", timeout=10, check=False)
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+
+    lines = result.stdout.strip().splitlines()
+    # Parse first matching line: "PID /path/to/vllm serve model-id ..."
+    parts = lines[0].split()
+    pid = parts[0]
+    cmdline = " ".join(parts[1:])
+
+    # Try to get the served model from /v1/models endpoint
+    model = None
+    health = ssh.run(
+        f"curl -sf http://localhost:{port}/v1/models", timeout=10, check=False,
+    )
+    if health.returncode == 0 and health.stdout.strip():
+        try:
+            import json
+            data = json.loads(health.stdout)
+            models = data.get("data", [])
+            if models:
+                model = models[0].get("id")
+        except (json.JSONDecodeError, IndexError):
+            pass
+
+    return {"pid": pid, "model": model, "cmdline": cmdline}
 
 
 def stop_vllm(ssh: SSHConnection) -> None:

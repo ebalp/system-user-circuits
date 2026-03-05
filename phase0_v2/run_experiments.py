@@ -45,7 +45,10 @@ def _run_work_items(
     Returns:
         Number of successfully completed items.
     """
+    error_count = 0
+
     def run_one(item: tuple) -> dict | None:
+        nonlocal error_count
         model_id, prompt, conflict, threshold_overrides = item
         with model_semaphores[model_id]:
             record = runner.run_single(
@@ -53,10 +56,7 @@ def _run_work_items(
                 threshold_overrides=threshold_overrides,
             )
             if record.get("error"):
-                logger.warning(
-                    "Skipping save for %s: %s",
-                    record.get("prompt_id"), record["error"][:80],
-                )
+                error_count += 1
                 return record
             with model_locks[model_id]:
                 runner.append_record(model_id, record)
@@ -65,18 +65,19 @@ def _run_work_items(
     completed_count = 0
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_item = {executor.submit(run_one, item): item for item in work_items}
-        for future in tqdm(
+        pbar = tqdm(
             as_completed(future_to_item),
             total=len(work_items),
             desc="Running experiments",
-        ):
+        )
+        for future in pbar:
             item = future_to_item[future]
             try:
                 future.result()
                 completed_count += 1
             except Exception as e:
-                model_id, prompt, _, _ = item
-                logger.error("Error running %s on %s: %s", prompt.id, model_id, e)
+                error_count += 1
+            pbar.set_postfix(errors=error_count, refresh=False)
 
     return completed_count
 
@@ -110,6 +111,10 @@ def main():
     parser.add_argument(
         "--lambda-config", type=str, default="lambda_cloud/config/lambda.yaml",
         help="Lambda config YAML file (for --backend lambda)",
+    )
+    parser.add_argument(
+        "--ip", type=str,
+        help="IP of existing instance with vLLM running (for --backend lambda, skips auto-launch)",
     )
     args = parser.parse_args()
 
@@ -253,6 +258,10 @@ def main():
         logger.info("All experiments already completed.")
         return
 
+    # Shuffle work items so we don't cluster hard/easy prompts together.
+    # Uses a different seed each run so re-runs get a different order.
+    random.shuffle(work_items)
+
     # Interleave work items round-robin by model so all models get
     # dispatched to workers immediately rather than one model at a time.
     by_model_interleave: dict[str, list] = defaultdict(list)
@@ -305,7 +314,7 @@ def main():
 
     elif args.backend == "lambda":
         from lambda_cloud.ssh import SSHConnection
-        from lambda_cloud.vllm_server import install_vllm, start_vllm, wait_for_vllm_ready
+        from lambda_cloud.vllm_server import install_vllm, start_vllm, wait_for_vllm_ready, vllm_status
 
         lambda_yaml_path = Path(args.lambda_config)
         import yaml as _yaml
@@ -318,29 +327,29 @@ def main():
             by_model[item[0]].append(item)
 
         for model_id, model_items in by_model.items():
-            logger.info("Lambda: launching for %s (%d items)", model_id, len(model_items))
             lconfig = load_lambda_config(args.lambda_config, model_id)
-            with LambdaCloudManager(lconfig) as mgr:
-                ip = mgr.instance.ip
+
+            if args.ip:
+                # ── Connect to existing instance ──
+                ip = args.ip
                 ssh = SSHConnection(ip=ip, key_file=lconfig.ssh_key_file)
-                logger.info("Waiting for SSH on %s...", ip)
-                ssh.wait_for_ssh()
+                logger.info("Connecting to existing instance %s for %s (%d items)", ip, model_id, len(model_items))
 
-                logger.info("Installing vLLM on %s...", ip)
-                install_vllm(ssh, venv_path=lconfig.vllm_venv_path)
+                # Check if vLLM is already running
+                status = vllm_status(ssh, port=lconfig.vllm_port)
+                if status:
+                    logger.info("vLLM already running on %s (model=%s, pid=%s)", ip, status["model"], status["pid"])
+                else:
+                    logger.info("vLLM not running, starting on %s...", ip)
+                    install_vllm(ssh, venv_path=lconfig.vllm_venv_path)
+                    start_vllm(
+                        ssh, model_id=model_id, hf_token=lconfig.hf_token,
+                        port=lconfig.vllm_port, extra_args=lconfig.vllm_extra_args,
+                        venv_path=lconfig.vllm_venv_path,
+                    )
+                    if not wait_for_vllm_ready(ssh, port=lconfig.vllm_port, timeout=lconfig.readiness_timeout):
+                        raise RuntimeError(f"vLLM not ready on {ip} after {lconfig.readiness_timeout}s")
 
-                logger.info("Starting vLLM on %s...", ip)
-                start_vllm(
-                    ssh, model_id=model_id, hf_token=lconfig.hf_token,
-                    port=lconfig.vllm_port, extra_args=lconfig.vllm_extra_args,
-                    venv_path=lconfig.vllm_venv_path,
-                )
-
-                logger.info("Waiting for vLLM readiness on %s...", ip)
-                if not wait_for_vllm_ready(ssh, port=lconfig.vllm_port, timeout=lconfig.readiness_timeout):
-                    raise RuntimeError(f"vLLM not ready on {ip} after {lconfig.readiness_timeout}s")
-
-                # Open SSH tunnel and connect through it
                 tunnel = ssh.open_tunnel(lconfig.vllm_port, lconfig.vllm_port)
                 try:
                     client = VLLMClient(base_url=f"http://localhost:{lconfig.vllm_port}/v1")
@@ -361,6 +370,49 @@ def main():
                     tunnel.terminate()
                     tunnel.wait()
 
+            else:
+                # ── Auto-launch new instance ──
+                logger.info("Lambda: launching for %s (%d items)", model_id, len(model_items))
+                with LambdaCloudManager(lconfig) as mgr:
+                    ip = mgr.instance.ip
+                    ssh = SSHConnection(ip=ip, key_file=lconfig.ssh_key_file)
+                    logger.info("Waiting for SSH on %s...", ip)
+                    ssh.wait_for_ssh()
+
+                    logger.info("Installing vLLM on %s...", ip)
+                    install_vllm(ssh, venv_path=lconfig.vllm_venv_path)
+
+                    logger.info("Starting vLLM on %s...", ip)
+                    start_vllm(
+                        ssh, model_id=model_id, hf_token=lconfig.hf_token,
+                        port=lconfig.vllm_port, extra_args=lconfig.vllm_extra_args,
+                        venv_path=lconfig.vllm_venv_path,
+                    )
+
+                    logger.info("Waiting for vLLM readiness on %s...", ip)
+                    if not wait_for_vllm_ready(ssh, port=lconfig.vllm_port, timeout=lconfig.readiness_timeout):
+                        raise RuntimeError(f"vLLM not ready on {ip} after {lconfig.readiness_timeout}s")
+
+                    tunnel = ssh.open_tunnel(lconfig.vllm_port, lconfig.vllm_port)
+                    try:
+                        client = VLLMClient(base_url=f"http://localhost:{lconfig.vllm_port}/v1")
+                        runner = ExperimentRunner(
+                            config=config, client=client,
+                            output_dir=args.output_dir,
+                            per_model_concurrency=lambda_concurrent,
+                        )
+                        sems = {model_id: threading.Semaphore(lambda_concurrent)}
+                        locks = {model_id: threading.Lock()}
+                        completed = _run_work_items(
+                            model_items, runner, sems, locks,
+                            max_workers=lambda_concurrent,
+                        )
+                        total_completed += completed
+                        logger.info("Model %s: %d/%d done", model_id, completed, len(model_items))
+                    finally:
+                        tunnel.terminate()
+                        tunnel.wait()
+
         logger.info("Lambda total: %d completed, %d skipped", total_completed, skipped)
 
 
@@ -370,4 +422,5 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     main()

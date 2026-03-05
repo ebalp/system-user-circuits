@@ -27,6 +27,9 @@ model_gpu_map:
   Qwen/Qwen2.5-7B-Instruct:
     instance_type: gpu_1x_a10
     vllm_args: "--max-model-len 4096"
+  openai/gpt-oss-20b:
+    instance_type: gpu_1x_a100
+    vllm_args: "--max-model-len 4096"
   _default:
     instance_type: gpu_1x_a100
     vllm_args: "--max-model-len 4096"

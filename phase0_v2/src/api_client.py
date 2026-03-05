@@ -53,7 +53,6 @@ def _retry_with_backoff(
                 "429" in error_str
                 or "rate limit" in error_str
                 or "too many requests" in error_str
-                or isinstance(e, EmptyResponseError)
                 or "500" in error_str
                 or "502" in error_str
                 or "503" in error_str
@@ -244,7 +243,7 @@ class VLLMClient:
                 content=content, model=model_id, usage=usage, error=None
             )
         except Exception as e:
-            logger.error("vLLM API error: %s", e)
+            logger.debug("vLLM API error: %s", e)
             return ChatResponse(
                 content="", model=model_id, usage=None, error=str(e)
             )
@@ -263,7 +262,10 @@ class VLLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        content = response.choices[0].message.content
+        msg = response.choices[0].message
+        content = msg.content
+        # Reasoning models (e.g. gpt-oss) put output in content, thinking in reasoning.
+        # If content is empty, the model may still be reasoning (max_tokens too low).
         if content is None or (isinstance(content, str) and content.strip() == ""):
             raise EmptyResponseError(
                 f"vLLM returned empty/None response for {model_id}"

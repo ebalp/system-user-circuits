@@ -19,19 +19,30 @@ def ssh():
 
 class TestInstallVllm:
     def test_creates_venv_and_installs(self, ssh):
+        # Mock check returning "missing" so install proceeds
+        ssh.run.return_value = MagicMock(stdout="missing", returncode=0)
         install_vllm(ssh, venv_path="/home/ubuntu/venv")
 
         calls = ssh.run.call_args_list
-        assert len(calls) == 3
+        assert len(calls) == 4
+        # Checks if already installed
+        assert "installed" in calls[0][0][0]
         # Creates venv
-        assert "/home/ubuntu/venv" in calls[0][0][0]
-        assert "venv" in calls[0][0][0]
+        assert "python3 -m venv" in calls[1][0][0]
         # Upgrades pip
-        assert "pip install --upgrade pip" in calls[1][0][0]
+        assert "pip install --upgrade pip" in calls[2][0][0]
         # Installs vllm
-        assert "pip install vllm" in calls[2][0][0]
+        assert "pip install vllm" in calls[3][0][0]
+
+    def test_skips_if_already_installed(self, ssh):
+        ssh.run.return_value = MagicMock(stdout="installed", returncode=0)
+        install_vllm(ssh, venv_path="/home/ubuntu/venv")
+
+        # Only the check call, no install
+        assert ssh.run.call_count == 1
 
     def test_uses_default_venv_path(self, ssh):
+        ssh.run.return_value = MagicMock(stdout="missing", returncode=0)
         install_vllm(ssh)
         assert "/home/ubuntu/vllm-venv" in ssh.run.call_args_list[0][0][0]
 

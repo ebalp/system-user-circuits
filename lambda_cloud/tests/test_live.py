@@ -11,6 +11,7 @@ Skipped automatically if SSH to the instance fails.
 """
 
 import json
+import os
 import subprocess
 
 import pytest
@@ -22,7 +23,7 @@ from lambda_cloud.ssh import SSHConnection
 LAMBDA_SSH_HOST = "lambda"  # from ~/.ssh/config
 VLLM_REMOTE_PORT = 8000
 TUNNEL_LOCAL_PORT = 18000  # use non-standard port to avoid collisions
-MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct"
+MODEL_ID = os.environ.get("VLLM_MODEL_ID", "meta-llama/Llama-3.1-8B-Instruct")
 
 
 def _read_lambda_ip() -> str:
@@ -147,7 +148,7 @@ class TestVLLMClientLive:
             model_id=MODEL_ID,
             messages=[{"role": "user", "content": "Say hello in exactly 3 words."}],
             temperature=0.0,
-            max_tokens=32,
+            max_tokens=1024,
         )
         assert result.error is None
         assert len(result.content) > 0
@@ -171,7 +172,7 @@ class TestVLLMClientLive:
             model_id=MODEL_ID,
             messages=[{"role": "user", "content": "Hi"}],
             temperature=0.0,
-            max_tokens=16,
+            max_tokens=256,
         )
         assert result.error is None
         assert result.usage is not None
@@ -184,7 +185,7 @@ class TestVLLMClientLive:
             model_id=MODEL_ID,
             messages=[{"role": "user", "content": "Say one word."}],
             temperature=0.0,
-            max_tokens=16,
+            max_tokens=256,
         )
         # ChatResponse fields should all be serializable
         data = {

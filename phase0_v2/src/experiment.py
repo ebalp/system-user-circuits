@@ -333,7 +333,7 @@ class ExperimentRunner:
                 max_tokens=self.config.generation.max_tokens,
             )
             response_text = response.content if hasattr(response, "content") else str(response)
-            error = None
+            error = response.error if hasattr(response, "error") else None
         except Exception as e:
             response_text = ""
             error = str(e)
