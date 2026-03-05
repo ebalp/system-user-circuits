@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-1. **SSH key** — Get the Lambda SSH key (`anusha-cre-lambda-key.pem`) and place it at `~/.ssh/anusha-cre-lambda-key.pem`.
+1. **SSH key** — Either get the shared Lambda SSH key (`anusha-cre-lambda-key.pem`) and place it at `~/.ssh/anusha-cre-lambda-key.pem`, or create your own key in the [Lambda Cloud console](https://cloud.lambda.ai) under **SSH Keys** and update `ssh_key_name` and `ssh_key_file` in `lambda_cloud/config/lambda.yaml`. All scripts read the key from this config.
 
 2. **Personal bucket** — In the [Lambda Cloud console](https://cloud.lambda.ai):
    - Create a bucket under **Filesystem → S3 Adapter Filesystems** (one per person, Washington or Ohio region). Works with instances from any region.

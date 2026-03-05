@@ -32,7 +32,7 @@ DEFAULT_CONFIG = "lambda_cloud/config/lambda.yaml"
 def main():
     parser = argparse.ArgumentParser(description="Manage vLLM on a Lambda Cloud instance")
     parser.add_argument("--ip", required=True, help="Instance IP address")
-    parser.add_argument("--key-file", default="~/.ssh/anusha-cre-lambda-key.pem", help="SSH key file")
+    parser.add_argument("--key-file", default=None, help="SSH key file (default: from lambda.yaml)")
     parser.add_argument("--port", type=int, default=8000, help="vLLM server port")
 
     # Actions (mutually exclusive)
@@ -56,6 +56,15 @@ def main():
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
+
+    # Read key file from config if not specified
+    if not args.key_file:
+        try:
+            with open(args.config) as f:
+                config_data = yaml.safe_load(f)
+            args.key_file = config_data.get("ssh_key_file", "~/.ssh/id_rsa")
+        except FileNotFoundError:
+            args.key_file = "~/.ssh/id_rsa"
 
     ssh = SSHConnection(ip=args.ip, key_file=args.key_file)
 

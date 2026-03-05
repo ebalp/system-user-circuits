@@ -12,8 +12,12 @@ import glob as _glob
 import logging
 import os
 
+import yaml
+
 from lambda_cloud.instance_setup import bootstrap_instance
 from lambda_cloud.ssh import SSHConnection
+
+DEFAULT_CONFIG = "lambda_cloud/config/lambda.yaml"
 
 
 def _find_env_file() -> str | None:
@@ -37,10 +41,20 @@ def main():
         "--env-file",
         help="Local .sync.env file to upload (default: auto-discover *.sync.env in repo root)",
     )
-    parser.add_argument("--key-file", default="~/.ssh/anusha-cre-lambda-key.pem", help="SSH key file")
+    parser.add_argument("--key-file", default=None, help="SSH key file (default: from lambda.yaml)")
+    parser.add_argument("--config", default=DEFAULT_CONFIG, help="Path to lambda.yaml config")
     parser.add_argument("--branch", default="main", help="Git branch to check out")
     parser.add_argument("--wait-ssh", type=int, default=300, help="Seconds to wait for SSH")
     args = parser.parse_args()
+
+    # Read key file from config if not specified
+    if not args.key_file:
+        try:
+            with open(args.config) as f:
+                config = yaml.safe_load(f)
+            args.key_file = config.get("ssh_key_file", "~/.ssh/id_rsa")
+        except FileNotFoundError:
+            args.key_file = "~/.ssh/id_rsa"
 
     if not args.env_file:
         args.env_file = _find_env_file()
