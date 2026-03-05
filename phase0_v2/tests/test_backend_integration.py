@@ -355,8 +355,8 @@ class TestLambdaManagerIntegration:
     """Test LambdaCloudManager + VLLMClient + ExperimentRunner together."""
 
     @patch("phase0_v2.src.api_client.OpenAI")
-    def test_get_client_returns_working_vllm_client(self, mock_openai_cls, tmp_path):
-        """LambdaCloudManager.get_client() returns a VLLMClient that works with ExperimentRunner."""
+    def test_get_base_url_returns_working_url(self, mock_openai_cls, tmp_path):
+        """LambdaCloudManager.get_base_url() returns a URL that works with VLLMClient."""
         from phase0_v2.src.lambda_cloud import LambdaCloudManager, LambdaConfig, LambdaInstance
 
         mock_client_instance = MagicMock()
@@ -375,7 +375,7 @@ class TestLambdaManagerIntegration:
         mgr = LambdaCloudManager(lconfig)
         mgr.instance = LambdaInstance("i-123", "10.0.0.1", "active")
 
-        client = mgr.get_client()
+        client = VLLMClient(base_url=mgr.get_base_url())
         assert isinstance(client, VLLMClient)
 
         config = _make_config()
@@ -388,8 +388,8 @@ class TestLambdaManagerIntegration:
         assert record["error"] is None
         assert record["response"] == "Sorting is fundamental."
 
-    def test_get_client_without_instance_raises(self):
-        """LambdaCloudManager.get_client() raises when no instance launched."""
+    def test_get_base_url_without_instance_raises(self):
+        """LambdaCloudManager.get_base_url() raises when no instance launched."""
         from phase0_v2.src.lambda_cloud import LambdaCloudManager, LambdaConfig
 
         lconfig = LambdaConfig(
@@ -401,14 +401,11 @@ class TestLambdaManagerIntegration:
         mgr = LambdaCloudManager(lconfig)
 
         with pytest.raises(RuntimeError, match="No instance launched"):
-            mgr.get_client()
+            mgr.get_base_url()
 
-    @patch("phase0_v2.src.api_client.OpenAI")
-    def test_lambda_client_base_url_uses_instance_ip(self, mock_openai_cls):
-        """get_client() should construct a VLLMClient pointed at the instance IP."""
+    def test_lambda_base_url_uses_instance_ip(self):
+        """get_base_url() should return URL using the instance IP."""
         from phase0_v2.src.lambda_cloud import LambdaCloudManager, LambdaConfig, LambdaInstance
-
-        mock_openai_cls.return_value = MagicMock()
 
         lconfig = LambdaConfig(
             api_key="k", ssh_key_name="s",
@@ -419,19 +416,18 @@ class TestLambdaManagerIntegration:
         mgr = LambdaCloudManager(lconfig)
         mgr.instance = LambdaInstance("i-456", "192.168.1.1", "active")
 
-        client = mgr.get_client()
-        assert client.base_url == "http://192.168.1.1:9000/v1"
+        assert mgr.get_base_url() == "http://192.168.1.1:9000/v1"
 
     def test_lambda_config_yaml_exists(self):
         """The lambda.yaml config file should exist."""
         from pathlib import Path
-        assert Path("phase0_v2/config/lambda.yaml").exists()
+        assert Path("lambda_cloud/config/lambda.yaml").exists()
 
     def test_lambda_config_has_required_keys(self):
         """lambda.yaml should have expected top-level keys."""
         from pathlib import Path
         import yaml
-        data = yaml.safe_load(Path("phase0_v2/config/lambda.yaml").read_text())
+        data = yaml.safe_load(Path("lambda_cloud/config/lambda.yaml").read_text())
         assert "ssh_key_name" in data
         assert "defaults" in data
         assert "model_gpu_map" in data
@@ -440,7 +436,7 @@ class TestLambdaManagerIntegration:
         """Each model in gpu_map should have an instance_type."""
         from pathlib import Path
         import yaml
-        data = yaml.safe_load(Path("phase0_v2/config/lambda.yaml").read_text())
+        data = yaml.safe_load(Path("lambda_cloud/config/lambda.yaml").read_text())
         for model_id, settings in data["model_gpu_map"].items():
             assert "instance_type" in settings, f"{model_id} missing instance_type"
 
@@ -448,7 +444,7 @@ class TestLambdaManagerIntegration:
         """defaults section should have expected fields."""
         from pathlib import Path
         import yaml
-        data = yaml.safe_load(Path("phase0_v2/config/lambda.yaml").read_text())
+        data = yaml.safe_load(Path("lambda_cloud/config/lambda.yaml").read_text())
         defaults = data["defaults"]
         assert "region" in defaults
         assert "vllm_port" in defaults

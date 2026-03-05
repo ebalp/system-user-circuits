@@ -53,3 +53,8 @@ dependencies = [
     "nnterp>=0.1.0",
     "nnsight>=0.3.0",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "live: tests that require a running vLLM server (access via SSH tunnel)",
+]

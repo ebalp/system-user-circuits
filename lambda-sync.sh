@@ -4,12 +4,16 @@
 # Code goes in GitHub. Data (results, reports, etc.) goes in the bucket.
 #
 # Usage:
+#   ./lambda-sync.sh <setup|upload|download> [path ...]
 #   ./lambda-sync.sh <config-file> <setup|upload|download> [path ...]
 #
+# If no config file is given, auto-discovers .sync.env or the sole *.sync.env
+# in the current directory.
+#
 # Examples:
-#   ./lambda-sync.sh enrique.sync.env upload
-#   ./lambda-sync.sh enrique.sync.env upload phase0/data/results
-#   ./lambda-sync.sh enrique.sync.env download phase0/data
+#   ./lambda-sync.sh upload
+#   ./lambda-sync.sh download phase0/data
+#   ./lambda-sync.sh myname.sync.env upload phase0/data/results
 #
 # Patterns in .syncignore (repo root) are excluded from every sync.
 
@@ -17,12 +21,39 @@ set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-CONFIG_FILE="${1:-}"
-MODE="${2:-}"
-PATHS=("${@:3}")
+# ---------- Resolve config file ----------
+# If first arg is a mode keyword, auto-discover the env file
+_auto_discover_env() {
+    if [[ -f ".sync.env" ]]; then
+        echo ".sync.env"
+        return
+    fi
+    local matches=( *.sync.env )
+    if [[ ${#matches[@]} -eq 1 && -f "${matches[0]}" ]]; then
+        echo "${matches[0]}"
+        return
+    fi
+    if [[ ${#matches[@]} -gt 1 ]]; then
+        echo -e "${RED}Multiple .sync.env files found: ${matches[*]}${NC}" >&2
+        echo -e "${RED}Use: $0 <config-file> <mode>${NC}" >&2
+    else
+        echo -e "${RED}No .sync.env file found. Create one from sync.env.template.${NC}" >&2
+    fi
+    exit 1
+}
+
+if [[ "${1:-}" == "setup" || "${1:-}" == "upload" || "${1:-}" == "download" ]]; then
+    CONFIG_FILE=$(_auto_discover_env)
+    MODE="${1:-}"
+    PATHS=("${@:2}")
+else
+    CONFIG_FILE="${1:-}"
+    MODE="${2:-}"
+    PATHS=("${@:3}")
+fi
 
 if [[ -z "$CONFIG_FILE" || -z "$MODE" ]]; then
-    echo -e "${RED}Usage: $0 <config-file> <setup|upload|download> [path ...]${NC}"
+    echo -e "${RED}Usage: $0 [config-file] <setup|upload|download> [path ...]${NC}"
     exit 1
 fi
 

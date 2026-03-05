@@ -1,48 +1,71 @@
-# Setup
+# Quick Start
 
-## 1. Personal bucket
+## Prerequisites
 
-Data is stored in a personal Lambda filesystem in Washington DC (`us-east-2` or `us-east-3`), which exposes an S3-compatible API. There is one per person — see `SYNC.md` for how to create yours.
+1. **SSH key** — Get the Lambda SSH key (`anusha-cre-lambda-key.pem`) and place it at `~/.ssh/anusha-cre-lambda-key.pem`.
 
-## 2. Launch an instance
+2. **Personal bucket** — In the [Lambda Cloud console](https://cloud.lambda.ai):
+   - Create a bucket under **Filesystem → S3 Adapter Filesystems** (one per person, Washington or Ohio region). Works with instances from any region.
+   - Generate S3 credentials under **Filesystem → S3 Adapter Keys**.
+   - Generate a GitHub token at **GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)** with `repo` scope.
 
-Launch an instance without attaching any filesystem. The local instance disk (512GB) is used as ephemeral working space; all results are pushed to the personal bucket before terminating.
+3. **Credentials file** — Copy `sync.env.template` to `.sync.env` and fill in your values. If you want Claude Code to use OpenRouter, uncomment the OpenRouter block. This file is gitignored.
 
-## 3. Open a terminal
-
-**Option A — JupyterLab (browser)**
-
-Log into JupyterLab on your Lambda instance and open a terminal from the Launcher (**+** → **Terminal**).
-
-**Option B — VS Code Remote SSH (local editor)**
-
-1. Install the [Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh) extension in your local VS Code.
-2. Add an SSH entry in `~/.ssh/config` using the host/IP and key shown on your Lambda instance dashboard:
+4. **SSH config** — Add an entry to `~/.ssh/config`:
    ```
-   Host lambda-instance
+   Host lambda
        HostName <instance-ip>
        User ubuntu
-       IdentityFile ~/.ssh/<your-lambda-key>
+       IdentityFile ~/.ssh/anusha-cre-lambda-key.pem
    ```
-3. Press **F1** → **Remote-SSH: Connect to Host…** → select `lambda-instance`.
-4. Once connected, open a terminal via **Terminal → New Terminal** — you're now running commands directly on the instance with your local VS Code setup (themes, extensions, keybindings).
+   Update `HostName` each time you get a new instance. If you have Claude Code locally, you can run `/update-ssh-lambda <new-ip>` to update it automatically.
 
-## 4. Claude Code
-
-Install Claude Code on your Lambda instance:
+## Launch a new instance
 
 ```bash
-curl -fsSL https://claude.ai/install.sh | bash
+uv run python -m lambda_cloud.scripts.snatch --setup
 ```
 
-Follow the setup guide at https://code.claude.com/docs/en/setup for authentication. Claude Code is also compatible with OpenRouter if you prefer to use that instead.
+This will:
+- Auto-discover your `.sync.env` file in the repo root
+- Poll Lambda Cloud every 10s until a GPU is available
+- Launch the instance
+- Bootstrap it: upload credentials, clone repo, install Python env, install Claude Code
+- `.sync.env` is auto-sourced on login (OpenRouter, HF_TOKEN, etc.)
 
-## 5. Instance bootstrap
+## Bootstrap an existing instance
 
-Once Claude Code is installed, run it and say:
+If you already have a running instance (e.g. launched from the Lambda dashboard):
 
+```bash
+uv run python -m lambda_cloud.scripts.setup_instance --ip <instance-ip>
 ```
-Clone https://github.com/ebalp/system-user-circuits and set up the instance
+
+Then update your SSH config with the new IP (`/update-ssh-lambda <ip>` if you have Claude Code locally).
+
+## Connect to the instance
+
+- **SSH** — `ssh lambda`
+- **VS Code** — Install [Remote - SSH](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh), then `F1` → `Remote-SSH: Connect to Host…` → `lambda`
+- **JupyterLab** — Open the Lambda Cloud dashboard and click the Jupyter button for your instance
+
+## After bootstrap
+
+1. **Authenticate Claude Code** — `.sync.env` is auto-sourced on login, so if you configured OpenRouter it works automatically. Just SSH in and run `claude`.
+
+2. **Download data from bucket** (if you have previous work):
+   ```bash
+   ./lambda-sync.sh download
+   ```
+
+## Data sync
+
+**Code goes in GitHub. Data goes in the bucket.** The local instance disk (512GB) is ephemeral — always upload results before terminating.
+
+```bash
+./lambda-sync.sh upload              # push results to bucket
+./lambda-sync.sh download            # restore data from bucket
+./lambda-sync.sh upload phase0/data  # sync specific paths
 ```
 
-It will walk you through everything. Have your `.sync.env` credentials file ready to paste or upload via Jupyter (see `SYNC.md`).
+By default, `upload` syncs all `*/data/` and `*/reports/` directories. `download` restores the full bucket. Both ask for confirmation. Patterns in `.syncignore` are excluded.

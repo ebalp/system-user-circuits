@@ -1,15 +1,21 @@
 # Lambda Cloud configuration for vLLM deployment
-# Used by: --backend lambda in run_experiments.py
+# Used by: lambda_cloud scripts and --backend lambda in run_experiments.py
 
-ssh_key_name: "enrique-macbook"
+ssh_key_name: "anusha-cre-lambda-key"
+ssh_key_file: "~/.ssh/anusha-cre-lambda-key.pem"
 
 defaults:
   region: us-east-1
   vllm_port: 8000
+  vllm_venv_path: /home/ubuntu/vllm-venv
   max_launch_retries: 5
   launch_retry_delay: 60
   readiness_timeout: 900  # 15 min for model download + load
   concurrent_per_model: 10  # vLLM handles batching natively
+
+instance_preferences:
+  - gpu_1x_a100
+  - gpu_1x_a100_sxm4
 
 model_gpu_map:
   meta-llama/Llama-3.1-8B-Instruct:

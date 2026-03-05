@@ -108,7 +108,7 @@ def main():
         help="vLLM server URL (required for --backend vllm), e.g. http://localhost:8000/v1",
     )
     parser.add_argument(
-        "--lambda-config", type=str, default="phase0_v2/config/lambda.yaml",
+        "--lambda-config", type=str, default="lambda_cloud/config/lambda.yaml",
         help="Lambda config YAML file (for --backend lambda)",
     )
     args = parser.parse_args()
@@ -304,6 +304,9 @@ def main():
         logger.info("Completed: %d, Skipped: %d", completed_count, skipped)
 
     elif args.backend == "lambda":
+        from lambda_cloud.ssh import SSHConnection
+        from lambda_cloud.vllm_server import install_vllm, start_vllm, wait_for_vllm_ready
+
         lambda_yaml_path = Path(args.lambda_config)
         import yaml as _yaml
         _lambda_data = _yaml.safe_load(lambda_yaml_path.read_text())
@@ -318,20 +321,45 @@ def main():
             logger.info("Lambda: launching for %s (%d items)", model_id, len(model_items))
             lconfig = load_lambda_config(args.lambda_config, model_id)
             with LambdaCloudManager(lconfig) as mgr:
-                client = mgr.get_client()
-                runner = ExperimentRunner(
-                    config=config, client=client,
-                    output_dir=args.output_dir,
-                    per_model_concurrency=lambda_concurrent,
+                ip = mgr.instance.ip
+                ssh = SSHConnection(ip=ip, key_file=lconfig.ssh_key_file)
+                logger.info("Waiting for SSH on %s...", ip)
+                ssh.wait_for_ssh()
+
+                logger.info("Installing vLLM on %s...", ip)
+                install_vllm(ssh, venv_path=lconfig.vllm_venv_path)
+
+                logger.info("Starting vLLM on %s...", ip)
+                start_vllm(
+                    ssh, model_id=model_id, hf_token=lconfig.hf_token,
+                    port=lconfig.vllm_port, extra_args=lconfig.vllm_extra_args,
+                    venv_path=lconfig.vllm_venv_path,
                 )
-                sems = {model_id: threading.Semaphore(lambda_concurrent)}
-                locks = {model_id: threading.Lock()}
-                completed = _run_work_items(
-                    model_items, runner, sems, locks,
-                    max_workers=lambda_concurrent,
-                )
-                total_completed += completed
-                logger.info("Model %s: %d/%d done", model_id, completed, len(model_items))
+
+                logger.info("Waiting for vLLM readiness on %s...", ip)
+                if not wait_for_vllm_ready(ssh, port=lconfig.vllm_port, timeout=lconfig.readiness_timeout):
+                    raise RuntimeError(f"vLLM not ready on {ip} after {lconfig.readiness_timeout}s")
+
+                # Open SSH tunnel and connect through it
+                tunnel = ssh.open_tunnel(lconfig.vllm_port, lconfig.vllm_port)
+                try:
+                    client = VLLMClient(base_url=f"http://localhost:{lconfig.vllm_port}/v1")
+                    runner = ExperimentRunner(
+                        config=config, client=client,
+                        output_dir=args.output_dir,
+                        per_model_concurrency=lambda_concurrent,
+                    )
+                    sems = {model_id: threading.Semaphore(lambda_concurrent)}
+                    locks = {model_id: threading.Lock()}
+                    completed = _run_work_items(
+                        model_items, runner, sems, locks,
+                        max_workers=lambda_concurrent,
+                    )
+                    total_completed += completed
+                    logger.info("Model %s: %d/%d done", model_id, completed, len(model_items))
+                finally:
+                    tunnel.terminate()
+                    tunnel.wait()
 
         logger.info("Lambda total: %d completed, %d skipped", total_completed, skipped)
 

@@ -1,4 +1,4 @@
-"""Backward-compatible shim — re-exports from lambda_cloud package."""
+"""Lambda Cloud infrastructure for GPU instance management and vLLM deployment."""
 
 from lambda_cloud.config import LambdaConfig, LambdaInstance, load_lambda_config
 from lambda_cloud.manager import LambdaCloudManager
