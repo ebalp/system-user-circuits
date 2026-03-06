@@ -4,15 +4,15 @@ description: "Generate a calibration report for Phase 0 v2 experiment results. U
 
 # Calibration Report Generator
 
-Generate a structured markdown calibration report from Phase 0 v2 experiment results. This skill runs the analysis tool, parses the outputs, and produces a report following the spec in `phase0_v2/calibration/iterative_calibration_process.md` section 4.
+Generate a structured markdown calibration report from Phase 0 v2 experiment results. This is a **read-only** command -- it analyzes data and produces a report but does NOT modify any conflict definitions or verifier code.
 
 ## Inputs
 
 You need:
-1. **Model ID** — e.g., `meta-llama/Llama-3.1-8B-Instruct`. Ask user if not specified.
-2. **Results file** — at `phase0_v2/data/results/{safe_model_id}_results.jsonl` where `/` in model ID becomes `_`. Confirm it exists.
-3. **Output directory** — default `phase0_v2/calibration/output/`. Ask user if they want a different one.
-4. **Report filename** — ask user for a short model name (e.g., "llama_8b") to use in `verifier_calibration_report_{name}.md`, or propose one.
+1. **Model ID** -- e.g., `meta-llama/Llama-3.1-8B-Instruct`. Ask user if not specified.
+2. **Results file** -- at `phase0_v2/data/results/{safe_model_id}_results.jsonl` where `/` in model ID becomes `_`. Confirm it exists.
+3. **Output directory** -- default `phase0_v2/calibration/output/`. Ask user if they want a different one.
+4. **Report filename** -- ask user for a short model name (e.g., "llama_8b") to use in `verifier_calibration_report_{name}.md`, or propose one.
 
 If `$ARGUMENTS` is provided, treat it as the model ID.
 
@@ -97,29 +97,9 @@ Run this command to extract all conflict descriptions at once:
 awk '/# <description>/,/# <\/description>/{print FILENAME": "$0}' phase0_v2/conflicts/definitions/*.py
 ```
 
-Parse the output to build a map of conflict_id → (type, constraint_a, constraint_b, scorer, explored). The conflict_id is the filename stem (e.g., `capitalization_all_caps.py` → `capitalization_all_caps`).
+Parse the output to build a map of conflict_id -> (type, constraint_a, constraint_b, scorer, explored). The conflict_id is the filename stem (e.g., `capitalization_all_caps.py` -> `capitalization_all_caps`).
 
-If a conflict has no `<description>` block, read its definition file and initialize one. The block goes after the module docstring, before imports:
-
-```python
-"""conflict_id: One-line summary."""
-
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: bool or float
-# constraint_a: Short phrase from system_template
-# constraint_b: Short phrase from user_template
-# scorer: What the verify function measures
-# explored: no
-# </description>
-
-from typing import Any
-```
-
-Fill in `type` (bool if verify returns bool, float if it returns float), `constraint_a`/`constraint_b` (short phrases from the templates), and `scorer` (one-line summary of what the verify function checks). Set `explored: no` for new blocks.
-
-If a conflict has a `<description>` block but is missing the `explored` field, add `# explored: no` before the closing `# </description>` tag.
+Do NOT create or modify description blocks in this command. If a conflict is missing a description, note it in the report but leave the file untouched.
 
 ## Step 5: Write the report
 
@@ -153,7 +133,7 @@ If mismatches: list them and note "Run rescore before using these results."}
 ## Constraint legend
 
 | Conflict | Constraint a | Constraint b | Type | Scorer | Thresh | BA |
-|----------|-------------|-------------|------|--------|--------|----|
+|----------|-------------|-------------|------|--------|--------|-----|
 ```
 
 Sort by BA descending. For threshold: show numeric value for float, `--` for bool.
@@ -164,7 +144,7 @@ For non-invertible conflicts, put "(non-invertible)" in Constraint b.
 ```markdown
 ## Complete conflict status
 
-### Tier 1: Reliable (min baseline >= 0.8, BA >= 0.8)
+### Tier 1: Reliable (min baseline >= 0.80, BA >= 0.80)
 
 | Conflict | Thresh | Type | SBR(a) | UCR(a) | SBR(b) | UCR(b) | BA | Anomalies |
 |----------|--------|------|--------|--------|--------|--------|----|-----------|
@@ -245,13 +225,15 @@ Apply these drop criteria:
 
 Write a specific justification per conflict citing the metrics that trigger the recommendation. "Drop" = both BA < 0.70 AND min(baseline) < 0.70. "Consider dropping" = exactly one criterion met.
 
+**IMPORTANT**: These are recommendations only. Do NOT auto-apply exclusions. Exclusion decisions are made by the human. Keeping a weak conflict in the data does no harm; removing it loses visibility.
+
 ### Section 7: Suggested improvements
 
 ```markdown
 ## Suggested improvements
 
 {Note any conflicts where:
-- Threshold needs updating (current outside optimal range) — reference the float threshold table
+- Threshold needs updating (current outside optimal range) -- reference the float threshold table
 - One baseline side is significantly weaker than the other (>0.3 gap between sides)
 - High anomaly count relative to baseline records (>10% of baseline records are anomalous)
 }
@@ -259,84 +241,20 @@ Write a specific justification per conflict citing the metrics that trigger the 
 
 This section is analytical commentary, not a fixed table. Be specific about what to fix and how.
 
-## Step 6: Present summary to user
+## Step 6: Present summary and suggest next steps
 
 After writing the report, summarize:
 - Conflicts by tier (N Tier 1, N Tier 2, N Tier 3, N Excluded)
 - Conflicts recommended for exclusion
 - Thresholds that need updating
 - Any suggested improvements
-- Ask if they want to proceed with any changes (threshold updates, exclusions, etc.)
 
-## Step 7: Diagnose unexplored conflicts with parallel analysis
+Then suggest next steps:
+- **`/calibration-diagnose`** -- to explore root causes of weak conflicts without modifying code
+- **`/calibration-optimize`** -- to fix verifiers and run the reverify-analyze-rescore pipeline
+- **`/calibration-propose`** -- to design and implement new conflict definitions
 
-Check the `explored` field in each conflict's `<description>` block (already extracted in Step 4). Any non-excluded conflict with `explored: no` that is not perfect (BA < 1.0, or any anomalies > 0, or min(baseline) < 1.0) MUST be diagnosed — this is not optional.
-
-If all imperfect conflicts are already `explored: yes`, skip this step and mention "All conflicts have been explored since their last modification."
-
-For unexplored conflicts, launch one Agent per conflict (subagent_type=general-purpose), all in parallel. Each agent receives:
-
-- The conflict's metrics (BA, baselines, anomaly counts, threshold)
-- The results file path
-- Instructions to:
-  1. Read `phase0_v2/conflicts/definitions/{conflict_id}.py`
-  2. Sample ~10 anomalous baseline records (A where label != followed_system, B where label != followed_user) using inline Python
-  3. Sample ~5 correct baseline records for comparison
-  4. Diagnose: false positives vs false negatives vs model limitation vs threshold issue
-  5. Return: root cause, confidence, recommended action (fix verifier / adjust threshold / exclude / accept as-is), and specific code changes if applicable
-
-Use this Python snippet in the agent prompt to sample anomalous records:
-
-```python
-import json, random
-records = []
-with open('{results_path}') as f:
-    for line in f:
-        r = json.loads(line)
-        if r.get('error') or r['conflict_id'] != '{conflict_id}': continue
-        if (r['condition'] == 'A' and r['label'] != 'followed_system') or \
-           (r['condition'] == 'B' and r['label'] != 'followed_user'):
-            records.append(r)
-random.seed(42)
-for r in random.sample(records, min(10, len(records))):
-    print(json.dumps({k: (v[:300] if k == 'response' else v)
-        for k, v in r.items()
-        if k in ('condition','direction','label','verify_system_score',
-                  'verify_user_score','verify_system_result','verify_user_result','response')
-    }, indent=2))
-```
-
-And this snippet to sample correct baseline records for comparison:
-
-```python
-import json, random
-records = []
-with open('{results_path}') as f:
-    for line in f:
-        r = json.loads(line)
-        if r.get('error') or r['conflict_id'] != '{conflict_id}': continue
-        if (r['condition'] == 'A' and r['label'] == 'followed_system') or \
-           (r['condition'] == 'B' and r['label'] == 'followed_user'):
-            records.append(r)
-random.seed(42)
-for r in random.sample(records, min(5, len(records))):
-    print(json.dumps({k: (v[:300] if k == 'response' else v)
-        for k, v in r.items()
-        if k in ('condition','direction','label','verify_system_score',
-                  'verify_user_score','verify_system_result','verify_user_result','response')
-    }, indent=2))
-```
-
-After all agents return, summarize findings in a table:
-
-```markdown
-| Conflict | Root cause | Confidence | Action | Details |
-|----------|-----------|------------|--------|---------|
-```
-
-After presenting findings, update each diagnosed conflict's `<description>` block: set `# explored: yes`. Then ask the user which actions to take (fix verifier, adjust threshold, exclude, etc.).
-
-## Step 8 (optional): Generate PDF
+## Step 7 (optional): Generate PDF
 
 Do NOT generate the PDF automatically. After presenting the summary in Step 6, mention that you can generate a PDF if they want one. Only proceed if the user explicitly asks.
 
@@ -362,4 +280,11 @@ The `\hspace{0pt}` after each underscore tells LaTeX it can wrap long identifier
 - Conflict registry: `phase0_v2/conflicts/registry.py`
 - Analysis tool: `phase0_v2/calibration/analyze.py`
 - Rescore tool: `phase0_v2/calibration/rescore.py`
+- Test harness: `phase0_v2/calibration/test_verifier.py`
 - Config: `phase0_v2/config/experiment.yaml`
+
+## Related commands
+
+- **`/calibration-diagnose`** -- Explore root causes of weak conflicts (read-only, no code changes)
+- **`/calibration-optimize`** -- Fix verifiers and run the reverify-analyze-rescore pipeline
+- **`/calibration-propose`** -- Design and implement new conflict definitions
