@@ -15,19 +15,30 @@ from typing import Any
 
 from ..conflict_base import Conflict
 
-_BULLET_RE = re.compile(r"^\s*-\s", re.MULTILINE)
-_NUMBERED_RE = re.compile(r"^\s*\d+[.)]\s", re.MULTILINE)
+# Top-level markers only (no or minimal leading whitespace)
+_BULLET_RE = re.compile(r"^-\s", re.MULTILINE)
+_NUMBERED_RE = re.compile(r"^(?:\*\*)?(\d+)[.)]\s", re.MULTILINE)
+
+
+def _count_top_level_bullets(text: str) -> int:
+    """Count top-level bullet markers (- at line start, no indentation)."""
+    return len(_BULLET_RE.findall(text))
+
+
+def _count_top_level_numbered(text: str) -> int:
+    """Count top-level numbered markers, including bold-wrapped (**1. ...)."""
+    return len(_NUMBERED_RE.findall(text))
 
 
 def _is_bullets(r: str) -> bool:
-    bullets = len(_BULLET_RE.findall(r))
-    numbered = len(_NUMBERED_RE.findall(r))
+    bullets = _count_top_level_bullets(r)
+    numbered = _count_top_level_numbered(r)
     return bullets > 0 and bullets > numbered
 
 
 def _is_numbered(r: str) -> bool:
-    bullets = len(_BULLET_RE.findall(r))
-    numbered = len(_NUMBERED_RE.findall(r))
+    bullets = _count_top_level_bullets(r)
+    numbered = _count_top_level_numbered(r)
     return numbered > 0 and numbered > bullets
 
 

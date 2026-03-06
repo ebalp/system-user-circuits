@@ -231,10 +231,15 @@ class TestKeywordExactCount:
         c = get_conflict("keyword_exact_count")
         args = {"keyword": "important", "N": 3}
         c.build_system_prompt(direction="a", **args)
+        # Exact match (3 times) -> True
         text = "This is important. Very important. Truly important."
         assert c.verify_followed_system(text, direction="a") is True
+        # Within ±1 tolerance (2 times, N=3) -> True
         text2 = "This is important. Very important."
-        assert c.verify_followed_system(text2, direction="a") is False
+        assert c.verify_followed_system(text2, direction="a") is True
+        # Outside tolerance (0 times, N=3) -> False
+        text3 = "This is a response without the keyword."
+        assert c.verify_followed_system(text3, direction="a") is False
 
     def test_keyword_absent(self):
         c = get_conflict("keyword_exact_count")

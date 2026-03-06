@@ -101,12 +101,26 @@ class TestMinPronounCount:
         assert c.verify_followed_user("The dog chased the cat across the yard.", direction="a") is True
 
     def test_user_has_pronouns(self):
+        # ≤4 tolerance (excl. impersonal it/its/itself): "He said it was fine."
+        # has 1 non-impersonal pronoun (he) → passes.
+        # Need >4 non-impersonal pronouns to fail.
         c = _setup("min_pronoun_count", N=3)
-        assert c.verify_followed_user("He said it was fine.", direction="a") is False
+        assert c.verify_followed_user("He said it was fine.", direction="a") is True
+        # he, her, she, them, it → 4 non-impersonal (it excluded) → passes (≤4)
+        assert c.verify_followed_user(
+            "He told her that she should ask them about it.", direction="a"
+        ) is True
+        # he, her, she, them, we → 5 non-impersonal → fails (>4)
+        assert c.verify_followed_user(
+            "He told her that she should ask them because we need answers.",
+            direction="a",
+        ) is False
 
-    def test_possessive_its_counts(self):
+    def test_impersonal_pronouns_excluded(self):
+        # Impersonal pronouns (it/its/itself) are excluded from counts.
         c = _setup("min_pronoun_count", N=1)
-        assert c.verify_followed_system("The cat licked its paw.", direction="a") is True
+        assert c.verify_followed_system("The cat licked its paw.", direction="a") is False
+        assert c.verify_followed_system("She licked its paw.", direction="a") is True
 
     def test_case_insensitive(self):
         c = _setup("min_pronoun_count", N=2)
@@ -150,13 +164,13 @@ class TestMinUniqueWords:
 
     def test_user_too_verbose(self):
         c = _setup("min_unique_words", N=40)
-        words = [f"word{i}" for i in range(30)]
+        words = [f"word{i}" for i in range(50)]
         text = " ".join(words)
         assert c.verify_followed_user(text, direction="a") is False
 
-    def test_user_exactly_25_unique(self):
+    def test_user_exactly_40_unique(self):
         c = _setup("min_unique_words", N=40)
-        words = [f"word{i}" for i in range(25)]
+        words = [f"word{i}" for i in range(40)]
         text = " ".join(words)
         assert c.verify_followed_user(text, direction="a") is True
 
@@ -186,12 +200,15 @@ class TestWordCountRange:
         assert c.verify_followed_system(text, direction="a") is True
 
     def test_system_below_range(self):
-        c = _setup("word_count_range", min_n=10, max_n=20, under_n=5)
+        # +10 tolerance: min_n-10=40. Need count < 40 to fail.
+        c = _setup("word_count_range", min_n=50, max_n=100, under_n=5)
         assert c.verify_followed_system("too short", direction="a") is False
 
     def test_system_above_range(self):
+        # +10 tolerance: max_n+10=14. Need count > 14 to fail.
         c = _setup("word_count_range", min_n=2, max_n=4, under_n=1)
-        assert c.verify_followed_system("one two three four five six", direction="a") is False
+        text = " ".join(["word"] * 20)
+        assert c.verify_followed_system(text, direction="a") is False
 
     def test_system_at_min_boundary(self):
         c = _setup("word_count_range", min_n=3, max_n=6, under_n=2)
@@ -206,12 +223,16 @@ class TestWordCountRange:
         assert c.verify_followed_user("Short response here.", direction="a") is True
 
     def test_user_at_limit(self):
+        # +10 tolerance: under_n+10=15. Need count >= 15 to fail.
         c = _setup("word_count_range", min_n=50, max_n=100, under_n=5)
-        assert c.verify_followed_user("one two three four five", direction="a") is False
+        text = " ".join(["word"] * 20)
+        assert c.verify_followed_user(text, direction="a") is False
 
     def test_user_over_limit(self):
+        # +10 tolerance: under_n+10=13. Need count >= 13 to fail.
         c = _setup("word_count_range", min_n=50, max_n=100, under_n=3)
-        assert c.verify_followed_user("one two three four", direction="a") is False
+        text = " ".join(["word"] * 20)
+        assert c.verify_followed_user(text, direction="a") is False
 
     def test_direction_b_system_under(self):
         c = _setup("word_count_range", direction="b", min_n=50, max_n=100, under_n=10)

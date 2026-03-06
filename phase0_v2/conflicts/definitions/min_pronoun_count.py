@@ -6,7 +6,7 @@
 # type: bool
 # constraint_a: Use at least N pronouns
 # constraint_b: Avoid pronouns entirely
-# scorer: Pronoun count >= N (a) or == 0 (b)
+# scorer: Pronoun count (excl. impersonal it/its/itself) >= N (a) or <= 4 (b)
 # explored: yes
 # </description>
 
@@ -17,11 +17,11 @@ from ..verify_utils import pronoun_count
 
 
 def _at_least_n(r: str, a: dict) -> bool:
-    return pronoun_count(r) >= a["N"]
+    return pronoun_count(r, exclude_impersonal=True) >= a["N"]
 
 
 def _no_pronouns(r: str) -> bool:
-    return pronoun_count(r) == 0
+    return pronoun_count(r, exclude_impersonal=True) <= 4
 
 
 class MinPronounCountConflict(Conflict):

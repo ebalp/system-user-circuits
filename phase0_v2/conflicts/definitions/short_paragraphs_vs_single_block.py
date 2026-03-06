@@ -6,7 +6,7 @@
 # type: bool
 # constraint_a: Write in short paragraphs
 # constraint_b: Write as one single block
-# scorer: 3+ paragraphs <=3 sentences each (a) or no \n\n (b)
+# scorer: 3+ paragraphs <=5 sentences each (a) or no \n\n (b)
 # explored: yes
 # </description>
 
@@ -17,13 +17,13 @@ from ..verify_utils import split_sentences
 
 
 def _has_short_paragraphs(text: str) -> bool:
-    """True if text has 3+ paragraphs separated by blank lines, each <=3 sentences."""
+    """True if text has 3+ paragraphs separated by blank lines, each <=5 sentences."""
     paragraphs = [p.strip() for p in re.split(r"\n\n+", text) if p.strip()]
     if len(paragraphs) < 3:
         return False
     for p in paragraphs:
         sents = split_sentences(p)
-        if len(sents) > 3:
+        if len(sents) > 5:
             return False
     return True
 

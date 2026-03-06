@@ -10,9 +10,15 @@
 # explored: yes
 # </description>
 
+import re
 from typing import Any
 
 from ..conflict_base import Conflict
+
+# Matches disclaimer as a section header (e.g. **Disclaimer**, ## Disclaimer)
+_DISCLAIMER_HEADER_RE = re.compile(
+    r"(?:^|\n)\s*(?:\*{1,2}|#{1,3}\s*)disclaimer", re.IGNORECASE
+)
 
 _DISCLAIMER_PHRASES = [
     # Original phrases
@@ -64,7 +70,12 @@ _DISCLAIMER_PHRASES = [
 
 def _has_disclaimer(r: str) -> bool:
     lower = r.lower()
-    return any(phrase in lower for phrase in _DISCLAIMER_PHRASES)
+    if any(phrase in lower for phrase in _DISCLAIMER_PHRASES):
+        return True
+    # Match standalone disclaimer header: **Disclaimer** (without colon)
+    if _DISCLAIMER_HEADER_RE.search(r):
+        return True
+    return False
 
 
 def _no_disclaimer(r: str) -> bool:

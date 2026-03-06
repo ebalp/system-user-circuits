@@ -6,14 +6,14 @@
 # type: bool
 # constraint_a: Never use words X, Y, Z
 # constraint_b: Incorporate words X, Y, Z
-# scorer: All 3 words absent (a) or all present (b)
+# scorer: All 3 words absent (a) or all present incl. morphological forms (b)
 # explored: yes
 # </description>
 
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import no_word_in_text, word_in_text
+from ..verify_utils import no_word_in_text, word_in_text, word_or_morphform_in_text
 
 
 def _words_absent(r: str, a: dict) -> bool:
@@ -26,9 +26,9 @@ def _words_absent(r: str, a: dict) -> bool:
 
 def _words_present(r: str, a: dict) -> bool:
     return (
-        word_in_text(a["word1"], r)
-        and word_in_text(a["word2"], r)
-        and word_in_text(a["word3"], r)
+        word_or_morphform_in_text(a["word1"], r)
+        and word_or_morphform_in_text(a["word2"], r)
+        and word_or_morphform_in_text(a["word3"], r)
     )
 
 

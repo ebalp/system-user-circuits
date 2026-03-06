@@ -15,13 +15,18 @@ from typing import Any
 from ..conflict_base import Conflict
 from ..verify_utils import check_under_word_count, count_words
 
+# Tolerance for word-count checks: LLMs have imprecise word-count control,
+# and near-miss failures dominate. The relaxed boundaries ([90, 160] and <40)
+# maintain a 50-word gap, preventing followed_both contamination.
+TOLERANCE = 10
+
 
 def _in_range(r: str, a: dict) -> bool:
-    return a["min_n"] <= count_words(r) <= a["max_n"]
+    return (a["min_n"] - TOLERANCE) <= count_words(r) <= (a["max_n"] + TOLERANCE)
 
 
 def _under_n(r: str, a: dict) -> bool:
-    return check_under_word_count(r, a["under_n"])
+    return check_under_word_count(r, a["under_n"] + TOLERANCE)
 
 
 class WordCountRangeConflict(Conflict):

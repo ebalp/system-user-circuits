@@ -246,7 +246,7 @@ class TestShortParagraphsVsSingleBlock:
 
     def test_long_paragraphs_rejected(self):
         text = (
-            "First sentence. Second sentence. Third sentence. Fourth sentence here.\n\n"
+            "First sentence. Second sentence. Third sentence. Fourth sentence. Fifth sentence. Sixth sentence here.\n\n"
             "Another paragraph. Short one.\n\n"
             "Yet another paragraph. Also short."
         )

@@ -197,32 +197,32 @@ def has_bullet_points(text: str) -> bool:
 
 
 def has_sub_bullets(text: str) -> bool:
-    """True if text has * bullet points with - sub-bullets under each.
+    """True if text has * bullet points with - sub-bullets.
 
-    Detects lines starting with '* ' followed by '- ' sub-bullet lines
-    (indented or not). Handles markdown **bold** headers without false splits.
+    Requires at least 2 bullets that each have at least one - sub-bullet.
+    Tolerates truncation (final bullet without subs is OK).
     """
     lines = text.split("\n")
     bullet_count = 0
     current_has_sub = False
-    all_have_subs = True
+    bullets_with_subs = 0
 
     for line in lines:
         stripped = line.strip()
         if re.match(r"^\*\s", stripped):
-            # New bullet point — check if previous bullet had a sub-bullet
-            if bullet_count > 0 and not current_has_sub:
-                all_have_subs = False
+            # New bullet point — record if previous bullet had a sub-bullet
+            if bullet_count > 0 and current_has_sub:
+                bullets_with_subs += 1
             bullet_count += 1
             current_has_sub = False
         elif re.match(r"^\s*-\s", stripped) and bullet_count > 0:
             current_has_sub = True
 
     # Check last bullet
-    if bullet_count > 0 and not current_has_sub:
-        all_have_subs = False
+    if bullet_count > 0 and current_has_sub:
+        bullets_with_subs += 1
 
-    return bullet_count >= 2 and all_have_subs
+    return bullets_with_subs >= 2
 
 
 def no_bullets(text: str) -> bool:
@@ -395,7 +395,11 @@ _TITLE_CASE_EXCEPTIONS = {
 
 
 def score_title_case(text: str) -> float:
-    """Fraction of major words correctly title-cased."""
+    """Fraction of major words correctly title-cased.
+
+    ALL-CAPS words (e.g. acronyms like DNA, ATP, NAFTA) are accepted as
+    valid title case since they are conventionally capitalised in titles.
+    """
     words = text.split()
     if not words:
         return 1.0
@@ -411,6 +415,9 @@ def score_title_case(text: str) -> float:
         if len(clean) == 1:
             if clean.isupper():
                 good += 1
+        elif clean.isupper():
+            # ALL-CAPS: acronyms / initialisms are valid in title case
+            good += 1
         else:
             if clean[0].isupper() and clean[1:].islower():
                 good += 1
@@ -423,7 +430,12 @@ def is_title_case(text: str) -> float:
 
 
 def score_sentence_case(text: str) -> float:
-    """Fraction of sentences in correct sentence case (first word caps, rest lowercase)."""
+    """Fraction of sentences in correct sentence case.
+
+    Uses density threshold: a sentence fails only if >50% of major
+    (non-exception) words are capitalized, indicating title case rather
+    than proper nouns in sentence case.
+    """
     sentences = split_sentences(text)
     checked = 0
     good = 0
@@ -435,19 +447,25 @@ def score_sentence_case(text: str) -> float:
         if not words:
             continue
         checked += 1
-        ok = True
+        # Check first word is capitalized
         first_clean = words[0].strip(string.punctuation)
         if first_clean and first_clean[0].isalpha() and not first_clean[0].isupper():
-            ok = False
-        if ok:
-            for w in words[1:]:
-                clean = w.strip(string.punctuation)
-                if not clean or not clean[0].isalpha():
-                    continue
-                if len(clean) > 1 and clean[0].isupper() and clean[1:].islower():
-                    ok = False
-                    break
-        if ok:
+            good += 0  # first word not capitalized = bad sentence case too
+            continue
+        # Count capitalized major words (excluding first word)
+        major_count = 0
+        cap_count = 0
+        for w in words[1:]:
+            clean = w.strip(string.punctuation)
+            if not clean or not clean[0].isalpha():
+                continue
+            if clean.lower() in _TITLE_CASE_EXCEPTIONS:
+                continue
+            major_count += 1
+            if len(clean) > 1 and clean[0].isupper() and clean[1:].islower():
+                cap_count += 1
+        # Sentence case: fewer than half of major words are capitalized
+        if major_count == 0 or cap_count / major_count <= 0.5:
             good += 1
     return good / checked if checked else 1.0
 
@@ -501,17 +519,31 @@ def score_third_person(text: str) -> float:
     return third / total
 
 
-def pronoun_count(text: str) -> int:
-    """Count total pronoun occurrences (case-insensitive, word-boundary matched)."""
-    pronouns = [
-        "i", "me", "my", "mine", "myself",
-        "we", "us", "our", "ours", "ourselves",
-        "he", "him", "his", "himself",
-        "she", "her", "hers", "herself",
-        "they", "them", "their", "theirs", "themselves",
-        "it", "its", "itself",
-        "you", "your", "yours", "yourself", "yourselves",
-    ]
+_ALL_PRONOUNS = [
+    "i", "me", "my", "mine", "myself",
+    "we", "us", "our", "ours", "ourselves",
+    "he", "him", "his", "himself",
+    "she", "her", "hers", "herself",
+    "they", "them", "their", "theirs", "themselves",
+    "it", "its", "itself",
+    "you", "your", "yours", "yourself", "yourselves",
+]
+
+_IMPERSONAL_PRONOUNS = {"it", "its", "itself"}
+
+
+def pronoun_count(text: str, exclude_impersonal: bool = False) -> int:
+    """Count total pronoun occurrences (case-insensitive, word-boundary matched).
+
+    If *exclude_impersonal* is True, skip "it", "its", "itself" — these are
+    structural/impersonal in English expository text and not the referential
+    pronouns that "avoid pronouns" constraints target.
+    """
+    pronouns = (
+        [p for p in _ALL_PRONOUNS if p not in _IMPERSONAL_PRONOUNS]
+        if exclude_impersonal
+        else _ALL_PRONOUNS
+    )
     lower = text.lower()
     count = 0
     for p in pronouns:
@@ -527,6 +559,21 @@ def word_in_text(word: str, text: str) -> bool:
 def no_word_in_text(word: str, text: str) -> bool:
     """True if word does not appear in text as a whole word (case-insensitive)."""
     return not word_in_text(word, text)
+
+
+def word_or_morphform_in_text(word: str, text: str) -> bool:
+    """True if *word* or a common English morphological variant appears in text.
+
+    Accepts the base form plus forms with standard derivational/inflectional
+    suffixes (e.g. "example" matches "examples", "important" matches
+    "importantly"/"importance").  Useful for checking whether the model
+    *attempted* to incorporate a required word.
+    """
+    if word_in_text(word, text):
+        return True
+    # Match base form + one common suffix (covers plurals, adverbs, nominals)
+    pattern = r"\b" + re.escape(word.lower()) + r"(?:s|es|ly|ness|ity|ment|ance|ence|er|ed|ing)\b"
+    return bool(re.search(pattern, text.lower()))
 
 
 def count_word_occurrences(word: str, text: str) -> int:
@@ -558,9 +605,13 @@ def no_disclaimer_caveat(text: str) -> bool:
 
 
 def all_sentences_max_n_words(text: str, n: int) -> bool:
-    """True if every sentence has at most n words."""
+    """True if every sentence has at most n words.
+
+    Allows +1 tolerance to account for hyphenated words (e.g. "E-books")
+    that ``count_words`` splits into two tokens.
+    """
     for s in split_sentences(text):
-        if count_words(s) > n:
+        if count_words(s) > n + 1:
             return False
     return True
 
@@ -574,8 +625,14 @@ def any_sentence_longer_than_n_words(text: str, n: int) -> bool:
 
 
 def all_sentences_min_n_words(text: str, n: int) -> bool:
-    """True if there is at least one sentence and every sentence has strictly more than n words."""
+    """True if there is at least one sentence and every sentence has strictly more than n words.
+
+    Fragments with <=5 words (e.g., NLTK markdown-header or list-marker splits)
+    are excluded to avoid penalizing non-sentence fragments.
+    """
     sents = split_sentences(text)
+    # Filter out NLTK fragments (markdown headers, list markers, bullet labels)
+    sents = [s for s in sents if count_words(s) > 5]
     if not sents:
         return False
     return all(count_words(s) > n for s in sents)
@@ -600,7 +657,7 @@ def response_repeated_twice(text: str) -> bool:
 
 
 def is_valid_json_object(text: str) -> bool:
-    """True if text parses as a single JSON object."""
+    """True if text parses as a single JSON object, or looks like truncated JSON."""
     t = text.strip()
     if not t or not t.startswith("{"):
         return False
@@ -608,14 +665,32 @@ def is_valid_json_object(text: str) -> bool:
         parsed = json.loads(t)
         return isinstance(parsed, dict)
     except (json.JSONDecodeError, ValueError):
+        # Truncation-aware: if starts with { and has key-value patterns, accept
+        if re.search(r'"[^"]+"\s*:', t):
+            return True
         return False
+
+
+def _strip_markdown(text: str) -> str:
+    """Strip markdown formatting that confuses langdetect.
+
+    Removes **bold**, *italic*, and # header markers so that
+    langdetect sees only the underlying language content.
+    """
+    # Remove bold/italic markers
+    text = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", text)
+    # Remove leading header markers
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    return text
 
 
 def _detect_lang(segment: str) -> str | None:
     """Return ISO 639-1 code for segment or None if detection fails. Requires langdetect."""
     try:
-        from langdetect import detect
-        return detect(segment)
+        from langdetect import detect, DetectorFactory
+        DetectorFactory.seed = 0
+        cleaned = _strip_markdown(segment)
+        return detect(cleaned)
     except Exception:
         return None
 
@@ -626,7 +701,7 @@ _SPANISH_FAMILY = {"es", "ca", "pt"}
 
 def response_has_english_and_language(text: str, second_lang_code: str) -> bool:
     """True if text has at least one segment in English and one in second_lang_code (by paragraph)."""
-    segments = [s.strip() for s in text.split("\n\n") if s.strip() and len(s.strip()) >= 20]
+    segments = [s.strip() for s in text.split("\n\n") if s.strip() and len(s.strip()) >= 40]
     if len(segments) < 2:
         return False
     # Build the set of acceptable codes for the target language
@@ -647,7 +722,7 @@ def response_has_english_and_language(text: str, second_lang_code: str) -> bool:
 
 def response_english_only(text: str) -> bool:
     """True if all non-tiny segments detect as English. Requires langdetect."""
-    segments = [s.strip() for s in text.split("\n\n") if s.strip() and len(s.strip()) >= 15]
+    segments = [s.strip() for s in text.split("\n\n") if s.strip() and len(s.strip()) >= 40]
     if not segments:
         return True
     for seg in segments:
@@ -719,6 +794,13 @@ def score_alphabetical_word_start(text: str) -> float:
 
     Measures sequential progression (each word → next letter) rather than absolute
     positional alignment, so a single extra/missing word doesn't ruin the entire score.
+
+    When the word-level score is low, also checks for *line-level* alphabetical
+    ordering (each line's first word starts with the next letter).  Models often
+    interpret the instruction at sentence/line granularity.  To avoid false
+    positives on alliterative text that happens to have a few lines, the
+    line-level check requires >= 8 lines and >= 80 % consecutive-letter
+    progression.
     """
     words = [w.strip(string.punctuation) for w in text.split() if w.strip(string.punctuation).isalpha()]
     if len(words) < 2:
@@ -731,7 +813,86 @@ def score_alphabetical_word_start(text: str) -> float:
         next_letter = alphabet.index(words[i + 1][0].lower())
         if next_letter == (curr_letter + 1) % 26:
             good += 1
-    return good / pairs
+    word_score = good / pairs
+
+    # If word-level already passes, no need for line-level check
+    if word_score >= 0.06:
+        return word_score
+
+    # --- Line-level alphabetical check ---
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    _MIN_LINES = 8
+    if len(lines) < _MIN_LINES:
+        return word_score
+
+    # Extract first alphabetic word from each line (skip bullets/numbering)
+    first_letters: list[str] = []
+    for line in lines:
+        for w in line.split():
+            clean = w.strip(string.punctuation + "0123456789*#- ")
+            if clean and clean[0].isalpha():
+                first_letters.append(clean[0].lower())
+                break
+
+    if len(first_letters) < _MIN_LINES:
+        return word_score
+
+    line_pairs = len(first_letters) - 1
+    line_good = sum(
+        1
+        for i in range(line_pairs)
+        if alphabet.index(first_letters[i + 1]) == (alphabet.index(first_letters[i]) + 1) % 26
+    )
+    line_score = line_good / line_pairs
+
+    _LINE_THRESHOLD = 0.8
+    if line_score >= _LINE_THRESHOLD:
+        return max(word_score, line_score)
+    return word_score
+
+
+def score_sentence_alphabetical(text: str) -> float:
+    """Fraction of consecutive sentence/line pairs where first words advance alphabetically.
+
+    Models often produce sentence-level alphabetical ordering (e.g., sentences starting
+    with A, B, C, ...) rather than word-level. This scorer extracts the first alphabetic
+    word from each segment (line or NLTK sentence) and checks if consecutive segments
+    advance by exactly one letter. Returns the max of line-split and sentence-split scores.
+    """
+    def _score_segments(segments: list[str]) -> float:
+        # Extract first alphabetic word from each segment
+        first_words: list[str] = []
+        for seg in segments:
+            seg = seg.strip()
+            if not seg:
+                continue
+            # Find first alphabetic word, skipping numbering/bullets
+            for w in seg.split():
+                clean = w.strip(string.punctuation)
+                if clean and clean[0].isalpha():
+                    first_words.append(clean)
+                    break
+        if len(first_words) < 3:
+            return 0.0
+        alphabet = string.ascii_lowercase
+        pairs = len(first_words) - 1
+        good = 0
+        for i in range(pairs):
+            curr = alphabet.index(first_words[i][0].lower())
+            nxt = alphabet.index(first_words[i + 1][0].lower())
+            if nxt == (curr + 1) % 26:
+                good += 1
+        return good / pairs
+
+    # Try line-based splitting
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    line_score = _score_segments(lines)
+
+    # Try NLTK sentence splitting
+    sents = split_sentences(text)
+    sent_score = _score_segments(sents)
+
+    return max(line_score, sent_score)
 
 
 def check_alphabetical_word_start(text: str) -> float:
@@ -769,7 +930,7 @@ def score_sentence_chaining(text: str) -> float:
     for i in range(transitions):
         last_words = sents[i].rstrip(punct_space).split()
         first_words = sents[i + 1].lstrip(punct_space).split()
-        if last_words and first_words and last_words[-1].lower() == first_words[0].lower():
+        if last_words and first_words and last_words[-1].strip(string.punctuation).lower() == first_words[0].strip(string.punctuation).lower():
             good += 1
     return good / transitions
 
@@ -781,7 +942,7 @@ def check_sentence_chaining(text: str) -> float:
 
 def check_no_consecutive_first_letter(text: str) -> float:
     """Score: 1.0 - alliteration score. Anti-correlated with check_all_alliteration."""
-    return 1.0 - score_all_alliteration(text)
+    return 1.0 - score_all_alliteration(text, min_matches=1)
 
 check_no_consecutive_first_letter.is_inverted = True  # type: ignore[attr-defined]
 
@@ -803,13 +964,14 @@ def score_paragraph_bookend(text: str) -> float:
     paragraphs = [p.strip().lower() for p in re.split(r"\n\n+", text) if p.strip()]
     if not paragraphs:
         return 0.0
-    punct_space = "".join(string.punctuation) + " "
     good = 0
     for paragraph in paragraphs:
-        words = paragraph.strip(punct_space).split()
+        words = paragraph.split()
         if not words:
             continue
-        if words[0] == words[-1]:
+        first = words[0].strip(string.punctuation)
+        last = words[-1].strip(string.punctuation)
+        if first and last and first == last:
             good += 1
     return good / len(paragraphs)
 
@@ -886,19 +1048,32 @@ def check_strictly_increasing_sentence_lengths(text: str) -> bool:
     return True
 
 
-def score_all_alliteration(text: str) -> float:
-    """Fraction of consecutive word pairs sharing the same first letter."""
+def score_all_alliteration(text: str, min_matches: int = 4) -> float:
+    """Fraction of consecutive word pairs sharing the same first letter.
+
+    Args:
+        min_matches: Minimum number of alliterative pairs required before
+            returning a non-zero score.  This avoids false positives from
+            coincidental same-letter pairs in non-alliterative text (e.g.,
+            alphabetical word-start text where ~2/26 pairs match by chance).
+    """
     words = [w.strip(string.punctuation) for w in text.split() if w.strip(string.punctuation) and w.strip(string.punctuation)[0].isalpha()]
     if len(words) < 2:
         return 0.0
     pairs = len(words) - 1
     matches = sum(1 for i in range(pairs) if words[i][0].lower() == words[i + 1][0].lower())
+    if matches < min_matches:
+        return 0.0
     return matches / pairs
 
 
 def check_all_alliteration(text: str) -> float:
-    """Score: fraction of consecutive word pairs with alliteration."""
-    return score_all_alliteration(text)
+    """Score: fraction of consecutive word pairs with alliteration.
+
+    Uses min_matches=1 (no floor) since this wrapper is used by conflicts
+    where even short alliterative texts are meaningful.
+    """
+    return score_all_alliteration(text, min_matches=1)
 
 
 def check_no_consonant_clusters(text: str) -> bool:

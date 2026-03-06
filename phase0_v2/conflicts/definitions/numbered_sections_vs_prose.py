@@ -16,8 +16,11 @@ from ..conflict_base import Conflict
 
 
 def _has_numbered_sections(text: str) -> bool:
-    """True if text has at least 3 lines starting with a number followed by period."""
-    numbered = re.findall(r"^\d+\.\s", text, re.MULTILINE)
+    """True if text has at least 3 lines starting with a number followed by period.
+
+    Matches plain (1. ...) and bold-wrapped (**1. ...) formats.
+    """
+    numbered = re.findall(r"^\*{0,2}\d+\.\s", text, re.MULTILINE)
     return len(numbered) >= 3
 
 

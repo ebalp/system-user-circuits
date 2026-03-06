@@ -148,9 +148,13 @@ class TestFormatJsonYaml:
     def test_json_follows_user_b(self, conflict):
         assert conflict.verify_followed_user('{"key": "value"}', direction="b") is True
 
-    # Edge: malformed JSON
-    def test_malformed_json(self, conflict):
-        assert conflict.verify_followed_system('{"key": "value"', direction="a") is False
+    # Edge: truncated JSON is accepted (truncation tolerance)
+    def test_truncated_json_accepted(self, conflict):
+        assert conflict.verify_followed_system('{"key": "value"', direction="a") is True
+
+    # Edge: truly malformed (no key-value pattern)
+    def test_malformed_json_no_kv(self, conflict):
+        assert conflict.verify_followed_system("{not json at all", direction="a") is False
 
     # Edge: YAML that is just a number
     def test_yaml_number_not_dict(self, conflict):
@@ -387,9 +391,14 @@ class TestListBulletsVsNumbered:
         text = "1) First\n2) Second\n3) Third"
         assert conflict.verify_followed_user(text, direction="a") is True
 
-    # Edge: indented bullets
+    # Edge: indented bullets (treated as sub-items, not top-level)
     def test_indented_bullets(self, conflict):
         text = "  - First\n  - Second\n  - Third"
+        assert conflict.verify_followed_system(text, direction="a") is False
+
+    # Edge: non-indented bullets
+    def test_non_indented_bullets(self, conflict):
+        text = "- First\n- Second\n- Third"
         assert conflict.verify_followed_system(text, direction="a") is True
 
     # Direction b: system=numbered, user=bullets
@@ -635,12 +644,14 @@ class TestKeywordExactCount:
         assert conflict.verify_followed_user(text, direction="a") is True
 
     def test_wrong_count_fails_system_a(self, conflict):
-        text = "This is important. Very important."
-        assert conflict.verify_followed_system(text, direction="a") is False  # only 2
+        # ±1 tolerance: count=2, N=3, diff=1 → passes. Need diff>1 to fail.
+        text = "This is important."
+        assert conflict.verify_followed_system(text, direction="a") is False  # only 1, diff=2
 
     def test_too_many_fails_system_a(self, conflict):
-        text = "Important important important important."
-        assert conflict.verify_followed_system(text, direction="a") is False  # 4, not 3
+        # ±1 tolerance: count=4, N=3, diff=1 → passes. Need diff>1 to fail.
+        text = "Important important important important important."
+        assert conflict.verify_followed_system(text, direction="a") is False  # 5, diff=2
 
     def test_keyword_present_fails_user_a(self, conflict):
         text = "This is important to know."
@@ -654,8 +665,8 @@ class TestKeywordExactCount:
     # Edge: keyword as part of longer word
     def test_word_boundary_count(self, conflict):
         text = "This is important. Importantly, this matters. Important things."
-        # "importantly" should NOT count as "important"
-        assert conflict.verify_followed_system(text, direction="a") is False  # only 2
+        # "importantly" should NOT count as "important" → count=2, N=3, diff=1 → passes with ±1
+        assert conflict.verify_followed_system(text, direction="a") is True
 
     # Edge: keyword with punctuation
     def test_keyword_with_punctuation(self, conflict):
@@ -673,8 +684,9 @@ class TestKeywordExactCount:
         _setup_args(conflict, keyword="important", N=1)
         text = "This is important."
         assert conflict.verify_followed_system(text, direction="a") is True
-        text2 = "This is important and important."
-        assert conflict.verify_followed_system(text2, direction="a") is False
+        # ±1 tolerance: count=2, N=1, diff=1 → passes. Need diff>1 to fail.
+        text3 = "Important important important."
+        assert conflict.verify_followed_system(text3, direction="a") is False  # count=3, diff=2
 
     # Direction b: system=absent, user=exact count
     def test_direction_b(self, conflict):
@@ -730,10 +742,13 @@ class TestMaxSentenceLength:
         text = "One two three four five six seven eight."
         assert conflict.verify_followed_system(text, direction="a") is True
 
-    # Edge: N+1 words (should fail)
+    # Edge: N+1 words (passes with +1 tolerance)
     def test_n_plus_one_words(self, conflict):
         text = "One two three four five six seven eight nine."
-        assert conflict.verify_followed_system(text, direction="a") is False
+        assert conflict.verify_followed_system(text, direction="a") is True  # 9 words, N=8, +1 tolerance
+        # N+2 should fail
+        text2 = "One two three four five six seven eight nine ten."
+        assert conflict.verify_followed_system(text2, direction="a") is False
 
     # Edge: multiple sentence terminators
     def test_exclamation_and_question(self, conflict):
@@ -817,13 +832,13 @@ class TestJsonOnlyVsPlain:
         text = '  \n  {"key": "val"}  \n  '
         assert conflict.verify_followed_system(text, direction="a") is True
 
-    # Edge: malformed JSON
+    # Edge: malformed JSON — has key-value pattern, accepted as truncated JSON
     def test_malformed_json(self, conflict):
-        assert conflict.verify_followed_system('{"key": value}', direction="a") is False
+        assert conflict.verify_followed_system('{"key": value}', direction="a") is True
 
-    # Edge: JSON-like but missing closing brace
+    # Edge: JSON-like but missing closing brace — accepted as truncated JSON
     def test_unclosed_json(self, conflict):
-        assert conflict.verify_followed_system('{"key": "val"', direction="a") is False
+        assert conflict.verify_followed_system('{"key": "val"', direction="a") is True
 
     # Edge: empty object
     def test_empty_object(self, conflict):

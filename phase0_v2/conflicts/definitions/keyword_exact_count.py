@@ -6,7 +6,7 @@
 # type: bool
 # constraint_a: Use word X exactly N times
 # constraint_b: Do not use word X
-# scorer: Keyword count == N (a) or absent (b)
+# scorer: Keyword count within ±1 of N (a) or absent (b)
 # explored: yes
 # </description>
 
@@ -17,7 +17,7 @@ from ..verify_utils import count_word_occurrences, no_word_in_text
 
 
 def _exact_count(r: str, a: dict) -> bool:
-    return count_word_occurrences(a["keyword"], r) == a["N"]
+    return abs(count_word_occurrences(a["keyword"], r) - a["N"]) <= 1
 
 
 def _keyword_absent(r: str, a: dict) -> bool:

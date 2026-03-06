@@ -161,12 +161,12 @@ class TestFixedArgsEdgeCases:
         assert c.verify_followed_user(text_none, direction="a")
 
     def test_keyword_exact_count_wrong_count_fails(self):
-        """Wrong number of keyword occurrences should fail system."""
+        """Count differing by >1 from target should fail system (±1 tolerance)."""
         c = get_conflict("keyword_exact_count")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        # Only 2 occurrences, need 3
-        text = "This important thing is important."
+        # 0 occurrences, need 3, diff=3 > 1 → fails
+        text = "This thing is good."
         assert not c.verify_followed_system(text, direction="a")
 
     def test_max_sentence_length_verify_with_fixed(self):
@@ -200,11 +200,11 @@ class TestFixedArgsEdgeCases:
         assert c.verify_followed_user(text_brief, direction="a")
 
     def test_min_pronoun_count_verify_with_fixed(self):
-        """5+ pronouns should pass system, 0 pronouns should pass user."""
+        """5+ non-impersonal pronouns should pass system, few should pass user."""
         c = get_conflict("min_pronoun_count")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        text = "He said she told him that they were waiting for it."
+        text = "He said she told him that they were waiting for her."
         assert c.verify_followed_system(text, direction="a")
         text_no = "The cat sat on the mat near the dog."
         assert c.verify_followed_user(text_no, direction="a")

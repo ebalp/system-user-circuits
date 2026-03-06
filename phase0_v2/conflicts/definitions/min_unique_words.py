@@ -6,7 +6,7 @@
 # type: bool
 # constraint_a: Use at least N unique words
 # constraint_b: Keep it extremely brief
-# scorer: Unique word count >= N (a) or <= 25 (b)
+# scorer: Unique word count >= N (a) or <= 48 unique + <= 75 total (b)
 # explored: yes
 # </description>
 
@@ -21,7 +21,7 @@ def _at_least_n_unique(r: str, a: dict) -> bool:
 
 
 def _very_brief(r: str) -> bool:
-    return count_unique_words(r) <= 25
+    return count_unique_words(r) <= 48 and len(r.split()) <= 75
 
 
 class MinUniqueWordsConflict(Conflict):

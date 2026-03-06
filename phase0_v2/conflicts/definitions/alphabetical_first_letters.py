@@ -10,7 +10,7 @@ the system score, ensuring anti-correlation and preventing followed_both.
 # type: float
 # constraint_a: Words start in alphabetical order
 # constraint_b: Consecutive words alliterate
-# scorer: Fraction advancing alphabetically; inverted pair
+# scorer: Fraction advancing alphabetically (word-level + line-level fallback); inverted pair
 # explored: yes
 # </description>
 
@@ -45,7 +45,7 @@ _not_alliteration.is_inverted = True  # type: ignore[attr-defined]
 
 class AlphabeticalFirstLettersConflict(Conflict):
     conflict_id = "alphabetical_first_letters"
-    verify_threshold = 0.06  # optimal bal_acc=0.815 across all 4 (constraint, role) combinations
+    verify_threshold = 0.06  # optimal bal_acc=0.855 across all 4 (constraint, role) combinations
 
     system_template = (
         "Each word in your response must start with the next letter of the "
