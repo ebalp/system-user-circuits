@@ -14,7 +14,7 @@ import os
 
 import yaml
 
-from lambda_cloud.instance_setup import bootstrap_instance
+from lambda_cloud.instance_setup import bootstrap_instance, _remote_dir_from_url
 from lambda_cloud.ssh import SSHConnection
 
 DEFAULT_CONFIG = "lambda_cloud/config/lambda.yaml"
@@ -47,14 +47,15 @@ def main():
     parser.add_argument("--wait-ssh", type=int, default=300, help="Seconds to wait for SSH")
     args = parser.parse_args()
 
-    # Read key file from config if not specified
+    # Load config
+    try:
+        with open(args.config) as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        config = {}
+
     if not args.key_file:
-        try:
-            with open(args.config) as f:
-                config = yaml.safe_load(f)
-            args.key_file = config.get("ssh_key_file", "~/.ssh/id_rsa")
-        except FileNotFoundError:
-            args.key_file = "~/.ssh/id_rsa"
+        args.key_file = config.get("ssh_key_file", "~/.ssh/id_rsa")
 
     if not args.env_file:
         args.env_file = _find_env_file()
@@ -74,7 +75,16 @@ def main():
         print(f"ERROR: SSH not reachable on {args.ip} after {args.wait_ssh}s")
         raise SystemExit(1)
 
-    bootstrap_instance(ssh, env_file_path=args.env_file, branch=args.branch)
+    repo_url = config.get("repo_url")
+    if not repo_url:
+        print("ERROR: repo_url must be set in config")
+        raise SystemExit(1)
+    remote_dir = config.get("repo_dir") or _remote_dir_from_url(repo_url)
+
+    bootstrap_instance(
+        ssh, env_file_path=args.env_file, repo_url=repo_url,
+        branch=args.branch, remote_dir=remote_dir,
+    )
     print(f"Instance {args.ip} bootstrapped successfully.")
 
 

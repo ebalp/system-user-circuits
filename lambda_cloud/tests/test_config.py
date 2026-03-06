@@ -21,7 +21,7 @@ class TestLambdaConfig:
         assert config.max_launch_retries == 5
         assert config.launch_retry_delay == 60
         assert config.readiness_timeout == 900
-        assert config.ssh_key_file == "~/.ssh/anusha-cre-lambda-key.pem"
+        assert config.ssh_key_file == "~/.ssh/id_rsa"
         assert config.vllm_venv_path == "/home/ubuntu/vllm-venv"
 
     def test_custom_values(self):

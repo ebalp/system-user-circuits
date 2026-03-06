@@ -1,8 +1,29 @@
 # lambda_cloud
 
-Automates the lifecycle of Lambda Cloud GPU instances and vLLM inference servers. Handles launching instances, bootstrapping them (repo, credentials, Python env, Claude Code), deploying vLLM, and tearing everything down safely. Used across all phases.
+Automates the lifecycle of Lambda Cloud GPU instances and vLLM inference servers. Handles launching instances, bootstrapping them (repo, credentials, Python env, Claude Code), deploying vLLM, and tearing everything down safely.
+
+This module can be used independently of the parent project — it has no project-specific imports.
 
 > **Implementation notes:** vLLM is installed in an isolated virtualenv (avoids Lambda Stack's system TensorFlow/numpy conflicts). Health checks and inference use SSH tunnels (Lambda's firewall blocks port 8000 externally). All setup is done over SSH rather than cloud-init for reliability and visibility.
+
+## Getting Started
+
+1. Copy the example config and fill in your values:
+   ```bash
+   cp lambda_cloud/config/lambda.yaml.example lambda_cloud/config/lambda.yaml
+   ```
+
+2. Set required environment variables (or put them in `.sync.env`):
+   ```bash
+   export LAMBDA_API_KEY="..."   # Lambda Cloud Dashboard -> Settings -> API Keys
+   export HF_TOKEN="..."         # Hugging Face token for gated models
+   ```
+
+3. Configure your SSH key:
+   - Register it in Lambda Cloud Dashboard -> SSH Keys
+   - Set `ssh_key_name` and `ssh_key_file` in `lambda.yaml`
+
+4. Set `repo_url` in `lambda.yaml` to your git repo (used by `--setup` bootstrap)
 
 ## Modules
 
@@ -12,7 +33,7 @@ Automates the lifecycle of Lambda Cloud GPU instances and vLLM inference servers
 | `manager.py` | `LambdaCloudManager` — launch, terminate, poll for IP, safety nets (atexit + signals) |
 | `ssh.py` | `SSHConnection` — run commands, background processes, tunnels, SCP uploads (no paramiko) |
 | `vllm_server.py` | Install vLLM in venv, start/stop server, SSH-proxied health checks, tunnel readiness, `ensure_vllm_running()` orchestrator |
-| `instance_setup.py` | Bootstrap: upload credentials, clone repo, install env, install Claude Code |
+| `instance_setup.py` | Bootstrap: upload credentials, clone repo, install env, optionally install Claude Code |
 
 ## CLI Scripts
 
@@ -55,7 +76,7 @@ with LambdaCloudManager(config) as mgr:
     tunnel, local_port = ssh.open_tunnel(config.vllm_port, config.vllm_port)
     vllm_url = f"http://localhost:{local_port}/v1"
     wait_for_vllm_through_tunnel(vllm_url, config.model_id)
-    # ... run experiments against vllm_url ...
+    # ... run inference against vllm_url ...
     tunnel.terminate()
 # instance auto-terminated on exit
 ```
@@ -64,7 +85,7 @@ with LambdaCloudManager(config) as mgr:
 
 ```python
 from lambda_cloud.vllm_server import (
-    ensure_vllm_running,          # check status → install → start → wait (one call)
+    ensure_vllm_running,          # check status -> install -> start -> wait (one call)
     wait_for_vllm_through_tunnel, # poll /v1/models through local SSH tunnel, validate model
     install_vllm, start_vllm,     # low-level: install in venv, start in background
     wait_for_vllm_ready,          # low-level: SSH-proxied curl health check
@@ -91,9 +112,9 @@ tunnel = ssh.open_tunnel(8000, 8000)    # local port forwarding
 
 ### Two modes: managed vs existing instance
 
-**Managed (auto-launch + auto-terminate):** Use `LambdaCloudManager` as a context manager. It launches an instance, runs your code, and terminates the instance when done. Safety nets ensure the instance is always terminated — even on Ctrl+C, crashes, or unhandled exceptions — via `__exit__`, `atexit`, and SIGINT/SIGTERM handlers. In `run_experiments.py`, this is `--backend lambda` without `--ip`.
+**Managed (auto-launch + auto-terminate):** Use `LambdaCloudManager` as a context manager. It launches an instance, runs your code, and terminates the instance when done. Safety nets ensure the instance is always terminated — even on Ctrl+C, crashes, or unhandled exceptions — via `__exit__`, `atexit`, and SIGINT/SIGTERM handlers.
 
-**Existing instance:** Use `--ip` to connect to an instance you've already launched (e.g. via `snatch`). The instance is never terminated automatically — you manage its lifecycle yourself. This is the mode used by `launch_vllm.py`, `setup_instance.py`, and `run_experiments.py --backend lambda --ip <ip>`.
+**Existing instance:** Use `--ip` to connect to an instance you've already launched (e.g. via `snatch`). The instance is never terminated automatically — you manage its lifecycle yourself. This is the mode used by `launch_vllm.py` and `setup_instance.py`.
 
 ## Common Workflows
 
@@ -103,20 +124,7 @@ All commands run **locally** (not on the Lambda instance). They SSH into the ins
 source .sync.env  # sets LAMBDA_API_KEY, HF_TOKEN
 ```
 
-### Switch models and run experiments on an existing instance
-
-```bash
-# 1. Stop the current vLLM process
-uv run python -m lambda_cloud.scripts.launch_vllm --ip <ip> --stop
-
-# 2. Run experiments (auto-installs and starts vLLM for the new model)
-uv run python phase0_v2/run_experiments.py --backend lambda --ip <ip> \
-  --model <new-model-id>
-```
-
-Step 2 calls `ensure_vllm_running()` which handles install → start → health check automatically. No need to manually launch vLLM first.
-
-### Launch vLLM manually (for interactive use, not experiments)
+### Launch vLLM manually (for interactive use)
 
 ```bash
 uv run python -m lambda_cloud.scripts.launch_vllm --ip <ip> \
@@ -127,11 +135,14 @@ This opens an SSH tunnel so you can query `http://localhost:8000/v1` locally.
 
 ## Configuration
 
-`lambda_cloud/config/lambda.yaml` supports per-model GPU mappings:
+`lambda_cloud/config/lambda.yaml` — copy from `lambda.yaml.example` and customize:
 
 ```yaml
-ssh_key_name: "anusha-cre-lambda-key"
-ssh_key_file: "~/.ssh/anusha-cre-lambda-key.pem"
+ssh_key_name: "my-lambda-key"
+ssh_key_file: "~/.ssh/my-lambda-key.pem"
+repo_url: "https://github.com/your-org/your-repo.git"
+# repo_dir: "/home/ubuntu/your-repo"  # derived from repo_url if omitted
+
 instance_preferences: [gpu_1x_a100, gpu_1x_a100_sxm4]
 
 defaults:
@@ -148,6 +159,15 @@ model_gpu_map:
     instance_type: gpu_8x_a100
     vllm_args: "--tensor-parallel-size 8"
 ```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `ssh_key_name` | Yes | SSH key name registered in Lambda Cloud |
+| `ssh_key_file` | Yes | Local path to the private key file |
+| `repo_url` | For `--setup` | Git repo URL to clone on the instance |
+| `repo_dir` | No | Remote clone directory (derived from `repo_url` if omitted) |
+| `instance_preferences` | No | GPU instance types to try, in priority order |
+| `model_gpu_map` | No | Per-model GPU type and vLLM args |
 
 ## Tests
 

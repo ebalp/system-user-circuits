@@ -223,8 +223,11 @@ def main():
     config = _load_config(args.config)
     api_key = _get_api_key()
 
-    ssh_key_name = config.get("ssh_key_name", "anusha-cre-lambda-key")
-    ssh_key_file = config.get("ssh_key_file", "~/.ssh/anusha-cre-lambda-key.pem")
+    ssh_key_name = config.get("ssh_key_name")
+    ssh_key_file = config.get("ssh_key_file")
+    if not ssh_key_name or not ssh_key_file:
+        print("ERROR: ssh_key_name and ssh_key_file must be set in config")
+        sys.exit(1)
     target_instances = config.get("instance_preferences", ["gpu_1x_a100", "gpu_1x_a100_sxm4"])
 
     print("Snatching Lambda instance...")
@@ -282,13 +285,19 @@ def main():
             # ── Optional: bootstrap the instance ──
             if args.setup:
                 from lambda_cloud.ssh import SSHConnection
-                from lambda_cloud.instance_setup import bootstrap_instance
+                from lambda_cloud.instance_setup import bootstrap_instance, _remote_dir_from_url
 
                 logging.basicConfig(
                     level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s",
                     datefmt="%H:%M:%S",
                 )
+
+                repo_url = config.get("repo_url")
+                if not repo_url:
+                    print("ERROR: repo_url must be set in config for --setup")
+                    sys.exit(1)
+                remote_dir = config.get("repo_dir") or _remote_dir_from_url(repo_url)
 
                 ssh = SSHConnection(ip=ip, key_file=ssh_key_file)
                 print(f"\nWaiting for SSH on {ip}...")
@@ -297,10 +306,13 @@ def main():
                     sys.exit(1)
 
                 print("Bootstrapping instance...")
-                bootstrap_instance(ssh, env_file_path=args.env_file, branch=args.branch)
+                bootstrap_instance(
+                    ssh, env_file_path=args.env_file, repo_url=repo_url,
+                    branch=args.branch, remote_dir=remote_dir,
+                )
                 print(f"\n=== INSTANCE READY ===")
                 print(f"  SSH:  ssh -i {ssh_key_file} ubuntu@{ip}")
-                print(f"  Repo: /home/ubuntu/system-user-circuits")
+                print(f"  Repo: {remote_dir}")
                 print("======================")
 
             break

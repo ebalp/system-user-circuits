@@ -16,7 +16,7 @@ class LambdaConfig:
     instance_type: str
     region: str
     hf_token: str
-    ssh_key_file: str = "~/.ssh/anusha-cre-lambda-key.pem"
+    ssh_key_file: str = "~/.ssh/id_rsa"
     vllm_venv_path: str = "/home/ubuntu/vllm-venv"
     vllm_port: int = 8000
     vllm_extra_args: str = ""
@@ -97,7 +97,7 @@ def load_lambda_config(path: str | Path, model_id: str) -> LambdaConfig:
         instance_type=primary_type,
         region=defaults.get("region", "us-east-1"),
         hf_token=hf_token,
-        ssh_key_file=data.get("ssh_key_file", "~/.ssh/anusha-cre-lambda-key.pem"),
+        ssh_key_file=data.get("ssh_key_file", "~/.ssh/id_rsa"),
         vllm_venv_path=defaults.get("vllm_venv_path", "/home/ubuntu/vllm-venv"),
         vllm_port=defaults.get("vllm_port", 8000),
         vllm_extra_args=model_settings.get("vllm_args", ""),

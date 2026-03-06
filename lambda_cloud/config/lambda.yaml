@@ -3,6 +3,8 @@
 
 ssh_key_name: "anusha-cre-lambda-key"
 ssh_key_file: "~/.ssh/anusha-cre-lambda-key.pem"
+repo_url: "https://github.com/ebalp/system-user-circuits.git"
+repo_dir: "/home/ubuntu/system-user-circuits"  # derived from repo_url if omitted
 
 defaults:
   region: us-east-1
