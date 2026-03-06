@@ -4,6 +4,16 @@ Verify functions use 1-score inversion: each side's "user" verify is 1.0 minus
 the system score, ensuring anti-correlation and preventing followed_both.
 """
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: float
+# constraint_a: Words start in alphabetical order
+# constraint_b: Consecutive words alliterate
+# scorer: Fraction advancing alphabetically; inverted pair
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

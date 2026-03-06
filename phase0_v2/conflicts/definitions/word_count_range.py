@@ -1,5 +1,15 @@
 """word_count_range: System requires word count in range vs user wants under N words."""
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: bool
+# constraint_a: Word count between min and max
+# constraint_b: Keep under N words
+# scorer: Word count in range (a) or under limit (b)
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

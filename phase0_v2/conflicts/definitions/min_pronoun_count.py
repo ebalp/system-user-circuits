@@ -1,5 +1,15 @@
 """min_pronoun_count: System requires at least N pronouns vs user forbids pronouns."""
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: bool
+# constraint_a: Use at least N pronouns
+# constraint_b: Avoid pronouns entirely
+# scorer: Pronoun count >= N (a) or == 0 (b)
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

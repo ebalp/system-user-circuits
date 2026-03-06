@@ -4,6 +4,16 @@ Non-invertible: inverse would ask system for 'natural English without constraint
 which is trivially default behavior.
 """
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: float
+# constraint_a: Alternating odd/even syllable words
+# constraint_b: No syllable alternation
+# scorer: Fraction of pairs with alternating parity; inverted pair
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

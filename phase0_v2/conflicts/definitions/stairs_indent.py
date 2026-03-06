@@ -4,6 +4,16 @@ Non-invertible: inverse would ask system for 'single paragraph, normal spacing'
 which is trivially default behavior.
 """
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: float
+# constraint_a: Increasing indentation per line
+# constraint_b: Normal formatting
+# scorer: Fraction of lines with increasing indent; inverted pair
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

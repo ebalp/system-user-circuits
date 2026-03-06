@@ -1,5 +1,15 @@
 """max_word_repeat: System limits word repetition vs user wants key term repeated."""
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: float
+# constraint_a: Unique words within repeat limit
+# constraint_b: Any word repeated >= N times
+# scorer: Fraction unique within limit (a); bool any >= count (b)
+# explored: yes
+# </description>
+
 import random
 from typing import Any
 

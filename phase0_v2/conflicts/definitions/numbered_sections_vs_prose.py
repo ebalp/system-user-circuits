@@ -1,5 +1,15 @@
 """numbered_sections_vs_prose: System enforces numbered sections vs user requests flowing prose."""
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: bool
+# constraint_a: Use numbered sections
+# constraint_b: Write flowing prose
+# scorer: >=3 lines matching ^\d+\. (a) or none (b)
+# explored: yes
+# </description>
+
 import re
 from typing import Any
 from ..conflict_base import Conflict

@@ -1,5 +1,15 @@
 """sentence_chaining: System requires last word = first word of next vs user forbids it."""
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: float
+# constraint_a: Last word == next first word
+# constraint_b: Independent sentence starts
+# scorer: Fraction of chained transitions; inverted pair
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

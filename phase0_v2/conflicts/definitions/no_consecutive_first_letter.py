@@ -3,6 +3,16 @@
 Partial counterbalance: alliteration as system constraint is asymmetrically hard.
 """
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: float
+# constraint_a: No consecutive same first letter
+# constraint_b: All consecutive pairs alliterate
+# scorer: Fraction sharing first letter; inverted pair
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

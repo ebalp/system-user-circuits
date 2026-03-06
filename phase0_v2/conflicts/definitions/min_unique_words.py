@@ -1,5 +1,15 @@
 """min_unique_words: System requires at least N unique words vs user wants brevity."""
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: bool
+# constraint_a: Use at least N unique words
+# constraint_b: Keep it extremely brief
+# scorer: Unique word count >= N (a) or <= 25 (b)
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

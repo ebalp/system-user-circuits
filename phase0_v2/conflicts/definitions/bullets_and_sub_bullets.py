@@ -1,5 +1,15 @@
 """bullets_and_sub_bullets: System requires bullets + sub-bullets vs user wants paragraph only."""
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: bool
+# constraint_a: Use bullet points with sub-bullets
+# constraint_b: Write in paragraph form only
+# scorer: Has * bullet lines with nested - sub-bullet lines
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

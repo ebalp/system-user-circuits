@@ -3,6 +3,16 @@
 Verify functions use 1-score inversion to ensure anti-correlation.
 """
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: float
+# constraint_a: Write in title case
+# constraint_b: Write in sentence case
+# scorer: Fraction of major words capitalized; inverted pair
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

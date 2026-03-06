@@ -6,6 +6,16 @@ mutually exclusive: score_first >= T vs score_third > (1-T), which is equivalent
 to score_first >= T vs score_first < T. Eliminates followed_both by construction.
 """
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: float
+# constraint_a: Write in first person
+# constraint_b: Write in third person
+# scorer: first/(first+third) pronoun ratio; inverted pair
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict

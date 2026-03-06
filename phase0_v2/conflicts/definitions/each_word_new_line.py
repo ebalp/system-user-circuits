@@ -3,6 +3,16 @@
 Non-invertible: inverse would ask system for 'standard paragraphs' which is default.
 """
 
+# If you modify the scoring logic, update the description block below
+# and set explored to 'no'.
+# <description>
+# type: float
+# constraint_a: One word per line
+# constraint_b: Normal paragraph flow
+# scorer: Lines-to-words ratio; inverted pair
+# explored: yes
+# </description>
+
 from typing import Any
 
 from ..conflict_base import Conflict
