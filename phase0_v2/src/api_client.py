@@ -281,32 +281,3 @@ class VLLMClient:
                 "total_tokens": response.usage.total_tokens,
             }
         return content, usage
-
-    def wait_until_ready(
-        self, timeout_seconds: int = 600, poll_interval: int = 15
-    ) -> bool:
-        """Poll /v1/models until the vLLM server responds.
-
-        Used by LambdaCloudManager to wait for model loading after instance boot.
-
-        Returns:
-            True if the server became ready within the timeout, False otherwise.
-        """
-        import httpx
-
-        models_url = self.base_url.rstrip("/") + "/models"
-        deadline = time.time() + timeout_seconds
-        while time.time() < deadline:
-            try:
-                resp = httpx.get(models_url, timeout=10)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data.get("data"):
-                        logger.info("vLLM server ready, models: %s",
-                                    [m.get("id") for m in data["data"]])
-                        return True
-            except Exception:
-                pass
-            logger.info("Waiting for vLLM server at %s ...", models_url)
-            time.sleep(poll_interval)
-        return False

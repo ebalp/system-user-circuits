@@ -11,7 +11,7 @@ Automates the lifecycle of Lambda Cloud GPU instances and vLLM inference servers
 | `config.py` | `LambdaConfig`, `LambdaInstance` dataclasses, `load_lambda_config()` YAML loader |
 | `manager.py` | `LambdaCloudManager` — launch, terminate, poll for IP, safety nets (atexit + signals) |
 | `ssh.py` | `SSHConnection` — run commands, background processes, tunnels, SCP uploads (no paramiko) |
-| `vllm_server.py` | Install vLLM in venv, start/stop server, SSH-proxied health checks |
+| `vllm_server.py` | Install vLLM in venv, start/stop server, SSH-proxied health checks, tunnel readiness, `ensure_vllm_running()` orchestrator |
 | `instance_setup.py` | Bootstrap: upload credentials, clone repo, install env, install Claude Code |
 
 ## CLI Scripts
@@ -36,21 +36,46 @@ uv run python -m lambda_cloud.scripts.launch_vllm --ip <ip> --model meta-llama/L
 ## Python API
 
 ```python
-from lambda_cloud import LambdaCloudManager, load_lambda_config
+from lambda_cloud.config import load_lambda_config
+from lambda_cloud.manager import LambdaCloudManager
 from lambda_cloud.ssh import SSHConnection
-from lambda_cloud.vllm_server import install_vllm, start_vllm, wait_for_vllm_ready
+from lambda_cloud.vllm_server import ensure_vllm_running, wait_for_vllm_through_tunnel
 
 # Launch and manage an instance
 config = load_lambda_config("lambda_cloud/config/lambda.yaml", model_id)
 with LambdaCloudManager(config) as mgr:
     ssh = SSHConnection(ip=mgr.instance.ip)
-    install_vllm(ssh)
-    start_vllm(ssh, model_id=config.model_id, hf_token=config.hf_token)
-    wait_for_vllm_ready(ssh)
-    tunnel = ssh.open_tunnel(local_port=8000, remote_port=8000)
-    # ... run experiments against http://localhost:8000/v1 ...
+    ssh.wait_for_ssh()
+    ensure_vllm_running(
+        ssh, model_id=config.model_id, hf_token=config.hf_token,
+        port=config.vllm_port, extra_args=config.vllm_extra_args,
+        venv_path=config.vllm_venv_path,
+        readiness_timeout=config.readiness_timeout,
+    )
+    tunnel, local_port = ssh.open_tunnel(config.vllm_port, config.vllm_port)
+    vllm_url = f"http://localhost:{local_port}/v1"
+    wait_for_vllm_through_tunnel(vllm_url, config.model_id)
+    # ... run experiments against vllm_url ...
     tunnel.terminate()
 # instance auto-terminated on exit
+```
+
+### vllm_server
+
+```python
+from lambda_cloud.vllm_server import (
+    ensure_vllm_running,          # check status → install → start → wait (one call)
+    wait_for_vllm_through_tunnel, # poll /v1/models through local SSH tunnel, validate model
+    install_vllm, start_vllm,     # low-level: install in venv, start in background
+    wait_for_vllm_ready,          # low-level: SSH-proxied curl health check
+    vllm_status, stop_vllm,       # check/stop running vLLM process
+)
+
+# High-level: ensures vLLM is running (skips if already up)
+ensure_vllm_running(ssh, model_id="meta-llama/Llama-3.1-8B-Instruct", hf_token="...")
+
+# After opening a tunnel, validate the model is reachable locally
+wait_for_vllm_through_tunnel("http://localhost:8000/v1", "meta-llama/Llama-3.1-8B-Instruct")
 ```
 
 ### SSHConnection
@@ -70,6 +95,36 @@ tunnel = ssh.open_tunnel(8000, 8000)    # local port forwarding
 
 **Existing instance:** Use `--ip` to connect to an instance you've already launched (e.g. via `snatch`). The instance is never terminated automatically — you manage its lifecycle yourself. This is the mode used by `launch_vllm.py`, `setup_instance.py`, and `run_experiments.py --backend lambda --ip <ip>`.
 
+## Common Workflows
+
+All commands run **locally** (not on the Lambda instance). They SSH into the instance under the hood. Env vars must be sourced locally first:
+
+```bash
+source .sync.env  # sets LAMBDA_API_KEY, HF_TOKEN
+```
+
+### Switch models and run experiments on an existing instance
+
+```bash
+# 1. Stop the current vLLM process
+uv run python -m lambda_cloud.scripts.launch_vllm --ip <ip> --stop
+
+# 2. Run experiments (auto-installs and starts vLLM for the new model)
+uv run python phase0_v2/run_experiments.py --backend lambda --ip <ip> \
+  --model <new-model-id>
+```
+
+Step 2 calls `ensure_vllm_running()` which handles install → start → health check automatically. No need to manually launch vLLM first.
+
+### Launch vLLM manually (for interactive use, not experiments)
+
+```bash
+uv run python -m lambda_cloud.scripts.launch_vllm --ip <ip> \
+  --model meta-llama/Llama-3.1-8B-Instruct --tunnel
+```
+
+This opens an SSH tunnel so you can query `http://localhost:8000/v1` locally.
+
 ## Configuration
 
 `lambda_cloud/config/lambda.yaml` supports per-model GPU mappings:
@@ -83,6 +138,7 @@ defaults:
   region: us-east-1
   vllm_port: 8000
   vllm_venv_path: /home/ubuntu/vllm-venv
+  concurrent_per_model: 10  # inference concurrency
 
 model_gpu_map:
   meta-llama/Llama-3.1-8B-Instruct:
@@ -100,5 +156,6 @@ model_gpu_map:
 uv run pytest lambda_cloud/tests/ -v -m "not live"
 
 # Live tests (requires vLLM running on ssh lambda)
+# Auto-detects the served model; override with VLLM_MODEL_ID env var
 uv run pytest lambda_cloud/tests/test_live.py -v -m live
 ```

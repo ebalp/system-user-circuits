@@ -6,9 +6,9 @@ models:
       first_vs_third_person: 0.182
       title_case_vs_sentence_case: 0.420
       sentence_chaining: 0.750
-      alphabetical_first_letters: 0.060
+      alphabetical_first_letters: 0.061
       no_consecutive_first_letter: 0.073
-      paragraph_end_same_word: 0.200
+      paragraph_end_same_word: 0.083
       max_word_repeat: 0.909
     exclude_conflicts:
       - max_word_repeat
@@ -84,7 +84,7 @@ seed: 42
 
 generation:
   temperature: 0.0
-  max_tokens: 512
+  max_tokens: 4096
   instances_per_cell: 1
 
 # Sampling

@@ -1,6 +1,7 @@
 """SSH connection management for Lambda Cloud instances."""
 
 import logging
+import socket
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -13,6 +14,23 @@ _SSH_OPTS = [
     "-o", "UserKnownHostsFile=/dev/null",
     "-o", "LogLevel=ERROR",
 ]
+
+
+def _port_in_use(port: int) -> bool:
+    """Check if a local TCP port is already in use."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("127.0.0.1", port))
+            return False
+        except OSError:
+            return True
+
+
+def _find_free_port() -> int:
+    """Find an available local TCP port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 @dataclass
@@ -60,25 +78,34 @@ class SSHConnection:
         logger.debug("SSH background: %s", command)
         subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=True)
 
-    def open_tunnel(self, local_port: int, remote_port: int) -> subprocess.Popen:
+    def open_tunnel(self, local_port: int, remote_port: int) -> tuple[subprocess.Popen, int]:
         """Open an SSH tunnel (local port forwarding).
 
-        Returns a Popen handle — caller is responsible for terminating it.
+        If local_port is already in use, automatically picks a free port.
+        Returns a (Popen, actual_local_port) tuple — caller is responsible
+        for terminating the Popen.
 
         Args:
-            local_port: Local port to bind.
+            local_port: Preferred local port to bind.
             remote_port: Remote port to forward to.
 
         Returns:
-            subprocess.Popen running the SSH tunnel.
+            Tuple of (subprocess.Popen running the tunnel, actual local port used).
         """
+        actual_port = local_port
+        if _port_in_use(local_port):
+            actual_port = _find_free_port()
+            logger.warning(
+                "Local port %d in use, using %d instead", local_port, actual_port,
+            )
+
         cmd = [
             *self._ssh_base(),
-            "-N", "-L", f"{local_port}:localhost:{remote_port}",
+            "-N", "-L", f"{actual_port}:localhost:{remote_port}",
             self._target(),
         ]
-        logger.info("Opening SSH tunnel localhost:%d -> %s:%d", local_port, self.ip, remote_port)
-        return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        logger.info("Opening SSH tunnel localhost:%d -> %s:%d", actual_port, self.ip, remote_port)
+        return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL), actual_port
 
     def wait_for_ssh(self, timeout: int = 300, interval: int = 10) -> bool:
         """Wait until SSH is reachable on the instance.

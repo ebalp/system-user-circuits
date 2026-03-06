@@ -17,6 +17,7 @@ if _repo_root not in sys.path:
 import logging
 import random
 import threading
+import time
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -26,7 +27,6 @@ from phase0_v2.src.config import load_config
 from phase0_v2.src.prompts import PromptGenerator, _deterministic_seed
 from phase0_v2.src.experiment import ExperimentRunner, _make_experiment_key, compute_experiment_hash
 from phase0_v2.src.api_client import HFClient, VLLMClient
-from phase0_v2.src.lambda_cloud import LambdaCloudManager, load_lambda_config
 from phase0_v2.conflicts.registry import get_all_conflicts, get_conflict
 from phase0_v2.tasks.wildchat_tasks import load_wildchat_tasks, filter_compatible_tasks
 
@@ -57,6 +57,10 @@ def _run_work_items(
             )
             if record.get("error"):
                 error_count += 1
+                if error_count <= 3:
+                    logger.error("Experiment error: %s", record["error"])
+                elif error_count == 4:
+                    logger.error("Suppressing further error details...")
                 return record
             with model_locks[model_id]:
                 runner.append_record(model_id, record)
@@ -77,6 +81,7 @@ def _run_work_items(
                 completed_count += 1
             except Exception as e:
                 error_count += 1
+                logger.error("Experiment failed: %s", e)
             pbar.set_postfix(errors=error_count, refresh=False)
 
     return completed_count
@@ -313,13 +318,10 @@ def main():
         logger.info("Completed: %d, Skipped: %d", completed_count, skipped)
 
     elif args.backend == "lambda":
+        from lambda_cloud.config import load_lambda_config
+        from lambda_cloud.manager import LambdaCloudManager
         from lambda_cloud.ssh import SSHConnection
-        from lambda_cloud.vllm_server import install_vllm, start_vllm, wait_for_vllm_ready, vllm_status
-
-        lambda_yaml_path = Path(args.lambda_config)
-        import yaml as _yaml
-        _lambda_data = _yaml.safe_load(lambda_yaml_path.read_text())
-        lambda_concurrent = _lambda_data.get("defaults", {}).get("concurrent_per_model", 10)
+        from lambda_cloud.vllm_server import ensure_vllm_running, wait_for_vllm_through_tunnel
 
         total_completed = 0
         by_model: dict[str, list] = defaultdict(list)
@@ -328,6 +330,7 @@ def main():
 
         for model_id, model_items in by_model.items():
             lconfig = load_lambda_config(args.lambda_config, model_id)
+            lambda_concurrent = lconfig.concurrent_per_model
 
             if args.ip:
                 # ── Connect to existing instance ──
@@ -335,24 +338,18 @@ def main():
                 ssh = SSHConnection(ip=ip, key_file=lconfig.ssh_key_file)
                 logger.info("Connecting to existing instance %s for %s (%d items)", ip, model_id, len(model_items))
 
-                # Check if vLLM is already running
-                status = vllm_status(ssh, port=lconfig.vllm_port)
-                if status:
-                    logger.info("vLLM already running on %s (model=%s, pid=%s)", ip, status["model"], status["pid"])
-                else:
-                    logger.info("vLLM not running, starting on %s...", ip)
-                    install_vllm(ssh, venv_path=lconfig.vllm_venv_path)
-                    start_vllm(
-                        ssh, model_id=model_id, hf_token=lconfig.hf_token,
-                        port=lconfig.vllm_port, extra_args=lconfig.vllm_extra_args,
-                        venv_path=lconfig.vllm_venv_path,
-                    )
-                    if not wait_for_vllm_ready(ssh, port=lconfig.vllm_port, timeout=lconfig.readiness_timeout):
-                        raise RuntimeError(f"vLLM not ready on {ip} after {lconfig.readiness_timeout}s")
+                ensure_vllm_running(
+                    ssh, model_id=model_id, hf_token=lconfig.hf_token,
+                    port=lconfig.vllm_port, extra_args=lconfig.vllm_extra_args,
+                    venv_path=lconfig.vllm_venv_path,
+                    readiness_timeout=lconfig.readiness_timeout,
+                )
 
-                tunnel = ssh.open_tunnel(lconfig.vllm_port, lconfig.vllm_port)
+                tunnel, local_port = ssh.open_tunnel(lconfig.vllm_port, lconfig.vllm_port)
                 try:
-                    client = VLLMClient(base_url=f"http://localhost:{lconfig.vllm_port}/v1")
+                    vllm_url = f"http://localhost:{local_port}/v1"
+                    wait_for_vllm_through_tunnel(vllm_url, model_id)
+                    client = VLLMClient(base_url=vllm_url)
                     runner = ExperimentRunner(
                         config=config, client=client,
                         output_dir=args.output_dir,
@@ -379,23 +376,18 @@ def main():
                     logger.info("Waiting for SSH on %s...", ip)
                     ssh.wait_for_ssh()
 
-                    logger.info("Installing vLLM on %s...", ip)
-                    install_vllm(ssh, venv_path=lconfig.vllm_venv_path)
-
-                    logger.info("Starting vLLM on %s...", ip)
-                    start_vllm(
+                    ensure_vllm_running(
                         ssh, model_id=model_id, hf_token=lconfig.hf_token,
                         port=lconfig.vllm_port, extra_args=lconfig.vllm_extra_args,
                         venv_path=lconfig.vllm_venv_path,
+                        readiness_timeout=lconfig.readiness_timeout,
                     )
 
-                    logger.info("Waiting for vLLM readiness on %s...", ip)
-                    if not wait_for_vllm_ready(ssh, port=lconfig.vllm_port, timeout=lconfig.readiness_timeout):
-                        raise RuntimeError(f"vLLM not ready on {ip} after {lconfig.readiness_timeout}s")
-
-                    tunnel = ssh.open_tunnel(lconfig.vllm_port, lconfig.vllm_port)
+                    tunnel, local_port = ssh.open_tunnel(lconfig.vllm_port, lconfig.vllm_port)
                     try:
-                        client = VLLMClient(base_url=f"http://localhost:{lconfig.vllm_port}/v1")
+                        vllm_url = f"http://localhost:{local_port}/v1"
+                        wait_for_vllm_through_tunnel(vllm_url, model_id)
+                        client = VLLMClient(base_url=vllm_url)
                         runner = ExperimentRunner(
                             config=config, client=client,
                             output_dir=args.output_dir,

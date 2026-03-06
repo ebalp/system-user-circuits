@@ -160,13 +160,11 @@ class TestVLLMClientWithRunner:
         record = runner.run_single(prompt, conflict, "test-model")
 
         # VLLMClient catches the error and returns ChatResponse with error field.
-        # ExperimentRunner.run_single does not re-raise; it reads response.content.
-        # The record should still be valid and not crash.
+        # ExperimentRunner.run_single sees the error and produces an error record.
         assert record["model"] == "test-model"
         assert isinstance(record["label"], str)
-        assert record["label"] in {
-            "followed_system", "followed_user", "followed_neither", "followed_both",
-        }
+        assert record["error"] is not None
+        assert record["label"] == "error"
 
     @patch("phase0_v2.src.api_client.OpenAI")
     def test_vllm_record_is_json_serializable(self, mock_openai_cls, tmp_path):
@@ -357,7 +355,8 @@ class TestLambdaManagerIntegration:
     @patch("phase0_v2.src.api_client.OpenAI")
     def test_get_base_url_returns_working_url(self, mock_openai_cls, tmp_path):
         """LambdaCloudManager.get_base_url() returns a URL that works with VLLMClient."""
-        from phase0_v2.src.lambda_cloud import LambdaCloudManager, LambdaConfig, LambdaInstance
+        from lambda_cloud.config import LambdaConfig, LambdaInstance
+        from lambda_cloud.manager import LambdaCloudManager
 
         mock_client_instance = MagicMock()
         mock_openai_cls.return_value = mock_client_instance
@@ -390,7 +389,8 @@ class TestLambdaManagerIntegration:
 
     def test_get_base_url_without_instance_raises(self):
         """LambdaCloudManager.get_base_url() raises when no instance launched."""
-        from phase0_v2.src.lambda_cloud import LambdaCloudManager, LambdaConfig
+        from lambda_cloud.config import LambdaConfig
+        from lambda_cloud.manager import LambdaCloudManager
 
         lconfig = LambdaConfig(
             api_key="k", ssh_key_name="s",
@@ -405,7 +405,8 @@ class TestLambdaManagerIntegration:
 
     def test_lambda_base_url_uses_instance_ip(self):
         """get_base_url() should return URL using the instance IP."""
-        from phase0_v2.src.lambda_cloud import LambdaCloudManager, LambdaConfig, LambdaInstance
+        from lambda_cloud.config import LambdaConfig, LambdaInstance
+        from lambda_cloud.manager import LambdaCloudManager
 
         lconfig = LambdaConfig(
             api_key="k", ssh_key_name="s",

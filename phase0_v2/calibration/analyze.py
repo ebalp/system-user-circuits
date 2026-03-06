@@ -1,15 +1,14 @@
 """Calibration analysis: extract calibration insights from experiment results.
 
 Analyzes baseline conditions (A & B) to compute SBR/UCR rates and
-float-score trying/ignoring distributions. Identifies condition C edge cases
-near threshold boundaries and anomalous records.
+float-score trying/ignoring distributions. Identifies anomalous records.
 
 Usage:
     uv run python -m phase0_v2.calibration.analyze <results_file> [options]
 
 Examples:
     uv run python -m phase0_v2.calibration.analyze phase0_v2/data/results/meta-llama_Llama-3.1-8B-Instruct_results.jsonl
-    uv run python -m phase0_v2.calibration.analyze results.jsonl --output-dir cal_out --edge-margin 0.1
+    uv run python -m phase0_v2.calibration.analyze results.jsonl --output-dir cal_out
     uv run python -m phase0_v2.calibration.analyze results.jsonl --conflict sentence_chaining
 """
 
@@ -38,6 +37,159 @@ def _build_constraint_labels() -> dict[str, tuple[str, str]]:
     for conflict in get_all_conflicts():
         labels[conflict.conflict_id] = conflict.get_constraint_labels()
     return labels
+
+
+def _check_completeness(
+    records: list[dict],
+    config_path: str | None,
+    conflict_filter: str | None = None,
+) -> None:
+    """Check dataset completeness and print warnings for gaps.
+
+    Computes expected record counts per (conflict, condition) from the config
+    and conflict registry, then compares against actual counts in the data.
+    """
+    # Load config for style counts and task counts
+    n_sys_styles = 5  # defaults
+    n_usr_styles = 5
+    n_tasks = 50
+    if config_path and Path(config_path).exists():
+        try:
+            from ..src.config import load_config
+            config = load_config(config_path)
+            n_sys_styles = len(config.condition_c_system_styles)
+            n_usr_styles = len(config.user_styles_to_test)
+            n_tasks = len(config.tasks)
+        except Exception:
+            pass  # fall back to defaults
+
+    # Build registry info: which conflicts are invertible
+    registry_conflicts: dict[str, bool] = {}  # conflict_id -> is_invertible
+    for conflict in get_all_conflicts():
+        registry_conflicts[conflict.conflict_id] = conflict.supports_counterbalancing()
+
+    # Count actual records per (conflict_id, condition)
+    actual: dict[tuple[str, str], int] = defaultdict(int)
+    error_count = 0
+    for rec in records:
+        if rec.get("error") is not None:
+            error_count += 1
+            continue
+        cid = rec["conflict_id"]
+        if conflict_filter and cid != conflict_filter:
+            continue
+        actual[(cid, rec["condition"])] += 1
+
+    # Compute expected counts per (conflict_id, condition)
+    data_conflict_ids = {cid for (cid, _) in actual}
+    gaps = []
+
+    for cid in sorted(data_conflict_ids):
+        invertible = registry_conflicts.get(cid, True)
+        n_dir = 2 if invertible else 1
+        expected = {
+            "A": n_dir * n_tasks,
+            "B": n_dir * n_tasks,
+            "C": n_dir * n_sys_styles * n_usr_styles * n_tasks,
+            "D": (n_dir * n_tasks) if invertible else 0,
+        }
+        for cond in ("A", "B", "C", "D"):
+            exp = expected[cond]
+            act = actual.get((cid, cond), 0)
+            if act != exp:
+                gaps.append((cid, cond, exp, act))
+
+    # Print results
+    print(f"\n{'=' * 70}")
+    print("DATASET COMPLETENESS")
+    print(f"{'=' * 70}")
+    print(f"  Records: {len(records)} total, {error_count} errors")
+    print(f"  Conflicts in data: {len(data_conflict_ids)}")
+    print(f"  Expected per conflict: {n_tasks} tasks, {n_sys_styles}x{n_usr_styles} styles (Cond C)")
+
+    if not gaps:
+        print("  Status: COMPLETE — all conflicts have expected record counts")
+    else:
+        print(f"  Status: INCOMPLETE — {len(gaps)} gaps found:")
+        print(f"  {'conflict_id':<35} {'cond':>4} {'expected':>8} {'actual':>8} {'diff':>8}")
+        print(f"  {'-' * 67}")
+        for cid, cond, exp, act in gaps:
+            diff = act - exp
+            sign = "+" if diff > 0 else ""
+            print(f"  {cid:<35} {cond:>4} {exp:>8} {act:>8} {sign}{diff:>7}")
+
+
+def _check_threshold_consistency(
+    records: list[dict],
+    threshold_map: dict[str, ConflictThresholdInfo],
+    conflict_filter: str | None = None,
+) -> None:
+    """Check if stored verify results are consistent with current thresholds.
+
+    For float-scored records, re-applies the current threshold to stored scores
+    and checks if the result matches the stored verify_system_result /
+    verify_user_result. Mismatches mean the results file was scored with a
+    different threshold than what's currently configured.
+    """
+    mismatches: dict[str, int] = defaultdict(int)
+    checked: dict[str, int] = defaultdict(int)
+
+    for rec in records:
+        if rec.get("error") is not None:
+            continue
+        cid = rec["conflict_id"]
+        if conflict_filter and cid != conflict_filter:
+            continue
+
+        info = threshold_map.get(cid)
+        if info is None:
+            continue
+
+        sys_score = rec.get("verify_system_score")
+        usr_score = rec.get("verify_user_score")
+        if sys_score is None or usr_score is None:
+            continue
+
+        direction = rec["direction"]
+        verify_code = direction_to_verify_code(direction)
+        if verify_code not in info.sides:
+            continue
+
+        # Check if scores are genuinely float (not just 0.0/1.0 from bool)
+        if {sys_score, usr_score} <= {0.0, 1.0}:
+            continue
+
+        checked[cid] += 1
+        sys_info = info.sides[verify_code]["system"]
+        usr_info = info.sides[verify_code]["user"]
+
+        expected_sys = apply_threshold(sys_score, info.threshold, sys_info.is_inverted)
+        expected_usr = apply_threshold(usr_score, info.threshold, usr_info.is_inverted)
+
+        stored_sys = rec.get("verify_system_result")
+        stored_usr = rec.get("verify_user_result")
+
+        if expected_sys != stored_sys or expected_usr != stored_usr:
+            mismatches[cid] += 1
+
+    if not checked:
+        return
+
+    print(f"\n{'=' * 70}")
+    print("THRESHOLD CONSISTENCY")
+    print(f"{'=' * 70}")
+    if not mismatches:
+        print(f"  OK — all {sum(checked.values())} float-scored records match current thresholds")
+    else:
+        print(f"  WARNING — stored results were scored with different thresholds:")
+        print(f"  {'conflict_id':<35} {'mismatched':>10} {'checked':>10} {'%':>7}")
+        print(f"  {'-' * 65}")
+        for cid in sorted(mismatches):
+            n_mis = mismatches[cid]
+            n_chk = checked[cid]
+            pct = 100 * n_mis / n_chk
+            print(f"  {cid:<35} {n_mis:>10} {n_chk:>10} {pct:>6.1f}%")
+        print("  Run rescore to re-apply current thresholds to stored scores.")
 
 
 def _print_constraint_legend(
@@ -219,9 +371,9 @@ def _compute_all_balanced_accuracy(
 
 def _find_conflict_optimal_threshold(
     rows: list[dict],
-) -> tuple[float, float]:
-    """Find the single threshold T that maximizes mean balanced accuracy
-    across all (constraint, role) rows of a conflict.
+) -> tuple[float, float, float]:
+    """Find the threshold range [T_low, T_high] that maximizes mean balanced
+    accuracy across all (constraint, role) rows of a conflict.
 
     Each conflict has one verify_threshold applied to all 4 rows, but the
     comparison depends on is_inverted:
@@ -230,11 +382,12 @@ def _find_conflict_optimal_threshold(
 
     Strategy: collect all unique scores as candidates, sweep T, compute
     balanced accuracy per row with the correct operator, average across rows.
+    Then collect all T values achieving the same max BA.
 
-    Returns (best_threshold, best_mean_balanced_accuracy).
+    Returns (t_low, t_high, best_mean_balanced_accuracy).
     """
     if not rows:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
     # Collect all unique scores as candidate thresholds
     all_scores: set[float] = set()
@@ -243,10 +396,10 @@ def _find_conflict_optimal_threshold(
         all_scores.update(row["_ignoring"])
     candidates = sorted(all_scores)
     if not candidates:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
-    best_t = candidates[0]
     best_ba = 0.0
+    threshold_bas: list[tuple[float, float]] = []
 
     for t in candidates:
         ba_sum = 0.0
@@ -274,11 +427,16 @@ def _find_conflict_optimal_threshold(
 
         if n_rows > 0:
             mean_ba = ba_sum / n_rows
+            threshold_bas.append((t, mean_ba))
             if mean_ba > best_ba:
                 best_ba = mean_ba
-                best_t = t
 
-    return best_t, best_ba
+    # Collect all thresholds achieving max BA (within floating point tolerance)
+    matching = [t for t, ba in threshold_bas if abs(ba - best_ba) < 1e-9]
+    if not matching:
+        return candidates[0], candidates[0], best_ba
+
+    return min(matching), max(matching), best_ba
 
 
 def _compute_float_calibration(
@@ -406,9 +564,11 @@ def _compute_float_calibration(
         by_conflict[row["conflict_id"]].append(row)
 
     for cid, conflict_rows in by_conflict.items():
-        best_t, best_ba = _find_conflict_optimal_threshold(conflict_rows)
+        t_low, t_high, best_ba = _find_conflict_optimal_threshold(conflict_rows)
         for row in conflict_rows:
-            row["optimal_threshold"] = best_t
+            row["optimal_threshold_low"] = t_low
+            row["optimal_threshold_high"] = t_high
+            row["optimal_threshold"] = (t_low + t_high) / 2
             row["balanced_accuracy"] = best_ba
 
     # Remove internal fields
@@ -417,74 +577,6 @@ def _compute_float_calibration(
         del row["_ignoring"]
 
     return results
-
-
-def _find_edge_cases(
-    records: list[dict],
-    threshold_map: dict[str, ConflictThresholdInfo],
-    edge_margin: float,
-    conflict_filter: str | None = None,
-) -> list[dict]:
-    """Find condition C records near the threshold boundary."""
-    edge_cases = []
-    for rec in records:
-        if rec.get("error") is not None:
-            continue
-        if rec["condition"] != "C":
-            continue
-        cid = rec["conflict_id"]
-        if conflict_filter and cid != conflict_filter:
-            continue
-
-        info = threshold_map.get(cid)
-        if info is None:
-            continue
-
-        verify_code = direction_to_verify_code(rec["direction"])
-        if verify_code not in info.sides:
-            continue
-
-        sys_score = rec.get("verify_system_score")
-        usr_score = rec.get("verify_user_score")
-        if sys_score is None or usr_score is None:
-            continue
-
-        sys_info = info.sides[verify_code]["system"]
-        usr_info = info.sides[verify_code]["user"]
-
-        # Compute distance from threshold boundary
-        if sys_info.is_inverted:
-            sys_boundary = 1.0 - info.threshold
-        else:
-            sys_boundary = info.threshold
-        sys_distance = abs(sys_score - sys_boundary)
-
-        if usr_info.is_inverted:
-            usr_boundary = 1.0 - info.threshold
-        else:
-            usr_boundary = info.threshold
-        usr_distance = abs(usr_score - usr_boundary)
-
-        if sys_distance < edge_margin or usr_distance < edge_margin:
-            edge_cases.append(
-                {
-                    "conflict_id": cid,
-                    "direction": rec["direction"],
-                    "system_prompt": rec.get("system_prompt", "")[:500],
-                    "user_prompt": rec.get("user_prompt", "")[:500],
-                    "response": rec.get("response", "")[:500],
-                    "verify_system_score": sys_score,
-                    "verify_user_score": usr_score,
-                    "verify_system_result": rec.get("verify_system_result"),
-                    "verify_user_result": rec.get("verify_user_result"),
-                    "label": rec["label"],
-                    "expected_label": rec.get("expected_label"),
-                    "sys_distance": sys_distance,
-                    "usr_distance": usr_distance,
-                    "threshold": info.threshold,
-                }
-            )
-    return edge_cases
 
 
 def _find_anomalies(
@@ -565,46 +657,35 @@ def _print_calibration_table(calibration: list[dict]) -> None:
     if not calibration:
         print("\nNo float-scored conflicts with non-trivial distributions found.")
         return
-    print("\n" + "=" * 130)
+    print("\n" + "=" * 140)
     print("FLOAT SCORE CALIBRATION")
     print("  constraint = which constraint (a/b) the score measures")
     print("  role = which prompt slot carried the constraint (system=Cond A, user=Cond B)")
-    print("=" * 130)
+    print("=" * 140)
     header = (
         f"{'conflict_id':<35} {'con':>3} {'role':>6} "
         f"{'try_mean':>8} {'ign_mean':>8} "
-        f"{'gap':>7} {'thresh':>6} {'inv':>3} {'optimal':>7} {'bal_acc':>7}"
+        f"{'gap':>7} {'thresh':>6} {'inv':>3} {'opt_range':>16} {'bal_acc':>7}"
     )
     print(header)
-    print("-" * 120)
+    print("-" * 130)
     for row in calibration:
         try_mean = f"{row['trying_mean']:.3f}" if row["trying_mean"] is not None else "   N/A"
         ign_mean = f"{row['ignoring_mean']:.3f}" if row["ignoring_mean"] is not None else "   N/A"
         gap_str = f"{row['gap']:+.3f}" if row["gap"] is not None else "  N/A"
         inv_str = "Y" if row["is_inverted"] else "N"
-        opt_str = f"{row['optimal_threshold']:.3f}"
+        t_low = row["optimal_threshold_low"]
+        t_high = row["optimal_threshold_high"]
+        if abs(t_low - t_high) < 1e-9:
+            opt_str = f"{t_low:.3f}"
+        else:
+            opt_str = f"[{t_low:.3f}, {t_high:.3f}]"
         ba_str = f"{row['balanced_accuracy']:.3f}"
         print(
             f"{row['conflict_id']:<35} {row['constraint']:>3} {row['role']:>6} "
             f"{try_mean:>8} {ign_mean:>8} "
-            f"{gap_str:>7} {row['current_threshold']:>6.2f} {inv_str:>3} {opt_str:>7} {ba_str:>7}"
+            f"{gap_str:>7} {row['current_threshold']:>6.2f} {inv_str:>3} {opt_str:>16} {ba_str:>7}"
         )
-
-
-def _print_edge_case_summary(edge_cases: list[dict]) -> None:
-    """Print condition C edge case counts per conflict."""
-    if not edge_cases:
-        print("\nNo condition C edge cases found near threshold.")
-        return
-    print("\n" + "=" * 50)
-    print("CONDITION C EDGE CASES (near threshold)")
-    print("=" * 50)
-    counts: dict[str, int] = defaultdict(int)
-    for ec in edge_cases:
-        counts[ec["conflict_id"]] += 1
-    for cid, count in sorted(counts.items()):
-        print(f"  {cid:<40} {count:>5}")
-    print(f"  {'TOTAL':<40} {len(edge_cases):>5}")
 
 
 def _print_anomaly_summary(anomalies: list[dict]) -> None:
@@ -657,7 +738,8 @@ def _write_combined_csv(
         # float calibration (empty for bool-only conflicts)
         "trying_mean", "trying_min", "trying_max", "trying_std",
         "ignoring_mean", "ignoring_min", "ignoring_max", "ignoring_std",
-        "gap", "threshold", "is_inverted", "optimal_threshold",
+        "gap", "threshold", "is_inverted",
+        "optimal_threshold", "optimal_threshold_low", "optimal_threshold_high",
         "n_trying", "n_ignoring",
     ]
 
@@ -689,7 +771,8 @@ def _write_combined_csv(
                 for k in [
                     "trying_mean", "trying_min", "trying_max", "trying_std",
                     "ignoring_mean", "ignoring_min", "ignoring_max", "ignoring_std",
-                    "gap", "is_inverted", "optimal_threshold",
+                    "gap", "is_inverted",
+                    "optimal_threshold", "optimal_threshold_low", "optimal_threshold_high",
                     "n_trying", "n_ignoring",
                 ]:
                     row[k] = cal[k]
@@ -698,7 +781,8 @@ def _write_combined_csv(
                 for k in [
                     "trying_mean", "trying_min", "trying_max", "trying_std",
                     "ignoring_mean", "ignoring_min", "ignoring_max", "ignoring_std",
-                    "gap", "is_inverted", "optimal_threshold",
+                    "gap", "is_inverted",
+                    "optimal_threshold", "optimal_threshold_low", "optimal_threshold_high",
                     "n_trying", "n_ignoring", "threshold",
                 ]:
                     row[k] = ""
@@ -711,17 +795,6 @@ def _write_combined_csv(
         for row in rows:
             writer.writerow(row)
     print(f"\nWrote {path} ({len(rows)} rows, {len(baseline_rates)} conflicts)")
-
-
-def _write_edge_cases_jsonl(edge_cases: list[dict], output_dir: Path) -> None:
-    """Write condition_c_edge_cases.jsonl."""
-    if not edge_cases:
-        return
-    path = output_dir / "condition_c_edge_cases.jsonl"
-    with open(path, "w") as f:
-        for ec in edge_cases:
-            f.write(json.dumps(ec) + "\n")
-    print(f"Wrote {path} ({len(edge_cases)} records)")
 
 
 def _write_anomalies_jsonl(anomalies: list[dict], output_dir: Path) -> None:
@@ -742,12 +815,6 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("results_file", help="Path to JSONL results file")
     parser.add_argument(
         "--output-dir", default="calibration_output", help="Output directory (default: calibration_output/)"
-    )
-    parser.add_argument(
-        "--edge-margin",
-        type=float,
-        default=0.05,
-        help="Distance from threshold to flag edge cases (default: 0.05)",
     )
     parser.add_argument(
         "--conflict", default=None, help="Filter to single conflict_id"
@@ -784,6 +851,10 @@ def main(argv: list[str] | None = None) -> None:
     threshold_map = build_conflict_threshold_map(threshold_overrides=threshold_overrides)
     constraint_labels = _build_constraint_labels()
 
+    # Dataset completeness and threshold consistency checks
+    _check_completeness(records, args.config, args.conflict)
+    _check_threshold_consistency(records, threshold_map, args.conflict)
+
     # Constraint legend
     conflict_ids = {r["conflict_id"] for r in records if r.get("error") is None}
     if args.conflict:
@@ -801,11 +872,6 @@ def main(argv: list[str] | None = None) -> None:
     calibration = _compute_float_calibration(records, threshold_map, args.conflict)
     _print_calibration_table(calibration)
 
-    # Phase 2: Condition C edge cases
-    print("\n--- Phase 2: Condition C Near-Threshold Analysis ---")
-    edge_cases = _find_edge_cases(records, threshold_map, args.edge_margin, args.conflict)
-    _print_edge_case_summary(edge_cases)
-
     # Anomalies (all conditions)
     anomalies = _find_anomalies(records, args.conflict)
     _print_anomaly_summary(anomalies)
@@ -813,7 +879,6 @@ def main(argv: list[str] | None = None) -> None:
     # Write output files
     print("\n--- Writing Output Files ---")
     _write_combined_csv(baseline_rates, calibration, constraint_labels, output_dir)
-    _write_edge_cases_jsonl(edge_cases, output_dir)
     _write_anomalies_jsonl(anomalies, output_dir)
 
     print("\nDone.")

@@ -8,6 +8,8 @@ starts the server in the background, and uses SSH-proxied health checks
 import logging
 import time
 
+import httpx
+
 from lambda_cloud.ssh import SSHConnection
 
 logger = logging.getLogger(__name__)
@@ -135,6 +137,85 @@ def vllm_status(ssh: SSHConnection, port: int = 8000) -> dict | None:
             pass
 
     return {"pid": pid, "model": model, "cmdline": cmdline}
+
+
+def wait_for_vllm_through_tunnel(
+    base_url: str, expected_model: str, timeout: int = 60
+) -> None:
+    """Wait until vLLM is reachable through the local SSH tunnel.
+
+    Polls ``/v1/models`` via *httpx* and validates the served model.
+
+    Args:
+        base_url: Local tunnel URL, e.g. ``http://localhost:8000/v1``.
+        expected_model: Model ID that vLLM should be serving.
+        timeout: Max seconds to wait.
+
+    Raises:
+        RuntimeError: On model mismatch or if vLLM is unreachable after *timeout*.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            resp = httpx.get(f"{base_url}/models", timeout=5)
+            if resp.status_code == 200:
+                models = resp.json().get("data", [])
+                served_model = models[0]["id"] if models else None
+                logger.info(
+                    "vLLM reachable through tunnel at %s (model: %s)",
+                    base_url, served_model,
+                )
+                if served_model and served_model != expected_model:
+                    raise RuntimeError(
+                        f"Model mismatch: expected '{expected_model}' but vLLM is serving "
+                        f"'{served_model}'. Wrong tunnel or stale vLLM process?"
+                    )
+                return
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
+        time.sleep(2)
+    raise RuntimeError(
+        f"vLLM not reachable through tunnel at {base_url} after {timeout}s"
+    )
+
+
+def ensure_vllm_running(
+    ssh: SSHConnection,
+    model_id: str,
+    hf_token: str,
+    port: int = 8000,
+    extra_args: str = "",
+    venv_path: str = "/home/ubuntu/vllm-venv",
+    readiness_timeout: int = 900,
+) -> None:
+    """Ensure vLLM is running on the remote instance.
+
+    Checks ``vllm_status()`` first and skips setup if already running.
+    Otherwise runs install → start → wait.
+
+    Raises:
+        RuntimeError: If vLLM doesn't become ready within *readiness_timeout*.
+    """
+    status = vllm_status(ssh, port=port)
+    if status:
+        logger.info(
+            "vLLM already running on %s (model=%s, pid=%s)",
+            ssh.ip, status["model"], status["pid"],
+        )
+        return
+
+    logger.info("vLLM not running on %s, starting...", ssh.ip)
+    install_vllm(ssh, venv_path=venv_path)
+    start_vllm(
+        ssh, model_id=model_id, hf_token=hf_token,
+        port=port, extra_args=extra_args, venv_path=venv_path,
+    )
+    if not wait_for_vllm_ready(ssh, port=port, timeout=readiness_timeout):
+        raise RuntimeError(
+            f"vLLM not ready on {ssh.ip} after {readiness_timeout}s"
+        )
 
 
 def stop_vllm(ssh: SSHConnection) -> None:

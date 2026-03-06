@@ -294,7 +294,8 @@ class TestBackendLambdaImports:
     """Test that Lambda backend imports work."""
 
     def test_lambda_imports(self):
-        from phase0_v2.src.lambda_cloud import LambdaCloudManager, load_lambda_config
+        from lambda_cloud.config import load_lambda_config
+        from lambda_cloud.manager import LambdaCloudManager
         assert LambdaCloudManager is not None
         assert load_lambda_config is not None
 
@@ -312,13 +313,13 @@ class TestSyncEnvTemplate:
         template = Path("sync.env.template").read_text()
         assert "HF_TOKEN" in template
 
-    def test_lambda_api_key_after_hf_token(self):
-        """LAMBDA_API_KEY should appear after HF_TOKEN in the template."""
+    def test_lambda_api_key_before_hf_token(self):
+        """LAMBDA_API_KEY should appear before HF_TOKEN in the template."""
         from pathlib import Path
         template = Path("sync.env.template").read_text()
         hf_pos = template.index("HF_TOKEN")
         lambda_pos = template.index("LAMBDA_API_KEY")
-        assert lambda_pos > hf_pos
+        assert lambda_pos < hf_pos
 
 
 class TestVLLMBackendValidation:

@@ -6,7 +6,10 @@ from unittest.mock import patch, MagicMock, call
 import pytest
 
 from lambda_cloud.ssh import SSHConnection
-from lambda_cloud.vllm_server import install_vllm, start_vllm, wait_for_vllm_ready, stop_vllm
+from lambda_cloud.vllm_server import (
+    install_vllm, start_vllm, wait_for_vllm_ready, stop_vllm,
+    wait_for_vllm_through_tunnel, ensure_vllm_running,
+)
 
 
 @pytest.fixture
@@ -128,3 +131,90 @@ class TestStopVllm:
         cmd = ssh.run.call_args[0][0]
         assert "pkill" in cmd
         assert "vllm serve" in cmd
+
+
+class TestWaitForVllmThroughTunnel:
+    @patch("lambda_cloud.vllm_server.time.sleep")
+    @patch("lambda_cloud.vllm_server.httpx.get")
+    def test_returns_on_success(self, mock_get, mock_sleep):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"data": [{"id": "my-model"}]}
+        mock_get.return_value = resp
+
+        wait_for_vllm_through_tunnel("http://localhost:8000/v1", "my-model")
+        mock_get.assert_called_once()
+
+    @patch("lambda_cloud.vllm_server.time.sleep")
+    @patch("lambda_cloud.vllm_server.httpx.get")
+    def test_raises_on_model_mismatch(self, mock_get, mock_sleep):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"data": [{"id": "wrong-model"}]}
+        mock_get.return_value = resp
+
+        with pytest.raises(RuntimeError, match="Model mismatch"):
+            wait_for_vllm_through_tunnel("http://localhost:8000/v1", "my-model")
+
+    @patch("lambda_cloud.vllm_server.time.sleep")
+    @patch("lambda_cloud.vllm_server.time.time")
+    @patch("lambda_cloud.vllm_server.httpx.get")
+    def test_raises_on_timeout(self, mock_get, mock_time, mock_sleep):
+        mock_get.side_effect = Exception("conn refused")
+        call_count = [0]
+        def _time():
+            call_count[0] += 1
+            if call_count[0] <= 2:
+                return 0
+            return 100
+        mock_time.side_effect = _time
+
+        with pytest.raises(RuntimeError, match="not reachable"):
+            wait_for_vllm_through_tunnel("http://localhost:8000/v1", "m", timeout=10)
+
+    @patch("lambda_cloud.vllm_server.time.sleep")
+    @patch("lambda_cloud.vllm_server.httpx.get")
+    def test_retries_before_success(self, mock_get, mock_sleep):
+        fail_resp = MagicMock()
+        fail_resp.status_code = 503
+        ok_resp = MagicMock()
+        ok_resp.status_code = 200
+        ok_resp.json.return_value = {"data": [{"id": "m"}]}
+        mock_get.side_effect = [Exception("down"), fail_resp, ok_resp]
+
+        wait_for_vllm_through_tunnel("http://localhost:8000/v1", "m")
+        assert mock_get.call_count == 3
+
+
+class TestEnsureVllmRunning:
+    def test_skips_if_already_running(self, ssh):
+        with patch("lambda_cloud.vllm_server.vllm_status") as mock_status:
+            mock_status.return_value = {"pid": "123", "model": "m", "cmdline": "..."}
+            ensure_vllm_running(ssh, model_id="m", hf_token="t")
+            # Should not call install/start
+            ssh.run_background.assert_not_called()
+
+    @patch("lambda_cloud.vllm_server.wait_for_vllm_ready")
+    @patch("lambda_cloud.vllm_server.start_vllm")
+    @patch("lambda_cloud.vllm_server.install_vllm")
+    @patch("lambda_cloud.vllm_server.vllm_status")
+    def test_installs_starts_and_waits(self, mock_status, mock_install, mock_start, mock_wait, ssh):
+        mock_status.return_value = None
+        mock_wait.return_value = True
+
+        ensure_vllm_running(ssh, model_id="m", hf_token="t", port=9000, extra_args="--x", venv_path="/v")
+
+        mock_install.assert_called_once_with(ssh, venv_path="/v")
+        mock_start.assert_called_once_with(ssh, model_id="m", hf_token="t", port=9000, extra_args="--x", venv_path="/v")
+        mock_wait.assert_called_once_with(ssh, port=9000, timeout=900)
+
+    @patch("lambda_cloud.vllm_server.wait_for_vllm_ready")
+    @patch("lambda_cloud.vllm_server.start_vllm")
+    @patch("lambda_cloud.vllm_server.install_vllm")
+    @patch("lambda_cloud.vllm_server.vllm_status")
+    def test_raises_if_not_ready(self, mock_status, mock_install, mock_start, mock_wait, ssh):
+        mock_status.return_value = None
+        mock_wait.return_value = False
+
+        with pytest.raises(RuntimeError, match="not ready"):
+            ensure_vllm_running(ssh, model_id="m", hf_token="t")

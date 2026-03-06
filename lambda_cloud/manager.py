@@ -57,31 +57,50 @@ class LambdaCloudManager:
         return f"http://{self.instance.ip}:{self.config.vllm_port}/v1"
 
     def launch(self) -> LambdaInstance:
-        """Launch a Lambda Cloud instance.
+        """Launch a Lambda Cloud instance, polling for availability.
 
-        Retries on availability errors (no capacity). Polls until
-        the instance has an IP address.
+        Polls the instance-types API for capacity across all preferred
+        instance types and regions (like snatch.py). When capacity is
+        found, launches immediately. Falls back to retry on launch
+        race conditions (capacity gone between check and launch).
 
         Returns:
             LambdaInstance with id and ip populated.
 
         Raises:
-            RuntimeError: If all launch retries are exhausted or instance
-                never gets an IP.
+            RuntimeError: If all launch retries are exhausted.
+            KeyboardInterrupt: If the user cancels polling.
         """
-        for attempt in range(1, self.config.max_launch_retries + 1):
-            logger.info(
-                "Launching %s in %s (attempt %d/%d)",
-                self.config.instance_type, self.config.region,
-                attempt, self.config.max_launch_retries,
-            )
+        preferences = self.config.instance_preferences or [self.config.instance_type]
+        poll_interval = self.config.poll_interval
+        max_retries = self.config.max_launch_retries
+        launch_failures = 0
+
+        logger.info(
+            "Snatching instance for %s (preferences: %s, poll every %ds)",
+            self.config.model_id, ", ".join(preferences), poll_interval,
+        )
+
+        attempt = 0
+        while True:
+            attempt += 1
             try:
+                result = self._find_available(preferences)
+                if result is None:
+                    if attempt % 6 == 1:  # Log every ~minute
+                        logger.info("No GPU available yet (attempt %d)...", attempt)
+                    time.sleep(poll_interval)
+                    continue
+
+                instance_type, region = result
+                logger.info("Found %s in %s, launching...", instance_type, region)
+
                 resp = httpx.post(
                     f"{self.BASE_URL}/instance-operations/launch",
                     auth=self._auth(),
                     json={
-                        "region_name": self.config.region,
-                        "instance_type_name": self.config.instance_type,
+                        "region_name": region,
+                        "instance_type_name": instance_type,
                         "ssh_key_names": [self.config.ssh_key_name],
                     },
                     timeout=30,
@@ -91,32 +110,62 @@ class LambdaCloudManager:
                 instance_ids = data.get("data", {}).get("instance_ids", [])
                 if not instance_ids:
                     raise RuntimeError(f"No instance IDs in launch response: {data}")
+
                 instance_id = instance_ids[0]
-                logger.info("Instance launched: %s", instance_id)
-                break
-            except (httpx.HTTPStatusError, RuntimeError) as e:
-                error_msg = str(e)
-                if attempt < self.config.max_launch_retries:
+                logger.info("Instance launched: %s (type=%s, region=%s)",
+                            instance_id, instance_type, region)
+
+                ip = self._poll_for_ip(instance_id)
+                self.instance = LambdaInstance(
+                    instance_id=instance_id, ip=ip, status="active"
+                )
+                self._install_safety_nets()
+                return self.instance
+
+            except httpx.HTTPStatusError as e:
+                error_body = e.response.text
+                if e.response.status_code == 401:
+                    raise RuntimeError("Invalid LAMBDA_API_KEY") from e
+                if "insufficient-capacity" in error_body:
+                    launch_failures += 1
                     logger.warning(
-                        "Launch failed (%s), retrying in %ds...",
-                        error_msg, self.config.launch_retry_delay,
+                        "Capacity gone before launch (race %d/%d), continuing to poll...",
+                        launch_failures, max_retries,
                     )
-                    time.sleep(self.config.launch_retry_delay)
-                else:
-                    raise RuntimeError(
-                        f"Failed to launch after {self.config.max_launch_retries} attempts: {error_msg}"
-                    )
+                    if launch_failures >= max_retries:
+                        raise RuntimeError(
+                            f"Failed to launch after {max_retries} capacity races"
+                        ) from e
+                    time.sleep(poll_interval)
+                    continue
+                raise
+            except KeyboardInterrupt:
+                logger.info("Polling cancelled by user")
+                raise
 
-        # Poll for IP address
-        ip = self._poll_for_ip(instance_id)
-        self.instance = LambdaInstance(
-            instance_id=instance_id, ip=ip, status="active"
+    def _find_available(self, preferences: list[str]) -> tuple[str, str] | None:
+        """Check Lambda API for GPU availability across preferred types.
+
+        Returns (instance_type, region) for the first match, or None.
+        """
+        resp = httpx.get(
+            f"{self.BASE_URL}/instance-types",
+            auth=self._auth(),
+            timeout=15,
         )
+        resp.raise_for_status()
+        data = resp.json().get("data", {})
 
-        # Install safety nets
-        self._install_safety_nets()
+        for target in preferences:
+            info = data.get(target)
+            if not info:
+                continue
+            regions = info.get("regions_with_capacity_available", [])
+            if regions:
+                region = regions[0].get("name")
+                return target, region
 
-        return self.instance
+        return None
 
     def _poll_for_ip(self, instance_id: str, timeout: int = 300, interval: int = 10) -> str:
         """Poll GET /instances/{id} until the instance has an IP."""

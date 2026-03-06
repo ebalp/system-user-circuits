@@ -36,18 +36,11 @@ class TestRetryWithBackoff:
         assert result == "ok"
         assert call_count == 2
 
-    def test_retries_on_empty_response_error(self):
-        call_count = 0
+    def test_does_not_retry_on_empty_response_error(self):
         def func():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 2:
-                raise EmptyResponseError("empty")
-            return "recovered"
-        with patch("phase0_v2.src.api_client.time.sleep"):
-            result = _retry_with_backoff(func, max_retries=3)
-        assert result == "recovered"
-        assert call_count == 2
+            raise EmptyResponseError("empty")
+        with pytest.raises(EmptyResponseError):
+            _retry_with_backoff(func, max_retries=3)
 
     def test_retries_on_502(self):
         call_count = 0
@@ -520,87 +513,6 @@ class TestVLLMClientChatCompletion:
             model_id="test-model", messages=[{"role": "user", "content": "Hi"}],
         )
         assert result.error is not None
-
-
-class TestVLLMClientWaitUntilReady:
-    """Test VLLMClient.wait_until_ready method."""
-
-    @patch("phase0_v2.src.api_client.OpenAI")
-    def test_ready_immediately(self, mock_openai_cls):
-        client = VLLMClient(base_url="http://localhost:8000/v1")
-        with patch("httpx.get") as mock_get:
-            mock_resp = MagicMock()
-            mock_resp.status_code = 200
-            mock_resp.json.return_value = {"data": [{"id": "test-model"}]}
-            mock_get.return_value = mock_resp
-            assert client.wait_until_ready(timeout_seconds=5) is True
-
-    @patch("phase0_v2.src.api_client.OpenAI")
-    def test_ready_after_polls(self, mock_openai_cls):
-        client = VLLMClient(base_url="http://localhost:8000/v1")
-        with patch("httpx.get") as mock_get, \
-             patch("phase0_v2.src.api_client.time.sleep"):
-            fail_resp = MagicMock()
-            fail_resp.status_code = 503
-            ok_resp = MagicMock()
-            ok_resp.status_code = 200
-            ok_resp.json.return_value = {"data": [{"id": "model"}]}
-            mock_get.side_effect = [Exception("conn refused"), fail_resp, ok_resp]
-            assert client.wait_until_ready(timeout_seconds=600, poll_interval=1) is True
-
-    @patch("phase0_v2.src.api_client.OpenAI")
-    def test_timeout_returns_false(self, mock_openai_cls):
-        client = VLLMClient(base_url="http://localhost:8000/v1")
-        with patch("httpx.get", side_effect=Exception("down")), \
-             patch("phase0_v2.src.api_client.time.sleep"), \
-             patch("phase0_v2.src.api_client.time.time") as mock_time:
-            # Simulate: first call returns 0 (start), second returns 0 (check),
-            # third returns 100 (exceeds timeout)
-            mock_time.side_effect = [0, 0, 100]
-            assert client.wait_until_ready(timeout_seconds=5) is False
-
-    @patch("phase0_v2.src.api_client.OpenAI")
-    def test_empty_data_keeps_polling(self, mock_openai_cls):
-        """Server responds 200 but no models loaded yet -> keep polling."""
-        client = VLLMClient(base_url="http://localhost:8000/v1")
-        with patch("httpx.get") as mock_get, \
-             patch("phase0_v2.src.api_client.time.sleep"), \
-             patch("phase0_v2.src.api_client.time.time") as mock_time:
-            empty_resp = MagicMock()
-            empty_resp.status_code = 200
-            empty_resp.json.return_value = {"data": []}
-            ok_resp = MagicMock()
-            ok_resp.status_code = 200
-            ok_resp.json.return_value = {"data": [{"id": "model"}]}
-            mock_get.side_effect = [empty_resp, ok_resp]
-            mock_time.side_effect = [0, 0, 0, 0]
-            assert client.wait_until_ready(timeout_seconds=600, poll_interval=1) is True
-
-    @patch("phase0_v2.src.api_client.OpenAI")
-    def test_url_construction(self, mock_openai_cls):
-        """Verify /models URL is built correctly from base_url."""
-        client = VLLMClient(base_url="http://10.0.0.1:8000/v1")
-        with patch("httpx.get") as mock_get, \
-             patch("phase0_v2.src.api_client.time.sleep"), \
-             patch("phase0_v2.src.api_client.time.time") as mock_time:
-            # deadline = 0 + 5 = 5; loop check: 1 < 5 enters; next check: 100 exits
-            mock_time.side_effect = [0, 1, 100]
-            mock_get.side_effect = Exception("down")
-            client.wait_until_ready(timeout_seconds=5)
-            mock_get.assert_called_with("http://10.0.0.1:8000/v1/models", timeout=10)
-
-    @patch("phase0_v2.src.api_client.OpenAI")
-    def test_url_construction_trailing_slash(self, mock_openai_cls):
-        """Trailing slash on base_url should not create double slash."""
-        client = VLLMClient(base_url="http://10.0.0.1:8000/v1/")
-        with patch("httpx.get") as mock_get, \
-             patch("phase0_v2.src.api_client.time.sleep"), \
-             patch("phase0_v2.src.api_client.time.time") as mock_time:
-            # deadline = 0 + 5 = 5; loop check: 1 < 5 enters; next check: 100 exits
-            mock_time.side_effect = [0, 1, 100]
-            mock_get.side_effect = Exception("down")
-            client.wait_until_ready(timeout_seconds=5)
-            mock_get.assert_called_with("http://10.0.0.1:8000/v1/models", timeout=10)
 
 
 # ── HFClient still works after refactoring ──

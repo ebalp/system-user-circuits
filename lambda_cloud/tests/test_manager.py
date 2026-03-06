@@ -28,6 +28,8 @@ def lambda_config():
         max_launch_retries=2,
         launch_retry_delay=1,
         readiness_timeout=10,
+        instance_preferences=["gpu_1x_a10"],
+        poll_interval=1,
     )
 
 
@@ -52,6 +54,22 @@ def _mock_instance_response(instance_id="i-abc123", ip="10.0.0.1", status="activ
     return resp
 
 
+def _mock_availability_response(instance_type="gpu_1x_a10", region="us-east-1"):
+    """Mock response for GET /instance-types with capacity available."""
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "data": {
+            instance_type: {
+                "instance_type": {"description": "test", "price_cents_per_hour": 75},
+                "regions_with_capacity_available": [{"name": region}],
+            }
+        }
+    }
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
 def _mock_terminate_response():
     resp = MagicMock()
     resp.status_code = 200
@@ -64,35 +82,45 @@ def _mock_terminate_response():
 
 
 class TestLaunch:
+    """Tests for launch() which polls _find_available() then launches."""
+
+    @patch("lambda_cloud.manager.time.sleep")
     @patch("lambda_cloud.manager.signal.signal")
     @patch("lambda_cloud.manager.signal.getsignal")
     @patch("lambda_cloud.manager.atexit.register")
     @patch("lambda_cloud.manager.httpx.get")
     @patch("lambda_cloud.manager.httpx.post")
-    def test_successful_launch(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, manager):
+    def test_successful_launch(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, mock_sleep, manager):
+        # First GET: availability check; second GET: poll for IP
+        mock_get.side_effect = [
+            _mock_availability_response("gpu_1x_a10", "us-east-1"),
+            _mock_instance_response("i-123", "10.0.0.5"),
+        ]
         mock_post.return_value = _mock_launch_response("i-123")
-        mock_get.return_value = _mock_instance_response("i-123", "10.0.0.5")
 
         instance = manager.launch()
         assert instance.instance_id == "i-123"
         assert instance.ip == "10.0.0.5"
         assert manager.instance is not None
 
+    @patch("lambda_cloud.manager.time.sleep")
     @patch("lambda_cloud.manager.signal.signal")
     @patch("lambda_cloud.manager.signal.getsignal")
     @patch("lambda_cloud.manager.atexit.register")
     @patch("lambda_cloud.manager.httpx.get")
     @patch("lambda_cloud.manager.httpx.post")
-    def test_launch_sends_correct_payload(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, manager):
+    def test_launch_sends_correct_payload(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, mock_sleep, manager):
+        mock_get.side_effect = [
+            _mock_availability_response("gpu_1x_a10", "us-east-1"),
+            _mock_instance_response(),
+        ]
         mock_post.return_value = _mock_launch_response()
-        mock_get.return_value = _mock_instance_response()
 
         manager.launch()
         call_json = mock_post.call_args[1]["json"]
         assert call_json["region_name"] == "us-east-1"
         assert call_json["instance_type_name"] == "gpu_1x_a10"
         assert call_json["ssh_key_names"] == ["test-key"]
-        assert "user_data" not in call_json  # No cloud-init anymore
 
     @patch("lambda_cloud.manager.time.sleep")
     @patch("lambda_cloud.manager.signal.signal")
@@ -100,85 +128,127 @@ class TestLaunch:
     @patch("lambda_cloud.manager.atexit.register")
     @patch("lambda_cloud.manager.httpx.get")
     @patch("lambda_cloud.manager.httpx.post")
-    def test_launch_retries_on_failure(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, mock_sleep, manager):
+    def test_launch_retries_on_capacity_race(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, mock_sleep, manager):
+        """When capacity disappears between check and launch, retry."""
         import httpx as real_httpx
         fail_resp = MagicMock()
+        fail_resp.status_code = 400
+        fail_resp.text = "insufficient-capacity"
         fail_resp.raise_for_status.side_effect = real_httpx.HTTPStatusError(
-            "503", request=MagicMock(), response=MagicMock()
+            "400", request=MagicMock(), response=fail_resp,
         )
+        # Two availability checks (one per attempt), then IP poll
+        mock_get.side_effect = [
+            _mock_availability_response(),
+            _mock_availability_response(),
+            _mock_instance_response(),
+        ]
         mock_post.side_effect = [fail_resp, _mock_launch_response()]
-        mock_get.return_value = _mock_instance_response()
 
         instance = manager.launch()
         assert instance.instance_id == "i-abc123"
         assert mock_post.call_count == 2
 
     @patch("lambda_cloud.manager.time.sleep")
+    @patch("lambda_cloud.manager.httpx.get")
     @patch("lambda_cloud.manager.httpx.post")
-    def test_launch_exhausts_retries(self, mock_post, mock_sleep, manager):
+    def test_launch_exhausts_retries(self, mock_post, mock_get, mock_sleep, manager):
+        """After max capacity races, raises RuntimeError."""
         import httpx as real_httpx
         fail_resp = MagicMock()
+        fail_resp.status_code = 400
+        fail_resp.text = "insufficient-capacity"
         fail_resp.raise_for_status.side_effect = real_httpx.HTTPStatusError(
-            "503", request=MagicMock(), response=MagicMock()
+            "400", request=MagicMock(), response=fail_resp,
         )
+        mock_get.return_value = _mock_availability_response()
         mock_post.return_value = fail_resp
 
         with pytest.raises(RuntimeError, match="Failed to launch"):
             manager.launch()
         assert mock_post.call_count == manager.config.max_launch_retries
 
+    @patch("lambda_cloud.manager.time.sleep")
     @patch("lambda_cloud.manager.signal.signal")
     @patch("lambda_cloud.manager.signal.getsignal")
     @patch("lambda_cloud.manager.atexit.register")
     @patch("lambda_cloud.manager.httpx.get")
     @patch("lambda_cloud.manager.httpx.post")
-    def test_launch_installs_atexit(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, manager):
+    def test_launch_installs_atexit(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, mock_sleep, manager):
+        mock_get.side_effect = [_mock_availability_response(), _mock_instance_response()]
         mock_post.return_value = _mock_launch_response()
-        mock_get.return_value = _mock_instance_response()
 
         manager.launch()
         mock_atexit.assert_called_once()
 
+    @patch("lambda_cloud.manager.time.sleep")
     @patch("lambda_cloud.manager.signal.signal")
     @patch("lambda_cloud.manager.signal.getsignal")
     @patch("lambda_cloud.manager.atexit.register")
     @patch("lambda_cloud.manager.httpx.get")
     @patch("lambda_cloud.manager.httpx.post")
-    def test_launch_installs_signal_handlers(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, manager):
+    def test_launch_installs_signal_handlers(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, mock_sleep, manager):
+        mock_get.side_effect = [_mock_availability_response(), _mock_instance_response()]
         mock_post.return_value = _mock_launch_response()
-        mock_get.return_value = _mock_instance_response()
 
         manager.launch()
         assert mock_getsignal.call_count == 2
         assert mock_signal.call_count == 2
 
+    @patch("lambda_cloud.manager.time.sleep")
     @patch("lambda_cloud.manager.signal.signal")
     @patch("lambda_cloud.manager.signal.getsignal")
     @patch("lambda_cloud.manager.atexit.register")
     @patch("lambda_cloud.manager.httpx.get")
     @patch("lambda_cloud.manager.httpx.post")
-    def test_launch_sends_basic_auth(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, manager):
+    def test_launch_sends_basic_auth(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, mock_sleep, manager):
+        mock_get.side_effect = [_mock_availability_response(), _mock_instance_response()]
         mock_post.return_value = _mock_launch_response()
-        mock_get.return_value = _mock_instance_response()
 
         manager.launch()
         call_auth = mock_post.call_args[1]["auth"]
         assert isinstance(call_auth, httpx.BasicAuth)
         assert call_auth._auth_header == httpx.BasicAuth("test-api-key", "")._auth_header
 
+    @patch("lambda_cloud.manager.time.sleep")
     @patch("lambda_cloud.manager.signal.signal")
     @patch("lambda_cloud.manager.signal.getsignal")
     @patch("lambda_cloud.manager.atexit.register")
     @patch("lambda_cloud.manager.httpx.get")
     @patch("lambda_cloud.manager.httpx.post")
-    def test_launch_empty_instance_ids_raises(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, manager):
+    def test_launch_empty_instance_ids_raises(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, mock_sleep, manager):
         resp = MagicMock()
         resp.json.return_value = {"data": {"instance_ids": []}}
         resp.raise_for_status = MagicMock()
+        mock_get.return_value = _mock_availability_response()
         mock_post.return_value = resp
 
-        with pytest.raises(RuntimeError, match="Failed to launch"):
+        with pytest.raises(RuntimeError, match="No instance IDs"):
             manager.launch()
+
+    @patch("lambda_cloud.manager.time.sleep")
+    @patch("lambda_cloud.manager.signal.signal")
+    @patch("lambda_cloud.manager.signal.getsignal")
+    @patch("lambda_cloud.manager.atexit.register")
+    @patch("lambda_cloud.manager.httpx.get")
+    @patch("lambda_cloud.manager.httpx.post")
+    def test_launch_polls_until_available(self, mock_post, mock_get, mock_atexit, mock_getsignal, mock_signal, mock_sleep, manager):
+        """When no capacity initially, polls until GPU becomes available."""
+        no_capacity = MagicMock()
+        no_capacity.status_code = 200
+        no_capacity.json.return_value = {"data": {}}
+        no_capacity.raise_for_status = MagicMock()
+
+        mock_get.side_effect = [
+            no_capacity, no_capacity,  # Two polls with no capacity
+            _mock_availability_response(),  # Capacity found
+            _mock_instance_response(),  # IP poll
+        ]
+        mock_post.return_value = _mock_launch_response()
+
+        instance = manager.launch()
+        assert instance.instance_id == "i-abc123"
+        assert mock_sleep.call_count >= 2
 
 
 # ── Poll for IP ──

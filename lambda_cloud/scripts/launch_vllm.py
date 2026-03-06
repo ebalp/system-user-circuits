@@ -136,8 +136,8 @@ def main():
 
     if args.tunnel:
         print(f"Opening SSH tunnel localhost:{args.local_port} -> {args.ip}:{args.port}")
-        tunnel = ssh.open_tunnel(args.local_port, args.port)
-        print(f"Tunnel open. vLLM available at http://localhost:{args.local_port}/v1")
+        tunnel, local_port = ssh.open_tunnel(args.local_port, args.port)
+        print(f"Tunnel open. vLLM available at http://localhost:{local_port}/v1")
         print("Press Ctrl+C to stop tunnel and exit.")
 
         def _cleanup(signum, frame):

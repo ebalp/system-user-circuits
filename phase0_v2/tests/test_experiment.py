@@ -16,7 +16,7 @@ class TestHashComputation:
             instruction_args_json='{"word1": "a"}',
             task_id="t1", task_source="synthetic",
             condition="C", direction="a_to_b", system_style="compliance",
-            user_style="jailbreak", temperature=0.0, max_tokens=512,
+            user_style="jailbreak", temperature=0.0,
             system_prompt="Avoid word a.", user_prompt="Use word a.",
         )
         assert compute_experiment_hash(key) == compute_experiment_hash(key)
@@ -26,7 +26,7 @@ class TestHashComputation:
             model="x", conflict_id="x", instruction_args_json="{}",
             task_id="x", task_source="synthetic",
             condition="A", direction="none", system_style=None,
-            user_style="task_only", temperature=0.0, max_tokens=512,
+            user_style="task_only", temperature=0.0,
             system_prompt="sys", user_prompt="usr",
         )
         assert len(compute_experiment_hash(key)) == 16
@@ -37,7 +37,7 @@ class TestHashComputation:
             instruction_args_json='{"word1": "a"}',
             task_id="t1", task_source="synthetic",
             condition="C", direction="a_to_b", system_style="compliance",
-            user_style="jailbreak", temperature=0.0, max_tokens=512,
+            user_style="jailbreak", temperature=0.0,
             system_prompt="sys", user_prompt="usr",
         )
         h1 = compute_experiment_hash(ExperimentKey(**base))
@@ -50,7 +50,7 @@ class TestHashComputation:
             instruction_args_json='{"word1": "a"}',
             task_id="t1", task_source="synthetic",
             condition="C", direction="a_to_b", system_style="bare",
-            user_style="jailbreak", temperature=0.0, max_tokens=512,
+            user_style="jailbreak", temperature=0.0,
             system_prompt="sys", user_prompt="usr",
         )
         h1 = compute_experiment_hash(ExperimentKey(**base))
@@ -63,7 +63,7 @@ class TestHashComputation:
             instruction_args_json='{}',
             task_id="t1", task_source="synthetic",
             condition="C", direction="a_to_b", system_style="compliance",
-            user_style="jailbreak", temperature=0.0, max_tokens=512,
+            user_style="jailbreak", temperature=0.0,
             system_prompt="sys", user_prompt="usr",
         )
         h1 = compute_experiment_hash(ExperimentKey(**base))
@@ -75,7 +75,7 @@ class TestHashComputation:
             model="test", conflict_id="x", instruction_args_json="{}",
             task_id="x", task_source="synthetic",
             condition="A", direction="none", system_style=None,
-            user_style="task_only", temperature=0.0, max_tokens=512,
+            user_style="task_only", temperature=0.0,
             system_prompt="sys", user_prompt="usr",
         )
         h = compute_experiment_hash(key)
@@ -87,7 +87,7 @@ class TestHashComputation:
             instruction_args_json='{"word1": "a"}',
             task_id="t1", task_source="synthetic",
             condition="C", direction="a_to_b", system_style="compliance",
-            user_style="jailbreak", temperature=0.0, max_tokens=512,
+            user_style="jailbreak", temperature=0.0,
             system_prompt="Avoid word a.", user_prompt="Use word a.",
         )
         h1 = compute_experiment_hash(ExperimentKey(**base))
@@ -101,7 +101,7 @@ class TestHashComputation:
             instruction_args_json='{"word1":"a","word2":"b","word3":"c"}',
             task_id="t1", task_source="synthetic",
             condition="C", direction="a_to_b", system_style="bare",
-            user_style="with_instruction", temperature=0.0, max_tokens=512,
+            user_style="with_instruction", temperature=0.0,
             system_prompt="Avoid a, b, c.", user_prompt="Use a, b, c.",
         )
         expected_hash = compute_experiment_hash(key)
@@ -117,7 +117,6 @@ class TestHashComputation:
             "system_style": "bare",
             "user_style": "with_instruction",
             "temperature": 0.0,
-            "max_tokens": 512,
             "system_prompt": "Avoid a, b, c.",
             "user_prompt": "Use a, b, c.",
         }

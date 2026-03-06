@@ -73,19 +73,35 @@ class TestRunBackground:
 
 
 class TestOpenTunnel:
+    @patch("lambda_cloud.ssh._port_in_use", return_value=False)
     @patch("lambda_cloud.ssh.subprocess.Popen")
-    def test_open_tunnel_creates_popen(self, mock_popen, ssh):
+    def test_open_tunnel_creates_popen(self, mock_popen, mock_port_check, ssh):
         mock_proc = MagicMock()
         mock_popen.return_value = mock_proc
 
-        result = ssh.open_tunnel(local_port=9000, remote_port=8000)
-        assert result is mock_proc
+        proc, port = ssh.open_tunnel(local_port=9000, remote_port=8000)
+        assert proc is mock_proc
+        assert port == 9000
 
         args = mock_popen.call_args[0][0]
         assert "-N" in args
         assert "-L" in args
         assert "9000:localhost:8000" in args
         assert "ubuntu@10.0.0.1" in args
+
+    @patch("lambda_cloud.ssh._find_free_port", return_value=9999)
+    @patch("lambda_cloud.ssh._port_in_use", return_value=True)
+    @patch("lambda_cloud.ssh.subprocess.Popen")
+    def test_open_tunnel_picks_free_port_when_busy(self, mock_popen, mock_port_check, mock_free_port, ssh):
+        mock_proc = MagicMock()
+        mock_popen.return_value = mock_proc
+
+        proc, port = ssh.open_tunnel(local_port=8000, remote_port=8000)
+        assert proc is mock_proc
+        assert port == 9999
+
+        args = mock_popen.call_args[0][0]
+        assert "9999:localhost:8000" in args
 
 
 class TestWaitForSSH:

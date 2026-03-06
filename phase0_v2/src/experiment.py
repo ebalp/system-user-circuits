@@ -40,7 +40,6 @@ class ExperimentKey:
     system_style: str | None
     user_style: str
     temperature: float
-    max_tokens: int
     system_prompt: str
     user_prompt: str
 
@@ -61,7 +60,6 @@ def compute_experiment_hash(key: ExperimentKey) -> str:
         "system_style": key.system_style,
         "user_style": key.user_style,
         "temperature": key.temperature,
-        "max_tokens": key.max_tokens,
         "system_prompt": key.system_prompt,
         "user_prompt": key.user_prompt,
     }
@@ -89,7 +87,6 @@ def recompute_hash_from_record(rec: dict) -> str:
         system_style=rec.get("system_style"),
         user_style=rec.get("user_style", "with_instruction"),
         temperature=rec.get("temperature", 0.0),
-        max_tokens=rec.get("max_tokens", 512),
         system_prompt=rec.get("system_prompt", ""),
         user_prompt=rec.get("user_prompt", ""),
     )
@@ -113,7 +110,6 @@ def _make_experiment_key(
         system_style=prompt.system_style,
         user_style=prompt.user_style,
         temperature=config.generation.temperature,
-        max_tokens=config.generation.max_tokens,
         system_prompt=prompt.system_message,
         user_prompt=prompt.user_message,
     )

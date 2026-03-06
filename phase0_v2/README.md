@@ -53,6 +53,64 @@ uv run python phase0_v2/run_experiments.py --config phase0_v2/config/experiment.
 uv run python phase0_v2/generate_report.py --results-dir phase0_v2/data/results
 ```
 
+## `run_experiments.py` CLI Reference
+
+### Arguments
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--config` | `phase0_v2/config/experiment.yaml` | Master experiment config |
+| `--output-dir` | `phase0_v2/data/results` | Directory for JSONL result files |
+| `--model` | all | Run only this model ID |
+| `--conflicts` | all | Comma-separated conflict IDs to run |
+| `--n-tasks` | all | Max synthetic tasks per conflict |
+| `--conditions` | `A,B,C,D` | Comma-separated conditions to run |
+| `--dry-run` | off | Generate prompts only, no API calls |
+| `--backend` | `hf` | Inference backend: `hf`, `vllm`, or `lambda` |
+| `--vllm-url` | — | vLLM server URL (required for `--backend vllm`) |
+| `--lambda-config` | `lambda_cloud/config/lambda.yaml` | Lambda config YAML (for `--backend lambda`) |
+| `--ip` | — | Existing instance IP (for `--backend lambda`, skips auto-launch) |
+
+### Backends
+
+**`hf`** — HuggingFace Inference API. Requires `HF_TOKEN`. Concurrency controlled by `api.concurrent_per_model` in experiment config. Good for hosted models.
+
+```bash
+source .sync.env
+uv run python phase0_v2/run_experiments.py --backend hf --model meta-llama/Llama-3.1-8B-Instruct
+```
+
+**`vllm`** — Self-hosted vLLM server. Point at any running vLLM instance via `--vllm-url`. Useful when you manage the GPU yourself.
+
+```bash
+uv run python phase0_v2/run_experiments.py --backend vllm \
+  --vllm-url http://localhost:8000/v1 --model meta-llama/Llama-3.1-8B-Instruct
+```
+
+**`lambda`** — Lambda Cloud GPU instances. Both modes require env vars sourced **locally** (the machine running the script), since the script reads them to configure SSH and pass `HF_TOKEN` to the remote vLLM process:
+
+```bash
+source .sync.env  # sets LAMBDA_API_KEY + HF_TOKEN locally
+```
+
+*Auto-launch* — launches a new instance, deploys vLLM, runs experiments, terminates on completion. Concurrency read from `defaults.concurrent_per_model` in `lambda.yaml`. Requires `LAMBDA_API_KEY` for the Lambda Cloud API.
+
+```bash
+uv run python phase0_v2/run_experiments.py --backend lambda \
+  --model meta-llama/Llama-3.1-8B-Instruct
+```
+
+*Existing instance* — connects to an already-running instance via `--ip`. Installs and starts vLLM if not already running. Does not terminate the instance. SSH must be configured for the target IP (key file read from `lambda.yaml`). If vLLM is already running a **different** model, you must stop it first (see note below).
+
+```bash
+uv run python phase0_v2/run_experiments.py --backend lambda --ip 1.2.3.4 \
+  --model meta-llama/Llama-3.1-8B-Instruct
+```
+
+Both lambda modes open an SSH tunnel for inference (Lambda's firewall blocks port 8000 externally) and validate the served model matches the requested one.
+
+> **Switching models on an existing instance:** If vLLM is already running a different model, stop it first with `uv run python -m lambda_cloud.scripts.launch_vllm --ip <ip> --stop`, then re-run with the new `--model`. See the [lambda_cloud README](../lambda_cloud/README.md) for CLI details.
+
 ## Core Concepts
 
 ### 4 Conditions

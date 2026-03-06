@@ -23,6 +23,9 @@ class LambdaConfig:
     max_launch_retries: int = 5
     launch_retry_delay: int = 60
     readiness_timeout: int = 900
+    concurrent_per_model: int = 10
+    instance_preferences: list[str] | None = None
+    poll_interval: int = 10
 
 
 @dataclass
@@ -72,13 +75,26 @@ def load_lambda_config(path: str | Path, model_id: str) -> LambdaConfig:
     # Look up model-specific settings, fall back to _default
     model_settings = gpu_map.get(model_id, gpu_map.get("_default", {}))
 
+    # Build instance preferences: model-specific list, then global, then just the primary type
+    primary_type = model_settings.get(
+        "instance_type", defaults.get("instance_type", "gpu_1x_a100")
+    )
+    instance_prefs = model_settings.get(
+        "instance_preferences",
+        data.get("instance_preferences"),
+    )
+    # Ensure primary type is first in the list
+    if instance_prefs:
+        if primary_type not in instance_prefs:
+            instance_prefs = [primary_type] + list(instance_prefs)
+    else:
+        instance_prefs = [primary_type]
+
     return LambdaConfig(
         api_key=api_key,
         ssh_key_name=data.get("ssh_key_name", ""),
         model_id=model_id,
-        instance_type=model_settings.get(
-            "instance_type", defaults.get("instance_type", "gpu_1x_a100")
-        ),
+        instance_type=primary_type,
         region=defaults.get("region", "us-east-1"),
         hf_token=hf_token,
         ssh_key_file=data.get("ssh_key_file", "~/.ssh/anusha-cre-lambda-key.pem"),
@@ -88,4 +104,7 @@ def load_lambda_config(path: str | Path, model_id: str) -> LambdaConfig:
         max_launch_retries=defaults.get("max_launch_retries", 5),
         launch_retry_delay=defaults.get("launch_retry_delay", 60),
         readiness_timeout=defaults.get("readiness_timeout", 900),
+        concurrent_per_model=defaults.get("concurrent_per_model", 10),
+        instance_preferences=instance_prefs,
+        poll_interval=defaults.get("poll_interval", 10),
     )
