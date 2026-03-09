@@ -39,9 +39,12 @@ Apply the user's selection criteria to the metrics. Present the target list and 
 
 Examples of selection criteria:
 - "all not perfect" = any conflict with BA < 1.0 or any baseline < 1.0
+- "below tier 1" = any conflict with min(baseline) < 0.95 or BA < 0.95
 - "these five conflicts: X, Y, Z, W, V"
 - "BA < 0.95"
 - "tier 2 and 3" = use tier definitions from calibration-report
+
+**Quality gate context:** Tier 1 requires ALL four baselines (SBR(a), UCR(a), SBR(b), UCR(b)) ≥ 0.95 AND BA ≥ 0.95. Conflicts below this are diagnostic targets.
 
 ## Step 3: Create output directory
 

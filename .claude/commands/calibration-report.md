@@ -78,10 +78,10 @@ Count records by `(conflict_id, anomaly_reason)`. Reasons: `followed_both`, `con
 
 For each conflict, check baselines and BA:
 
-- **Tier 1**: `min(SBR(a), UCR(a), SBR(b), UCR(b)) >= 0.8` AND `BA >= 0.8`
-  - For non-invertible conflicts (no b rows): `min(SBR(a), UCR(a)) >= 0.8`
-- **Tier 2**: `BA >= 0.7` but at least one baseline < 0.8
-- **Tier 3**: `BA < 0.7` OR `min(baseline) < 0.3`
+- **Tier 1**: `min(SBR(a), UCR(a), SBR(b), UCR(b)) >= 0.95` AND `BA >= 0.95`
+  - For non-invertible conflicts (no b rows): `min(SBR(a), UCR(a)) >= 0.95`
+- **Tier 2**: `BA >= 0.80` but not meeting Tier 1 (at least one baseline < 0.95 or BA < 0.95)
+- **Tier 3**: `BA < 0.80` OR `min(baseline) < 0.50`
 - **Excluded**: Conflicts in the model's `exclude_conflicts` list in `experiment.yaml`, or conflicts absent from the data entirely
 
 Also check the experiment config for excluded conflicts:
@@ -160,7 +160,7 @@ For non-invertible conflicts, put "(non-invertible)" in Constraint b.
 ```markdown
 ## Complete conflict status
 
-### Tier 1: Reliable (min baseline >= 0.80, BA >= 0.80)
+### Tier 1: Reliable (min baseline >= 0.95, BA >= 0.95)
 
 | Conflict | Thresh | Type | SBR(a) | UCR(a) | SBR(b) | UCR(b) | BA | Anomalies |
 |----------|--------|------|--------|--------|--------|--------|----|-----------|
@@ -221,8 +221,8 @@ Total anomalies: {total}
 ### Section 6: Recommended exclusions
 
 Apply these drop criteria:
-- BA < 0.70
-- min(baseline) < 0.70
+- BA < 0.80
+- min(baseline) < 0.80
 
 ```markdown
 ## Recommended exclusions
@@ -238,7 +238,7 @@ Apply these drop criteria:
 |----------|----|---------|-----------|--------|
 ```
 
-Write a specific justification per conflict citing the metrics that trigger the recommendation. "Drop" = both BA < 0.70 AND min(baseline) < 0.70. "Consider dropping" = exactly one criterion met.
+Write a specific justification per conflict citing the metrics that trigger the recommendation. "Drop" = both BA < 0.80 AND min(baseline) < 0.80. "Consider dropping" = exactly one criterion met.
 
 **IMPORTANT**: These are recommendations only. Do NOT auto-apply exclusions. Exclusion decisions are made by the human. Keeping a weak conflict in the data does no harm; removing it loses visibility.
 

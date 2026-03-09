@@ -110,8 +110,14 @@ You are optimizing the `{conflict_id}` conflict verifier to maximize Balanced Ac
      # </description>
      ```
 
-9. **Return a brief summary** (5-8 lines max):
+9. **Check minimum baseline gate**: After optimization, ALL four baseline rates must be ≥ 0.95:
+   - SBR(a) ≥ 0.95, UCR(a) ≥ 0.95, SBR(b) ≥ 0.95, UCR(b) ≥ 0.95
+   - If any rate is below 0.95, report which rate(s) failed and the root cause (scorer, template, or model inability)
+   - BA alone is not sufficient — a conflict with BA=0.96 but SBR(b)=0.88 is not acceptable for Tier 1
+
+10. **Return a brief summary** (5-8 lines max):
    - BA before → BA after (and per-baseline changes if relevant)
+   - Whether all baselines pass the ≥ 0.95 gate
    - What you changed (specific functions/logic)
    - Whether the diagnosis estimate was accurate
    - Any regressions found and how you addressed them
