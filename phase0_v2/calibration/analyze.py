@@ -824,6 +824,10 @@ def main(argv: list[str] | None = None) -> None:
         "--config", default="phase0_v2/config/experiment.yaml",
         help="Path to experiment config (for completeness checks)",
     )
+    parser.add_argument(
+        "--smoke", action="store_true",
+        help="Smoke test mode: skip completeness/consistency checks",
+    )
     args = parser.parse_args(argv)
 
     output_dir = Path(args.output_dir)
@@ -840,8 +844,9 @@ def main(argv: list[str] | None = None) -> None:
     constraint_labels = _build_constraint_labels()
 
     # Dataset completeness and threshold consistency checks
-    _check_completeness(records, args.config, args.conflict)
-    _check_threshold_consistency(records, threshold_map, args.conflict)
+    if not args.smoke:
+        _check_completeness(records, args.config, args.conflict)
+        _check_threshold_consistency(records, threshold_map, args.conflict)
 
     # Constraint legend
     conflict_ids = {r["conflict_id"] for r in records if r.get("error") is None}

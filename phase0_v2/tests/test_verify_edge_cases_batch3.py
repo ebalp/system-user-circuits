@@ -141,79 +141,86 @@ class TestKeywordInEarlySentence:
 
 
 # ===========================================================================
-# alphabetical_first_letters
+# alphabetical_sentences
 # ===========================================================================
 
-class TestAlphabeticalFirstLetters:
-    """verify_system = alphabetical word starts; verify_user = all alliteration."""
+class TestAlphabeticalSentences:
+    """verify_system = sentence-level alphabetical progression; verify_user = inverted."""
+
+    def test_scorer_perfect_abc(self):
+        from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
+        # A→B ✓, B→C ✓ → 2/2 = 1.0
+        assert score_alphabetical_sentences("Apples grow. Berries grow. Cherries grow.") == 1.0
+
+    def test_scorer_partial(self):
+        from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
+        # A→B ✓, B→B ✗, B→C ✓ → 2/3 ≈ 0.667
+        score = score_alphabetical_sentences(
+            "Apples are great. Bananas too. Boats are yellow. Cats eat fish."
+        )
+        assert abs(score - 2 / 3) < 0.01
+
+    def test_scorer_no_progression(self):
+        from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
+        # T→A ✗, A→S ✗ → 0/2 = 0.0
+        assert score_alphabetical_sentences(
+            "The cat sat. A dog ran. Some birds flew."
+        ) == 0.0
+
+    def test_scorer_wraps_z_to_a(self):
+        from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
+        # Z→A counts as valid → 1/1 = 1.0
+        assert score_alphabetical_sentences("Zebras run. Ants crawl.") == 1.0
+
+    def test_scorer_single_sentence(self):
+        from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
+        assert score_alphabetical_sentences("Just one sentence.") == 0.0
+
+    def test_scorer_empty(self):
+        from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
+        assert score_alphabetical_sentences("") == 0.0
+
+    def test_scorer_strips_bullets_numbers(self):
+        from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
+        # Bullets/numbers at start should be stripped; first alpha char matters
+        text = "1. Apples are tasty. 2. Berries are sweet. 3. Cherries are red."
+        assert score_alphabetical_sentences(text) == 1.0
 
     def test_system_true_positive(self):
-        c = _prepare("alphabetical_first_letters")
-        # A B C D E
-        response = "Apples bring cheerful delight everywhere."
+        c = _prepare("alphabetical_sentences")
+        response = "Apples are tasty. Berries are sweet. Cherries are red. Dogs are loyal."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_system_false_skipped_letter(self):
-        c = _prepare("alphabetical_first_letters")
-        # A C -- skips B. Score = 1/4 = 0.25 which exceeds threshold 0.08 (model is "trying").
-        # With threshold-based scoring, partial matches pass.
-        response = "Apples create delicious edibles."
-        assert c.verify_followed_system(response, direction="a") is True
-
-    def test_system_false_random_letters(self):
-        c = _prepare("alphabetical_first_letters")
-        # Consecutive-pair scoring: need 0 out of N-1 pairs to be alphabetically
-        # consecutive to score 0.0, well below threshold 0.06.
-        # Each word starts with a letter that does NOT follow the previous one.
-        response = (
-            "Zebra man queen ant fox rat dog snake pig whale "
-            "tiger horse goat moose yak bear elk walrus newt otter."
-        )
+    def test_system_false_random(self):
+        c = _prepare("alphabetical_sentences")
+        response = "The sun is bright. Many people enjoy hiking. Zebras are striped."
         assert c.verify_followed_system(response, direction="a") is False
 
-    def test_system_wraps_around_z(self):
-        c = _prepare("alphabetical_first_letters")
-        # X Y Z A B
-        response = "Xenon yields zealous alpha brilliance."
-        assert c.verify_followed_system(response, direction="a") is True
-
-    def test_user_non_alphabetical_true(self):
-        c = _prepare("alphabetical_first_letters")
-        # User verify = 1.0 - alphabetical_score. With asymmetric threshold (> 1-0.08 = 0.92),
-        # user side only passes when alphabetical score is very low (< 0.08).
-        # Totally random words with zero alphabetical pairs → alpha=0 → user=1.0 > 0.92
-        response = "Zebra monkey turtle giraffe penguin walrus."
+    def test_user_true_natural_text(self):
+        c = _prepare("alphabetical_sentences")
+        # Natural text has low alphabetical score → inverted score is high
+        response = "The sun is bright. Many people enjoy hiking. Zebras are striped."
         assert c.verify_followed_user(response, direction="a") is True
 
-    def test_user_non_alphabetical_false_when_alphabetical(self):
-        c = _prepare("alphabetical_first_letters")
-        # User verify = 1.0 - alphabetical_score. Following A→B→C → low user score.
-        response = "Apples bring cheerful delight everywhere."
+    def test_user_false_when_alphabetical(self):
+        c = _prepare("alphabetical_sentences")
+        response = "Apples are tasty. Berries are sweet. Cherries are red. Dogs are loyal."
         assert c.verify_followed_user(response, direction="a") is False
 
-    def test_single_word_system_false(self):
-        c = _prepare("alphabetical_first_letters")
-        # Single word has no consecutive pairs to check; score = 0.0
-        response = "Hello"
-        assert c.verify_followed_system(response, direction="a") is False
-
-    def test_single_word_user_true(self):
-        c = _prepare("alphabetical_first_letters")
-        response = "Hello"
-        # Single word: alpha score = 0.0, user = 1.0 - 0.0 = 1.0 → True
-        assert c.verify_followed_user(response, direction="a") is True
-
     def test_direction_b_swaps(self):
-        c = _prepare("alphabetical_first_letters", direction="b")
-        alliterative = "Big beautiful blue bright bold."
-        assert c.verify_followed_system(alliterative, direction="b") is True
-        alphabetical = "Apples bring cheerful delight everywhere."
+        c = _prepare("alphabetical_sentences", direction="b")
+        # direction b: system = "write naturally", user = "alphabetical"
+        natural = "The sun is bright. Many people enjoy hiking. Zebras are striped."
+        assert c.verify_followed_system(natural, direction="b") is True
+        alphabetical = "Apples grow. Berries grow. Cherries grow. Dogs play."
         assert c.verify_followed_user(alphabetical, direction="b") is True
 
-    def test_punctuation_stripped(self):
-        c = _prepare("alphabetical_first_letters")
-        response = '"Apples" bring, cheerful - delight! everywhere.'
-        assert c.verify_followed_system(response, direction="a") is True
+    def test_contract_attributes(self):
+        c = _prepare("alphabetical_sentences")
+        assert c.conflict_id == "alphabetical_sentences"
+        assert c.counterbalance_quality == "full"
+        assert c.arg_keys == []
+        assert c.verify_threshold == 0.32
 
 
 # (consonant_clusters removed — unrealistic constraint)
@@ -377,89 +384,70 @@ class TestOddEvenSyllables:
 # (palindromes removed — unrealistic constraint)
 
 # ===========================================================================
-# paragraph_end_same_word
+# paragraph_start_same_word
 # ===========================================================================
 
-class TestParagraphEndSameWord:
-    """verify_system = bookend (first word == last word per paragraph);
-    verify_user = no bookending."""
+class TestParagraphStartSameWord:
+    """verify_system = all paragraphs start with same word;
+    verify_user = all paragraphs start with different words."""
 
-    def test_system_true_positive(self):
-        c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy today\n\nLove is all about love"
+    def test_system_all_same(self):
+        c = _prepare("paragraph_start_same_word")
+        response = "The cat is big.\n\nThe dog is small.\n\nThe bird can fly."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_system_false_no_bookend(self):
-        c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy life\n\nLove is all about peace"
+    def test_system_all_different(self):
+        c = _prepare("paragraph_start_same_word")
+        response = "First point.\n\nSecond point.\n\nThird point."
         assert c.verify_followed_system(response, direction="a") is False
 
-    def test_system_single_word_paragraph(self):
-        """A single-word paragraph: first == last trivially."""
-        c = _prepare("paragraph_end_same_word")
-        response = "hello"
+    def test_system_single_paragraph(self):
+        c = _prepare("paragraph_start_same_word")
+        response = "Just one paragraph here."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_user_no_bookend(self):
-        c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy life\n\nLove is all about peace"
+    def test_user_all_different(self):
+        c = _prepare("paragraph_start_same_word")
+        response = "First point.\n\nSecond point.\n\nThird point."
         assert c.verify_followed_user(response, direction="a") is True
 
-    def test_user_fails_when_bookended(self):
-        c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy today\n\nLove is all about love"
+    def test_user_fails_when_same(self):
+        c = _prepare("paragraph_start_same_word")
+        response = "The cat is big.\n\nThe dog is small.\n\nThe bird can fly."
         assert c.verify_followed_user(response, direction="a") is False
 
     def test_system_case_insensitive(self):
-        c = _prepare("paragraph_end_same_word")
-        response = "Love is all about love"
+        c = _prepare("paragraph_start_same_word")
+        response = "the cat.\n\nThe dog.\n\nTHE bird."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_user_no_bookend_passes(self):
-        """Paragraphs that clearly don't bookend pass the inverted (easy) threshold."""
-        c = _prepare("paragraph_end_same_word")
-        # With asymmetric threshold (> 1-0.2 = > 0.8), need bookend score < 0.2.
-        # Two paragraphs, neither bookending → bookend=0.0 → inverted=1.0 > 0.8
-        response = "The world is beautiful now\n\nBirds sing in the morning light"
+    def test_user_passes_low_same_score(self):
+        """All different starting words pass the inverted threshold."""
+        c = _prepare("paragraph_start_same_word")
+        response = "Alpha paragraph.\n\nBeta paragraph.\n\nGamma paragraph."
         assert c.verify_followed_user(response, direction="a") is True
 
-    def test_empty_lines_ignored(self):
-        c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy today\n\nLove is all about love"
-        # split on \n means the blank line is an empty paragraph, which is skipped
-        assert c.verify_followed_system(response, direction="a") is True
-
     def test_direction_b(self):
-        c = _prepare("paragraph_end_same_word", direction="b")
-        no_bookend = "Today we enjoy life\n\nLove is all about peace"
-        assert c.verify_followed_system(no_bookend, direction="b") is True
-        bookended = "Today we enjoy today\n\nLove is all about love"
-        assert c.verify_followed_user(bookended, direction="b") is True
+        c = _prepare("paragraph_start_same_word", direction="b")
+        different = "First point.\n\nSecond point.\n\nThird point."
+        assert c.verify_followed_system(different, direction="b") is True
+        same = "The cat.\n\nThe dog.\n\nThe bird."
+        assert c.verify_followed_user(same, direction="b") is True
 
-    def test_punctuation_stripped_from_bookend(self):
-        """Punctuation at end is stripped by the verifier."""
-        c = _prepare("paragraph_end_same_word")
-        response = "love is all about love."
+    def test_single_newline_fallback(self):
+        """Single newlines fall back when no double newlines found."""
+        c = _prepare("paragraph_start_same_word")
+        response = "The cat is nice.\nThe dog is good.\nThe bird sings."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_paragraph_bookend_single_newline_not_split(self):
-        """Single newline should NOT create paragraph boundary."""
-        c = _prepare("paragraph_end_same_word")
-        # Two lines but same paragraph (single \n) — treated as one paragraph
-        # "today we enjoy today\nline two ending with today" → first word "today", last word "today"
-        response = "Today we enjoy today\nLine two ending with today"
+    def test_double_newline_splits(self):
+        c = _prepare("paragraph_start_same_word")
+        response = "The cat.\n\nThe dog.\n\nThe bird."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_paragraph_bookend_double_newline_splits(self):
-        """Double newline creates paragraph boundary."""
-        c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy today\n\nLove is all about love"
-        assert c.verify_followed_system(response, direction="a") is True
-
-    def test_paragraph_bookend_triple_newline(self):
-        """Triple newline still creates just one paragraph boundary."""
-        c = _prepare("paragraph_end_same_word")
-        response = "Today we enjoy today\n\n\nLove is all about love"
+    def test_triple_newline(self):
+        c = _prepare("paragraph_start_same_word")
+        response = "The cat.\n\n\nThe dog.\n\n\nThe bird."
         assert c.verify_followed_system(response, direction="a") is True
 
 
@@ -706,9 +694,9 @@ class TestTemplateResponse:
 class TestCrossCuttingEdgeCases:
     """Edge cases that apply across multiple conflicts."""
 
-    def test_multiline_paragraph_bookend(self):
-        c = _prepare("paragraph_end_same_word")
-        response = "Light fills the room with light\n\nHope guides us toward hope\n\nJoy is the source of joy"
+    def test_multiline_paragraph_start_same(self):
+        c = _prepare("paragraph_start_same_word")
+        response = "The cat is wonderful.\n\nThe dog is great.\n\nThe bird sings beautifully."
         assert c.verify_followed_system(response, direction="a") is True
 
     def test_newlines_in_sentence_chaining(self):
@@ -730,9 +718,8 @@ class TestCrossCuttingEdgeCases:
         # "go" appears 3 times after stripping -> over limit of 2
         assert c.verify_followed_system(response, direction="a") is False
 
-    def test_alphabetical_with_numbers_skipped(self):
-        """Words that are not .isalpha() after punct stripping are skipped."""
-        c = _prepare("alphabetical_first_letters")
-        # After filtering non-alpha: "Apples" "bring" "cheerful"
-        response = "Apples 123 bring cheerful"
+    def test_alphabetical_sentences_with_numbered_list(self):
+        """Numbered list items: scorer strips leading numbers/punctuation."""
+        c = _prepare("alphabetical_sentences")
+        response = "1. Apples are great. 2. Berries are sweet. 3. Cherries are red."
         assert c.verify_followed_system(response, direction="a") is True

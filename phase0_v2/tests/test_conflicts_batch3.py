@@ -10,9 +10,9 @@ from collections import Counter
 
 
 BATCH3_IDS = [
-    "keyword_in_early_sentence", "alphabetical_first_letters",
+    "keyword_in_early_sentence", "alphabetical_sentences",
     "sentence_chaining", "no_consecutive_first_letter", "odd_even_syllables",
-    "paragraph_end_same_word",
+    "paragraph_start_same_word",
     "max_word_repeat", "title_case_vs_sentence_case",
     "template_response",
 ]

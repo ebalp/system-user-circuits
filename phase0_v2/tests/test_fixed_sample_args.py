@@ -54,10 +54,10 @@ class TestFixedArgs:
         args = c.sample_args()
         assert args == {"N": 50}
 
-    def test_min_pronoun_count_fixed_values(self):
-        c = get_conflict("min_pronoun_count")
+    def test_pronoun_density_fixed_values(self):
+        c = get_conflict("pronoun_density")
         args = c.sample_args()
-        assert args == {"N": 5}
+        assert args == {}
 
     def test_exact_number_count_fixed_values(self):
         c = get_conflict("exact_number_count")
@@ -198,14 +198,14 @@ class TestFixedArgsEdgeCases:
         text_brief = "Short response here."
         assert c.verify_followed_user(text_brief, direction="a")
 
-    def test_min_pronoun_count_verify_with_fixed(self):
-        """5+ non-impersonal pronouns should pass system, few should pass user."""
-        c = get_conflict("min_pronoun_count")
+    def test_pronoun_density_verify_with_fixed(self):
+        """High pronoun density should pass system, low should pass user."""
+        c = get_conflict("pronoun_density")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        text = "He said she told him that they were waiting for her."
+        text = "I think you should know that we all believe in this cause."
         assert c.verify_followed_system(text, direction="a")
-        text_no = "The cat sat on the mat near the dog."
+        text_no = "The analysis reveals significant findings in the dataset."
         assert c.verify_followed_user(text_no, direction="a")
 
     def test_exact_number_count_verify_with_fixed(self):
@@ -223,7 +223,7 @@ class TestFixedArgsEdgeCases:
         fixed_ids = [
             "word_count_range", "forbidden_words", "keyword_in_early_sentence",
             "keyword_exact_count", "bilingual_english_plus", "max_sentence_length",
-            "min_unique_words", "min_pronoun_count", "exact_number_count",
+            "min_unique_words", "pronoun_density", "exact_number_count",
         ]
         for cid in fixed_ids:
             c = get_conflict(cid)

@@ -5,7 +5,7 @@ from phase0_v2.conflicts.registry import get_conflict
 
 
 BATCH2_IDS = [
-    "exact_number_count", "min_pronoun_count",
+    "exact_number_count",
     "min_unique_words", "word_count_range", "stairs_indent",
     "each_word_new_line", "bullets_and_sub_bullets", "italics_thesis",
 ]
@@ -89,10 +89,8 @@ class TestParametrizedConflicts:
         result = c.verify_followed_system("There are 5 items and 10 more.", direction="a")
         assert isinstance(result, bool)
 
-    def test_min_pronoun_count(self):
-        c = get_conflict("min_pronoun_count")
-        args = c.sample_args()
-        assert "N" in args
-        c.build_system_prompt(direction="a", **args)
-        result = c.verify_followed_system("He said she would help them.", direction="a")
-        assert isinstance(result, bool)
+    def test_min_pronoun_count_replaced_by_pronoun_density(self):
+        """min_pronoun_count was replaced by pronoun_density."""
+        assert get_conflict("min_pronoun_count") is None
+        c = get_conflict("pronoun_density")
+        assert c is not None

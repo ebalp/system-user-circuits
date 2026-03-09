@@ -23,7 +23,6 @@ from .definitions.bilingual_english_plus import BilingualEnglishPlusConflict
 
 # -- Batch 2 --
 from .definitions.exact_number_count import ExactNumberCountConflict
-from .definitions.min_pronoun_count import MinPronounCountConflict
 from .definitions.min_unique_words import MinUniqueWordsConflict
 from .definitions.word_count_range import WordCountRangeConflict
 from .definitions.stairs_indent import StairsIndentConflict
@@ -32,12 +31,14 @@ from .definitions.bullets_and_sub_bullets import BulletsAndSubBulletsConflict
 from .definitions.italics_thesis import ItalicsThesisConflict
 
 # -- Batch 3 --
-from .definitions.alphabetical_first_letters import AlphabeticalFirstLettersConflict
+from .definitions.alphabetical_sentences import AlphabeticalSentencesConflict
 from .definitions.keyword_in_early_sentence import KeywordInEarlySentenceConflict
 from .definitions.max_word_repeat import MaxWordRepeatConflict
 from .definitions.no_consecutive_first_letter import NoConsecutiveFirstLetterConflict
 from .definitions.odd_even_syllables import OddEvenSyllablesConflict
 from .definitions.paragraph_end_same_word import ParagraphEndSameWordConflict
+from .definitions.paragraph_start_same_word import ParagraphStartSameWordConflict
+from .definitions.pronoun_density import PronounDensityConflict
 from .definitions.sentence_chaining import SentenceChainingConflict
 from .definitions.template_response import TemplateResponseConflict
 from .definitions.title_case_vs_sentence_case import TitleCaseVsSentenceCaseConflict
@@ -56,7 +57,7 @@ from .definitions.short_paragraphs_vs_single_block import ShortParagraphsVsSingl
 # Alphabetically sorted by class name
 _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     ActiveVsPassiveVoiceConflict,
-    AlphabeticalFirstLettersConflict,
+    AlphabeticalSentencesConflict,
     BilingualEnglishPlusConflict,
     BulletsAndSubBulletsConflict,
     CapitalizationAllCapsConflict,
@@ -77,12 +78,12 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     ListBulletsVsNumberedConflict,
     MaxSentenceLengthConflict,
     MaxWordRepeatConflict,
-    MinPronounCountConflict,
     MinUniqueWordsConflict,
     NoConsecutiveFirstLetterConflict,
     NumberedSectionsVsProseConflict,
     OddEvenSyllablesConflict,
-    ParagraphEndSameWordConflict,
+    ParagraphStartSameWordConflict,
+    PronounDensityConflict,
     QuestionsVsStatementsConflict,
     RepeatAnswerTwiceConflict,
     SelfReferenceAiMentionConflict,
