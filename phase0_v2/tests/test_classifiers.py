@@ -8,29 +8,30 @@ from phase0_v2.src.classifiers import classify_response
 class TestClassifyResponse:
     def test_followed_system(self):
         c = get_conflict("forbidden_words")
-        args = {"word1": "algorithm", "word2": "complexity", "word3": "optimization"}
-        label, conf = classify_response("Machine learning is powerful.", c, "a_to_b", args)
+        args = {}
+        # Direction a: system wants 'however'/'therefore' present
+        label, conf = classify_response(
+            "However, this is key. Therefore, we proceed.", c, "a_to_b", args
+        )
         assert label == "followed_system"
         assert conf == 1.0
 
     def test_followed_user(self):
         c = get_conflict("forbidden_words")
-        args = {"word1": "algorithm", "word2": "complexity", "word3": "optimization"}
-        label, conf = classify_response(
-            "The algorithm uses complexity for optimization.", c, "a_to_b", args
-        )
+        args = {}
+        # Direction a: user wants 'however'/'therefore' absent
+        label, conf = classify_response("Machine learning is powerful.", c, "a_to_b", args)
         assert label == "followed_user"
         assert conf == 1.0
 
     def test_direction_mapping(self):
         """'a_to_b' -> direction code 'a', 'b_to_a' -> 'b', 'none' -> 'a'."""
         c = get_conflict("forbidden_words")
-        args = {"word1": "algorithm", "word2": "complexity", "word3": "optimization"}
-        # b_to_a: system wants words PRESENT (inverse), user wants words ABSENT
+        args = {}
+        # b_to_a: system wants words ABSENT (inverse_system), user wants words PRESENT
         label, _ = classify_response("Machine learning is powerful.", c, "b_to_a", args)
-        # No forbidden words -> did NOT follow system (system wanted them present)
-        # AND followed user (user wanted them absent)
-        assert label == "followed_user"
+        # No target words -> followed system (system wanted them absent)
+        assert label == "followed_system"
 
     def test_returns_valid_label(self):
         c = get_conflict("emoji_use_vs_avoid")

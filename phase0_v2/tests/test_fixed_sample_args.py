@@ -27,7 +27,7 @@ class TestFixedArgs:
     def test_forbidden_words_fixed_values(self):
         c = get_conflict("forbidden_words")
         args = c.sample_args()
-        assert args == {"word1": "however", "word2": "important", "word3": "example"}
+        assert args == {}
 
     def test_keyword_in_early_sentence_fixed_values(self):
         c = get_conflict("keyword_in_early_sentence")
@@ -111,22 +111,22 @@ class TestFixedArgsEdgeCases:
         c = get_conflict("forbidden_words")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        # Text without forbidden words -> system passes
-        assert c.verify_followed_system("This is a test response.", direction="a")
-        # Text with all three -> user passes
-        assert c.verify_followed_user(
-            "This is however an important example of compliance.", direction="a"
+        # Text with both words -> system passes (constraint A = use the words)
+        assert c.verify_followed_system(
+            "This is important; however, we should therefore proceed.", direction="a"
         )
-        # Text with only one -> user fails (needs all three)
-        assert not c.verify_followed_user("This is however a test.", direction="a")
+        # Text without forbidden words -> user passes (constraint B = avoid the words)
+        assert c.verify_followed_user("This is a test response.", direction="a")
+        # Text with only one word -> system fails (needs both)
+        assert not c.verify_followed_system("This is however a test.", direction="a")
 
-    def test_forbidden_words_system_fails_with_word(self):
-        """System fails when forbidden words are present."""
+    def test_forbidden_words_system_fails_without_words(self):
+        """System fails when required words are absent."""
         c = get_conflict("forbidden_words")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
         assert not c.verify_followed_system(
-            "This is however a test.", direction="a"
+            "This is a plain test.", direction="a"
         )
 
     def test_keyword_in_early_sentence_verify_with_fixed(self):

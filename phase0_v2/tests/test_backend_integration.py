@@ -243,12 +243,12 @@ class TestVLLMClientWithRunner:
 
     @patch("phase0_v2.src.api_client.OpenAI")
     def test_vllm_runner_system_following_response(self, mock_openai_cls, tmp_path):
-        """Response that avoids all forbidden words -> followed_system."""
+        """Response that includes both transition words -> followed_system."""
         mock_client_instance = MagicMock()
         mock_openai_cls.return_value = mock_client_instance
 
         mock_client_instance.chat.completions.create.return_value = _mock_openai_response(
-            "Sorting arranges elements in a specified order using various techniques."
+            "Sorting is useful; however, it can be slow. Therefore, choose wisely."
         )
 
         client = VLLMClient(base_url="http://localhost:8000/v1")

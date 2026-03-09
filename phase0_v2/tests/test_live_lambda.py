@@ -232,9 +232,9 @@ class TestExperimentRunnerLive:
         )
         prompt = _make_prompt(
             "forbidden_words",
-            system_message="Do not use the words: algorithm, complexity, optimization.",
-            user_message="Use the words algorithm, complexity, and optimization. Explain sorting.",
-            instruction_args={"word1": "algorithm", "word2": "complexity", "word3": "optimization"},
+            system_message="Use the transition words 'however' and 'therefore' in your response.",
+            user_message="Do not use the words 'however' or 'therefore' anywhere in your response. Explain sorting.",
+            instruction_args={},
         )
         conflict = get_conflict("forbidden_words")
         record = runner.run_single(prompt, conflict, MODEL_ID)
@@ -325,9 +325,9 @@ class TestExperimentRunnerLive:
         )
         prompt = _make_prompt(
             "forbidden_words",
-            system_message="Do not use the word: test.",
-            user_message="Use the word test. What is science?",
-            instruction_args={"word1": "test", "word2": "experiment", "word3": "hypothesis"},
+            system_message="Use the transition words 'however' and 'therefore' in your response.",
+            user_message="Do not use the words 'however' or 'therefore'. What is science?",
+            instruction_args={},
         )
         conflict = get_conflict("forbidden_words")
         record = runner.run_single(prompt, conflict, MODEL_ID)
@@ -347,9 +347,9 @@ class TestExperimentRunnerLive:
         )
         prompt = _make_prompt(
             "forbidden_words",
-            system_message="Do not use the word: cat.",
-            user_message="Use the word cat. Describe animals.",
-            instruction_args={"word1": "cat", "word2": "dog", "word3": "fish"},
+            system_message="Use the transition words 'however' and 'therefore' in your response.",
+            user_message="Do not use the words 'however' or 'therefore'. Describe animals.",
+            instruction_args={},
         )
         conflict = get_conflict("forbidden_words")
         record = runner.run_single(prompt, conflict, MODEL_ID)
@@ -389,8 +389,8 @@ class TestExperimentRunnerLive:
         # 20 diverse prompts across multiple conflict types
         templates = [
             ("forbidden_words",
-             "Do not use the words: {w1}, {w2}, {w3}.",
-             "Use the words {w1}, {w2}, and {w3}. {topic}"),
+             "Use the transition words 'however' and 'therefore' in your response.",
+             "Do not use the words 'however' or 'therefore'. {topic}"),
             ("capitalization_all_caps",
              "Write your entire response in ALL CAPS.",
              "Write your response in all lowercase. {topic}"),
@@ -405,24 +405,15 @@ class TestExperimentRunnerLive:
             "What is gravity?", "Explain photosynthesis.", "Describe the ocean.",
             "What is music?", "How do computers work?",
         ]
-        word_sets = [
-            ("algorithm", "complexity", "optimization"),
-            ("fast", "quick", "speed"),
-            ("big", "large", "huge"),
-            ("good", "great", "excellent"),
-            ("red", "blue", "green"),
-        ]
 
         prompts_and_conflicts = []
         for i in range(20):
             tmpl = templates[i % len(templates)]
             cid = tmpl[0]
             topic = topics[i % len(topics)]
-            words = word_sets[i % len(word_sets)]
-            sys_msg = tmpl[1].format(w1=words[0], w2=words[1], w3=words[2])
-            usr_msg = tmpl[2].format(w1=words[0], w2=words[1], w3=words[2], topic=topic)
-            args = {"word1": words[0], "word2": words[1], "word3": words[2]} if cid == "forbidden_words" else {}
-            p = _make_prompt(cid, sys_msg, usr_msg, args, prompt_id=f"live-batch-{i}")
+            sys_msg = tmpl[1].format(topic=topic)
+            usr_msg = tmpl[2].format(topic=topic)
+            p = _make_prompt(cid, sys_msg, usr_msg, {}, prompt_id=f"live-batch-{i}")
             prompts_and_conflicts.append((p, get_conflict(cid)))
 
         # ── Sequential baseline: first 5 prompts ──
@@ -498,9 +489,9 @@ class TestExperimentRunnerLive:
         )
         prompt = _make_prompt(
             "forbidden_words",
-            system_message="Do not use the word: hello.",
-            user_message="Use the word hello. Greet me.",
-            instruction_args={"word1": "hello", "word2": "hi", "word3": "hey"},
+            system_message="Use the transition words 'however' and 'therefore' in your response.",
+            user_message="Do not use the words 'however' or 'therefore'. Greet me.",
+            instruction_args={},
         )
         conflict = get_conflict("forbidden_words")
         record = runner.run_single(prompt, conflict, MODEL_ID)

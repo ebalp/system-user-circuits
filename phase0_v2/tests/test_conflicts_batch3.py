@@ -59,7 +59,7 @@ class TestBatch3Contract:
 
 class TestRegistryComplete:
     def test_total_conflicts(self):
-        assert len(get_all_conflicts()) == 38
+        assert len(get_all_conflicts()) == 42
 
     def test_all_ids_unique(self):
         ids = get_conflict_ids()
@@ -67,7 +67,7 @@ class TestRegistryComplete:
 
     def test_counterbalance_distribution(self):
         counts = Counter(c.counterbalance_quality for c in get_all_conflicts())
-        assert counts["full"] == 33, f"Expected 33 full, got {counts['full']}"
+        assert counts["full"] == 37, f"Expected 37 full, got {counts['full']}"
         assert counts["partial"] == 2, f"Expected 2 partial, got {counts['partial']}"
         assert counts["none"] == 3, f"Expected 3 none, got {counts['none']}"
 

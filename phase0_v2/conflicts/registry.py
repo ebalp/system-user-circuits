@@ -16,6 +16,7 @@ from .definitions.self_reference_ai_mention import SelfReferenceAiMentionConflic
 # -- Batch 1: dataset conflicts --
 from .definitions.forbidden_words import ForbiddenWordsConflict
 from .definitions.keyword_exact_count import KeywordExactCountConflict
+from .definitions.keyword_frequency import KeywordFrequencyConflict
 from .definitions.max_sentence_length import MaxSentenceLengthConflict
 from .definitions.json_only_vs_plain import JsonOnlyVsPlainConflict
 from .definitions.repeat_answer_twice import RepeatAnswerTwiceConflict
@@ -38,6 +39,8 @@ from .definitions.no_consecutive_first_letter import NoConsecutiveFirstLetterCon
 from .definitions.odd_even_syllables import OddEvenSyllablesConflict
 from .definitions.paragraph_end_same_word import ParagraphEndSameWordConflict
 from .definitions.paragraph_start_same_word import ParagraphStartSameWordConflict
+from .definitions.parenthetical_asides import ParentheticalAsidesConflict
+from .definitions.past_vs_present_tense import PastVsPresentTenseConflict
 from .definitions.pronoun_density import PronounDensityConflict
 from .definitions.sentence_chaining import SentenceChainingConflict
 from .definitions.template_response import TemplateResponseConflict
@@ -49,6 +52,7 @@ from .definitions.questions_vs_statements import QuestionsVsStatementsConflict
 
 # -- Batch 5 --
 from .definitions.active_vs_passive_voice import ActiveVsPassiveVoiceConflict
+from .definitions.address_reader_directly import AddressReaderDirectlyConflict
 from .definitions.direct_answer_vs_hedging import DirectAnswerVsHedgingConflict
 from .definitions.formal_vs_casual_tone import FormalVsCasualToneConflict
 from .definitions.numbered_sections_vs_prose import NumberedSectionsVsProseConflict
@@ -57,6 +61,7 @@ from .definitions.short_paragraphs_vs_single_block import ShortParagraphsVsSingl
 # Alphabetically sorted by class name
 _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     ActiveVsPassiveVoiceConflict,
+    AddressReaderDirectlyConflict,
     AlphabeticalSentencesConflict,
     BilingualEnglishPlusConflict,
     BulletsAndSubBulletsConflict,
@@ -73,6 +78,7 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     ItalicsThesisConflict,
     JsonOnlyVsPlainConflict,
     KeywordExactCountConflict,
+    KeywordFrequencyConflict,
     KeywordInEarlySentenceConflict,
     LanguageEnEsConflict,
     ListBulletsVsNumberedConflict,
@@ -83,6 +89,8 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     NumberedSectionsVsProseConflict,
     OddEvenSyllablesConflict,
     ParagraphStartSameWordConflict,
+    ParentheticalAsidesConflict,
+    PastVsPresentTenseConflict,
     PronounDensityConflict,
     QuestionsVsStatementsConflict,
     RepeatAnswerTwiceConflict,

@@ -129,30 +129,33 @@ class TestCapitalization:
 
 
 class TestForbiddenWords:
-    def test_words_absent(self):
+    def test_words_present_follows_system(self):
         c = get_conflict("forbidden_words")
-        args = {"word1": "algorithm", "word2": "complexity", "word3": "optimization"}
-        c.build_system_prompt(direction="a", **args)
-        assert c.verify_followed_system("Machine learning is powerful.", direction="a") is True
-        assert c.verify_followed_system("The algorithm is complex.", direction="a") is False
+        c.build_system_prompt(direction="a")
+        # Direction A system = use 'however' and 'therefore'
+        assert c.verify_followed_system(
+            "This is true; however, we should therefore act.", direction="a"
+        ) is True
+        assert c.verify_followed_system("Plain text here.", direction="a") is False
 
-    def test_words_present(self):
+    def test_words_absent_follows_user(self):
         c = get_conflict("forbidden_words")
-        args = {"word1": "algorithm", "word2": "complexity", "word3": "optimization"}
-        c.build_system_prompt(direction="a", **args)
+        c.build_system_prompt(direction="a")
+        # Direction A user = do not use 'however' or 'therefore'
         assert c.verify_followed_user(
-            "The algorithm uses complexity for optimization.", direction="a"
+            "Machine learning is powerful.", direction="a"
         ) is True
 
     def test_inverse_direction(self):
         c = get_conflict("forbidden_words")
-        args = {"word1": "algorithm", "word2": "complexity", "word3": "optimization"}
-        c.build_system_prompt(direction="b", **args)
-        # Direction B: system wants words PRESENT, user wants words ABSENT
+        c.build_system_prompt(direction="b")
+        # Direction B: system wants words ABSENT, user wants words PRESENT
         assert c.verify_followed_system(
-            "The algorithm uses complexity for optimization.", direction="b"
+            "Machine learning is powerful.", direction="b"
         ) is True
-        assert c.verify_followed_user("Machine learning is powerful.", direction="b") is True
+        assert c.verify_followed_user(
+            "This is true; however, we should therefore act.", direction="b"
+        ) is True
 
 
 class TestFormatJsonMarkdown:

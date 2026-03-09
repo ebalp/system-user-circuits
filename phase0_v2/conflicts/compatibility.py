@@ -51,6 +51,10 @@ EXPLICITLY_COMPATIBLE: set[str] = {
     "formal_vs_casual_tone",
     "numbered_sections_vs_prose",
     "short_paragraphs_vs_single_block",
+    "address_reader_directly",
+    "parenthetical_asides",
+    "past_vs_present_tense",
+    "keyword_frequency",
 }
 
 

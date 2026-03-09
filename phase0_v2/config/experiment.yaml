@@ -12,6 +12,7 @@ models:
       - exact_number_count
       - disclaimer_add_vs_none
       - format_json_yaml
+      - keyword_exact_count
       - keyword_in_nth_sentence
       - keyword_in_first_sentence
       - paragraph_end_same_word
@@ -22,6 +23,7 @@ models:
       - min_pronoun_count
       - disclaimer_add_vs_none
       - format_json_yaml
+      - keyword_exact_count
       - keyword_in_nth_sentence
       - keyword_in_first_sentence
       - paragraph_end_same_word
@@ -31,6 +33,7 @@ models:
       - min_pronoun_count
       - disclaimer_add_vs_none
       - format_json_yaml
+      - keyword_exact_count
       - keyword_in_nth_sentence
       - keyword_in_first_sentence
       - paragraph_end_same_word
@@ -44,6 +47,7 @@ models:
       - italics_thesis
       - disclaimer_add_vs_none
       - format_json_yaml
+      - keyword_exact_count
       - keyword_in_nth_sentence
       - keyword_in_first_sentence
       - paragraph_end_same_word
