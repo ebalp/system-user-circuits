@@ -13,7 +13,24 @@
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import all_sentences_max_n_words, all_sentences_min_n_words
+from ..verify_utils import count_words, split_sentences
+
+
+def all_sentences_max_n_words(text: str, n: int) -> bool:
+    """True if every sentence has at most n words (+1 tolerance for hyphens)."""
+    for s in split_sentences(text):
+        if count_words(s) > n + 1:
+            return False
+    return True
+
+
+def all_sentences_min_n_words(text: str, n: int) -> bool:
+    """True if every sentence (>5 words) has strictly more than n words."""
+    sents = split_sentences(text)
+    sents = [s for s in sents if count_words(s) > 5]
+    if not sents:
+        return False
+    return all(count_words(s) > n for s in sents)
 
 
 def _max_n(r: str, a: dict) -> bool:

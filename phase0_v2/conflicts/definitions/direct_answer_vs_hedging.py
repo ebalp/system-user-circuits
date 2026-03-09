@@ -52,7 +52,7 @@ _score_hedging.is_inverted = True  # type: ignore[attr-defined]
 
 class DirectAnswerVsHedgingConflict(Conflict):
     conflict_id = "direct_answer_vs_hedging"
-    verify_threshold = 0.714  # optimal bal_acc=1.000 across all 4 (constraint, role) combinations
+    verify_threshold = 0.769  # midpoint of optimal range [0.714, 0.824]
 
     system_template = (
         "Provide direct, confident answers. Do not hedge, qualify, or express "

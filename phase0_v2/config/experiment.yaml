@@ -2,16 +2,6 @@
 
 models:
   - id: meta-llama/Llama-3.1-8B-Instruct
-    thresholds:
-      first_vs_third_person: 0.182
-      active_vs_passive_voice: 0.477
-      direct_answer_vs_hedging: 0.769
-      title_case_vs_sentence_case: 0.475
-      sentence_chaining: 0.800
-      alphabetical_first_letters: 0.061
-      no_consecutive_first_letter: 0.073
-      paragraph_end_same_word: 0.083
-      max_word_repeat: 0.909
     exclude_conflicts:
       - max_word_repeat
       - repeat_answer_twice
@@ -23,14 +13,6 @@ models:
   - id: meta-llama/Llama-3.2-1B-Instruct
   # - Qwen/Qwen2.5-7B-Instruct
   - id: openai/gpt-oss-20b
-    thresholds:
-      first_vs_third_person: 0.182
-      title_case_vs_sentence_case: 0.420
-      sentence_chaining: 0.750
-      alphabetical_first_letters: 0.060
-      no_consecutive_first_letter: 0.073
-      paragraph_end_same_word: 0.200
-      max_word_repeat: 0.909
     exclude_conflicts:
       - max_word_repeat
       - repeat_answer_twice

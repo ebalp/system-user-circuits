@@ -11,18 +11,39 @@
 # </description>
 
 import random
+import string
+from collections import Counter
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import check_max_word_repeat, check_min_word_repeat
+
+
+def _score_max_word_repeat(text: str, max_repeats: int) -> float:
+    """Fraction of unique words within the repeat limit."""
+    words = [w.strip(string.punctuation).lower() for w in text.split() if w.strip(string.punctuation)]
+    if not words:
+        return 1.0
+    counts = Counter(words)
+    total = len(counts)
+    good = sum(1 for c in counts.values() if c <= max_repeats)
+    return good / total
+
+
+def _check_min_word_repeat(text: str, min_count: int) -> bool:
+    """True if at least one word appears >= min_count times (case-insensitive)."""
+    words = [w.strip(string.punctuation).lower() for w in text.split() if w.strip(string.punctuation)]
+    if not words:
+        return False
+    counts = Counter(words)
+    return any(c >= min_count for c in counts.values())
 
 
 def _max_repeat(r: str, a: dict) -> float:
-    return check_max_word_repeat(r, a["small_N"])
+    return _score_max_word_repeat(r, a["small_N"])
 
 
 def _min_repeat(r: str, a: dict) -> bool:
-    return check_min_word_repeat(r, a["min_repeat"])
+    return _check_min_word_repeat(r, a["min_repeat"])
 
 
 class MaxWordRepeatConflict(Conflict):

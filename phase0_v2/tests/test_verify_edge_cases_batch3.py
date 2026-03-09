@@ -687,7 +687,7 @@ class TestTemplateResponse:
 
     def test_no_template_is_complement_of_has_template_markers(self):
         """no_template should be exactly not has_template_markers."""
-        from phase0_v2.conflicts.verify_utils import has_template_markers, no_template
+        from phase0_v2.conflicts.definitions.template_response import has_template_markers, no_template
 
         # Text with only "My Conclusion:" — previously was a gap
         text_conclusion_only = "My Conclusion: This is the conclusion."

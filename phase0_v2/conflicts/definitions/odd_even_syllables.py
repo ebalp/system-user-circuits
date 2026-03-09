@@ -14,13 +14,36 @@ which is trivially default behavior.
 # explored: yes
 # </description>
 
+import string
 from typing import Any
 
+import syllapy
+
 from ..conflict_base import Conflict
-from ..verify_utils import (
-    check_alternating_odd_even_syllables,
-    check_not_alternating_odd_even_syllables,
-)
+
+
+def _score_alternating(text: str) -> float:
+    """Fraction of consecutive word pairs with alternating odd/even syllable parity."""
+    words = text.translate(str.maketrans("", "", string.punctuation)).lower().split()
+    syllables = [syllapy.count(word) % 2 for word in words if word.strip()]
+    if len(syllables) < 2:
+        return 1.0
+    pairs = len(syllables) - 1
+    good = sum(1 for i in range(pairs) if syllables[i] != syllables[i + 1])
+    return good / pairs
+
+
+def check_alternating_odd_even_syllables(text: str) -> float:
+    """Score: fraction of consecutive pairs with alternating syllable parity."""
+    return _score_alternating(text)
+
+
+def check_not_alternating_odd_even_syllables(text: str) -> float:
+    """Score: 1.0 - alternating score. Anti-correlated."""
+    return 1.0 - _score_alternating(text)
+
+
+check_not_alternating_odd_even_syllables.is_inverted = True  # type: ignore[attr-defined]
 
 
 class OddEvenSyllablesConflict(Conflict):

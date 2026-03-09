@@ -155,7 +155,7 @@ After presenting results, ask user if they want to proceed with the pipeline. Th
 
 2. **Analyze second** -- Computes metrics and finds optimal thresholds from the new score distributions. Must come after reverify.
 
-3. **Optimize thresholds** -- Update `experiment.yaml` with the **midpoint** of each optimal threshold range. The midpoint maximizes margin from the range edges, which are more vulnerable to distribution shifts. For each float conflict: `new_threshold = (optimal_threshold_low + optimal_threshold_high) / 2`. The analyze output includes an `opt_mid` column with this value.
+3. **Optimize thresholds** -- Update `verify_threshold` in each conflict definition file with the **midpoint** of each optimal threshold range. The midpoint maximizes margin from the range edges, which are more vulnerable to distribution shifts. For each float conflict: `new_threshold = (optimal_threshold_low + optimal_threshold_high) / 2`. The analyze output includes an `opt_mid` column with this value.
 
 4. **Rescore last** -- Re-applies new thresholds to reverified scores. Lightweight pass, no verify re-runs.
 
@@ -169,25 +169,22 @@ uv run python -m phase0_v2.calibration.rescore \
 # 2. Analyze: compute metrics and find optimal thresholds
 uv run python -m phase0_v2.calibration.analyze \
   {results_path} --output-dir {output_dir} \
-  --config phase0_v2/config/experiment.yaml \
-  --model-config {model_id}
+  --config phase0_v2/config/experiment.yaml
 
 # 3. Check the float threshold table — for each conflict where current threshold
-#    differs from opt_mid, update experiment.yaml to the midpoint value.
+#    differs from opt_mid, update the verify_threshold in the conflict definition file.
 #    Read the CSV: optimal_threshold column has the midpoint.
 
 # 4. Rescore: apply new thresholds to reverified scores
 uv run python -m phase0_v2.calibration.rescore \
-  {results_path} {results_path} \
-  --model-config {model_id}
+  {results_path} {results_path}
 ```
 
 After rescoring, verify threshold consistency is OK:
 ```bash
 uv run python -m phase0_v2.calibration.analyze \
   {results_path} --output-dir {output_dir} \
-  --config phase0_v2/config/experiment.yaml \
-  --model-config {model_id}
+  --config phase0_v2/config/experiment.yaml
 ```
 
 The threshold consistency check should report "OK". If not, thresholds were not updated correctly.

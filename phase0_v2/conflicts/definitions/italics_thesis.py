@@ -10,10 +10,36 @@
 # explored: yes
 # </description>
 
+import re
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import has_html_tags, has_italics_thesis_followed_by_text
+
+
+def has_html_tags(text: str) -> bool:
+    """True if text contains an HTML tag."""
+    return bool(re.search(r"<[a-zA-Z][^>]*>", text))
+
+
+def has_italics_thesis_followed_by_text(text: str) -> bool:
+    """True if there is at least one italic block (HTML) with non-empty content followed by non-empty text."""
+    idx = text.find("<i>")
+    if idx == -1:
+        idx = text.find("<em>")
+        if idx == -1:
+            return False
+    value = text[idx:]
+    end_thesis = value.find("</i>")
+    if end_thesis == -1:
+        end_thesis = value.find("</em>")
+        if end_thesis == -1:
+            return False
+    thesis = value[3:end_thesis] if value.startswith("<i>") else value[4:end_thesis]
+    if not thesis.strip():
+        return False
+    close_len = 4 if value[end_thesis:].startswith("</i>") else 5
+    after_block = value[end_thesis + close_len :]
+    return after_block.strip() != ""
 
 
 def _no_html(r: str) -> bool:

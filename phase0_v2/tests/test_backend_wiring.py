@@ -124,7 +124,7 @@ class TestRunWorkItems:
         mock_prompt = MagicMock()
         mock_prompt.id = "p1"
         mock_conflict = MagicMock()
-        items = [("model-a", mock_prompt, mock_conflict, None)]
+        items = [("model-a", mock_prompt, mock_conflict)]
 
         result = _run_work_items(
             work_items=items,
@@ -143,7 +143,7 @@ class TestRunWorkItems:
 
         mock_prompt = MagicMock()
         mock_prompt.id = "p1"
-        items = [("model-a", mock_prompt, MagicMock(), None)]
+        items = [("model-a", mock_prompt, MagicMock())]
 
         _run_work_items(
             work_items=items,
@@ -163,7 +163,7 @@ class TestRunWorkItems:
 
         mock_prompt = MagicMock()
         mock_prompt.id = "p1"
-        items = [("model-a", mock_prompt, MagicMock(), None)]
+        items = [("model-a", mock_prompt, MagicMock())]
 
         _run_work_items(
             work_items=items,
@@ -185,7 +185,7 @@ class TestRunWorkItems:
         for i in range(5):
             mock_prompt = MagicMock()
             mock_prompt.id = f"p{i}"
-            items.append((f"model-{i % 2}", mock_prompt, MagicMock(), None))
+            items.append((f"model-{i % 2}", mock_prompt, MagicMock()))
 
         sems = {f"model-{i}": threading.Semaphore(2) for i in range(2)}
         locks = {f"model-{i}": threading.Lock() for i in range(2)}
@@ -208,7 +208,7 @@ class TestRunWorkItems:
 
         mock_prompt = MagicMock()
         mock_prompt.id = "p1"
-        items = [("model-a", mock_prompt, MagicMock(), None)]
+        items = [("model-a", mock_prompt, MagicMock())]
 
         result = _run_work_items(
             work_items=items,
@@ -225,7 +225,7 @@ class TestRunWorkItems:
 
         call_count = 0
 
-        def mock_run_single(prompt, conflict, model_id, threshold_overrides=None):
+        def mock_run_single(prompt, conflict, model_id):
             nonlocal call_count
             call_count += 1
             if call_count % 2 == 0:
@@ -239,7 +239,7 @@ class TestRunWorkItems:
         for i in range(4):
             mock_prompt = MagicMock()
             mock_prompt.id = f"p{i}"
-            items.append(("model-a", mock_prompt, MagicMock(), None))
+            items.append(("model-a", mock_prompt, MagicMock()))
 
         result = _run_work_items(
             work_items=items,
@@ -252,28 +252,6 @@ class TestRunWorkItems:
         assert result == 4
         assert mock_runner.append_record.call_count == 2
 
-    def test_threshold_overrides_passed_through(self):
-        """threshold_overrides should be forwarded to run_single."""
-        from phase0_v2.run_experiments import _run_work_items
-
-        mock_runner = MagicMock()
-        mock_runner.run_single.return_value = {"prompt_id": "p1", "error": None}
-
-        mock_prompt = MagicMock()
-        mock_prompt.id = "p1"
-        overrides = {"forbidden_words": 0.3}
-        items = [("model-a", mock_prompt, MagicMock(), overrides)]
-
-        _run_work_items(
-            work_items=items,
-            runner=mock_runner,
-            model_semaphores={"model-a": threading.Semaphore(1)},
-            model_locks={"model-a": threading.Lock()},
-            max_workers=1,
-        )
-        mock_runner.run_single.assert_called_once()
-        call_kwargs = mock_runner.run_single.call_args
-        assert call_kwargs[1]["threshold_overrides"] == overrides
 
 
 class TestBackendVLLMClientCreation:

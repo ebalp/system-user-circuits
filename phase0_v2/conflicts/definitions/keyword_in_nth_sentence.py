@@ -10,14 +10,20 @@
 # explored: yes
 # </description>
 
+import re
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import make_keyword_in_nth_sentence_verifier, no_word_in_text, word_in_text
+from ..verify_utils import no_word_in_text, split_sentences, word_in_text
 
 
 def _keyword_in_nth(r: str, a: dict) -> bool:
-    return make_keyword_in_nth_sentence_verifier(a["keyword"], a["N"])(r)
+    pattern = re.compile(r"\b" + re.escape(a["keyword"]) + r"\b", re.IGNORECASE)
+    sents = split_sentences(r)
+    n = a["N"]
+    if len(sents) < n:
+        return False
+    return bool(pattern.search(sents[n - 1]))
 
 
 def _keyword_absent(r: str, a: dict) -> bool:

@@ -116,21 +116,3 @@ def compute_label(sys_result: bool, usr_result: bool) -> str:
         return "followed_neither"
 
 
-def load_model_thresholds(config_path: str, model_id: str) -> dict[str, float]:
-    """Load per-model thresholds from experiment config YAML.
-
-    Args:
-        config_path: Path to the experiment.yaml config file.
-        model_id: Model ID to look up in the config's models list.
-
-    Returns:
-        Dictionary mapping conflict_id to threshold float, or empty dict
-        if the model is not found or has no thresholds.
-    """
-    from ..src.config import load_config
-
-    config = load_config(config_path)
-    for mc in config.models:
-        if mc.id == model_id:
-            return mc.thresholds
-    return {}

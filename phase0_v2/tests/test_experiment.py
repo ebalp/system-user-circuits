@@ -167,9 +167,9 @@ def _make_minimal_prompt(conflict_id="forbidden_words"):
     )
 
 
-class TestBuildRecordThresholdOverrides:
-    def test_threshold_overrides_none_produces_valid_record(self):
-        """build_record with threshold_overrides=None works normally."""
+class TestBuildRecordBasic:
+    def test_produces_valid_record(self):
+        """build_record produces a valid record."""
         from phase0_v2.conflicts.registry import get_conflict
 
         config = _make_minimal_config()
@@ -182,56 +182,14 @@ class TestBuildRecordThresholdOverrides:
             conflict=conflict,
             model="test-model",
             config=config,
-            threshold_overrides=None,
         )
         assert record["label"] in {
             "followed_system", "followed_user", "followed_neither", "followed_both",
         }
         assert record["error"] is None
 
-    def test_threshold_overrides_empty_dict_same_as_none(self):
-        """build_record with empty threshold_overrides dict same as None."""
-        from phase0_v2.conflicts.registry import get_conflict
-
-        config = _make_minimal_config()
-        prompt = _make_minimal_prompt()
-        conflict = get_conflict("forbidden_words")
-        response = "Machine learning is powerful."
-
-        record_none = build_record(
-            prompt=prompt, response=response, conflict=conflict,
-            model="test-model", config=config, threshold_overrides=None,
-        )
-        record_empty = build_record(
-            prompt=prompt, response=response, conflict=conflict,
-            model="test-model", config=config, threshold_overrides={},
-        )
-        assert record_none["label"] == record_empty["label"]
-        assert record_none["verify_system_result"] == record_empty["verify_system_result"]
-        assert record_none["verify_user_result"] == record_empty["verify_user_result"]
-
-    def test_threshold_overrides_for_different_conflict_has_no_effect(self):
-        """Overriding a different conflict's threshold has no effect on current conflict."""
-        from phase0_v2.conflicts.registry import get_conflict
-
-        config = _make_minimal_config()
-        prompt = _make_minimal_prompt()
-        conflict = get_conflict("forbidden_words")
-        response = "Machine learning is powerful."
-
-        record_none = build_record(
-            prompt=prompt, response=response, conflict=conflict,
-            model="test-model", config=config, threshold_overrides=None,
-        )
-        record_other = build_record(
-            prompt=prompt, response=response, conflict=conflict,
-            model="test-model", config=config,
-            threshold_overrides={"language_en_es": 0.5},
-        )
-        assert record_none["label"] == record_other["label"]
-
-    def test_error_record_ignores_threshold_overrides(self):
-        """Error records ignore threshold_overrides entirely."""
+    def test_error_record(self):
+        """Error records are handled correctly."""
         from phase0_v2.conflicts.registry import get_conflict
 
         config = _make_minimal_config()
@@ -242,7 +200,6 @@ class TestBuildRecordThresholdOverrides:
             prompt=prompt, response="", conflict=conflict,
             model="test-model", config=config,
             error="API error",
-            threshold_overrides={"forbidden_words": 0.1},
         )
         assert record["label"] == "error"
         assert record["error"] == "API error"

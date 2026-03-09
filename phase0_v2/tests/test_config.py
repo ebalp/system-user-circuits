@@ -126,47 +126,42 @@ class TestModelConfig:
         assert len(config.models) == 2
         assert isinstance(config.models[0], ModelConfig)
         assert config.models[0].id == "model-a"
-        assert config.models[0].thresholds == {}
         assert config.models[0].exclude_conflicts == []
 
     def test_dict_format(self, tmp_path):
-        """Dict format with thresholds and exclude_conflicts."""
+        """Dict format with exclude_conflicts."""
         models = [
             {
                 "id": "model-a",
-                "thresholds": {"first_vs_third_person": 0.2},
                 "exclude_conflicts": ["max_word_repeat"],
             }
         ]
         config_path = _make_test_config(models, str(tmp_path))
         config = load_config(config_path)
         assert config.models[0].id == "model-a"
-        assert config.models[0].thresholds == {"first_vs_third_person": 0.2}
         assert config.models[0].exclude_conflicts == ["max_word_repeat"]
 
     def test_dict_format_minimal(self, tmp_path):
-        """Dict with only id, no thresholds or excludes."""
+        """Dict with only id, no excludes."""
         models = [{"id": "model-a"}]
         config_path = _make_test_config(models, str(tmp_path))
         config = load_config(config_path)
         assert config.models[0].id == "model-a"
-        assert config.models[0].thresholds == {}
         assert config.models[0].exclude_conflicts == []
 
     def test_mixed_format(self, tmp_path):
         """Mix of string and dict model entries."""
         models = [
             "model-a",
-            {"id": "model-b", "thresholds": {"emoji_use_vs_avoid": 0.5}},
+            {"id": "model-b", "exclude_conflicts": ["emoji_use_vs_avoid"]},
             "model-c",
         ]
         config_path = _make_test_config(models, str(tmp_path))
         config = load_config(config_path)
         assert len(config.models) == 3
         assert config.models[0].id == "model-a"
-        assert config.models[0].thresholds == {}
         assert config.models[1].id == "model-b"
-        assert config.models[1].thresholds == {"emoji_use_vs_avoid": 0.5}
+        assert config.models[1].exclude_conflicts == ["emoji_use_vs_avoid"]
         assert config.models[2].id == "model-c"
 
     def test_invalid_model_entry(self, tmp_path):
@@ -183,12 +178,11 @@ class TestModelConfig:
         with pytest.raises(ValueError, match="Model entry missing 'id'"):
             load_config(config_path)
 
-    def test_dict_model_has_thresholds_and_excludes(self, tmp_path):
-        """Dict model entry with thresholds and exclude_conflicts is parsed correctly."""
+    def test_dict_model_has_excludes(self, tmp_path):
+        """Dict model entry with exclude_conflicts is parsed correctly."""
         models = [
             {
                 "id": "my-model",
-                "thresholds": {"first_vs_third_person": 0.182},
                 "exclude_conflicts": ["max_word_repeat"],
             }
         ]
@@ -196,18 +190,15 @@ class TestModelConfig:
         config = load_config(config_path)
         mc = config.models[0]
         assert mc.id == "my-model"
-        assert "first_vs_third_person" in mc.thresholds
-        assert mc.thresholds["first_vs_third_person"] == pytest.approx(0.182)
         assert "max_word_repeat" in mc.exclude_conflicts
 
     def test_plain_string_model_has_empty_defaults(self, tmp_path):
         """Models without explicit config should have empty defaults."""
         models = [
-            {"id": "model-with-config", "thresholds": {"foo": 0.5}},
+            {"id": "model-with-config", "exclude_conflicts": ["foo"]},
             "model-without-config",
         ]
         config_path = _make_test_config(models, str(tmp_path))
         config = load_config(config_path)
         mc = next(m for m in config.models if m.id == "model-without-config")
-        assert mc.thresholds == {}
         assert mc.exclude_conflicts == []

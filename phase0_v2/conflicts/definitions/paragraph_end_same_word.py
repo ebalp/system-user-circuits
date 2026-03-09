@@ -10,10 +10,41 @@
 # explored: yes
 # </description>
 
+import re
+import string
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import check_no_paragraph_bookend, check_paragraph_bookend
+
+
+def _score_paragraph_bookend(text: str) -> float:
+    """Fraction of non-empty paragraphs that bookend (first word == last word)."""
+    paragraphs = [p.strip().lower() for p in re.split(r"\n\n+", text) if p.strip()]
+    if not paragraphs:
+        return 0.0
+    good = 0
+    for paragraph in paragraphs:
+        words = paragraph.split()
+        if not words:
+            continue
+        first = words[0].strip(string.punctuation)
+        last = words[-1].strip(string.punctuation)
+        if first and last and first == last:
+            good += 1
+    return good / len(paragraphs)
+
+
+def check_paragraph_bookend(text: str) -> float:
+    """Score: fraction of paragraphs that bookend."""
+    return _score_paragraph_bookend(text)
+
+
+def check_no_paragraph_bookend(text: str) -> float:
+    """Score: 1.0 - bookend score. Anti-correlated with check_paragraph_bookend."""
+    return 1.0 - _score_paragraph_bookend(text)
+
+
+check_no_paragraph_bookend.is_inverted = True  # type: ignore[attr-defined]
 
 
 class ParagraphEndSameWordConflict(Conflict):

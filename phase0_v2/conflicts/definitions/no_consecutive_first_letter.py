@@ -16,12 +16,25 @@ Partial counterbalance: alliteration as system constraint is asymmetrically hard
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import check_all_alliteration, check_no_consecutive_first_letter
+from ..verify_utils import score_all_alliteration
+
+
+def check_all_alliteration(text: str) -> float:
+    """Score: fraction of consecutive word pairs with alliteration (min_matches=1)."""
+    return score_all_alliteration(text, min_matches=1)
+
+
+def check_no_consecutive_first_letter(text: str) -> float:
+    """Score: 1.0 - alliteration score. Anti-correlated."""
+    return 1.0 - score_all_alliteration(text, min_matches=1)
+
+
+check_no_consecutive_first_letter.is_inverted = True  # type: ignore[attr-defined]
 
 
 class NoConsecutiveFirstLetterConflict(Conflict):
     conflict_id = "no_consecutive_first_letter"
-    verify_threshold = 0.073  # optimal bal_acc=0.695 across all 4 (constraint, role) combinations
+    verify_threshold = 0.071  # midpoint of optimal range [0.069, 0.073]
 
     system_template = "No two consecutive words can share the same first letter."
     user_template = (

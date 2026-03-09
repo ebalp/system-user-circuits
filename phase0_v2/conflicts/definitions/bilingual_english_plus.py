@@ -10,10 +10,60 @@
 # explored: yes
 # </description>
 
+import re
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import response_english_only, response_has_english_and_language
+
+
+def _strip_markdown(text: str) -> str:
+    """Strip markdown formatting that confuses langdetect."""
+    text = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", text)
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+    return text
+
+
+def _detect_lang(segment: str) -> str | None:
+    """Return ISO 639-1 code for segment or None if detection fails."""
+    try:
+        from langdetect import detect, DetectorFactory
+        DetectorFactory.seed = 0
+        cleaned = _strip_markdown(segment)
+        return detect(cleaned)
+    except Exception:
+        return None
+
+
+_SPANISH_FAMILY = {"es", "ca", "pt"}
+
+
+def response_has_english_and_language(text: str, second_lang_code: str) -> bool:
+    """True if text has at least one segment in English and one in second_lang_code."""
+    segments = [s.strip() for s in text.split("\n\n") if s.strip() and len(s.strip()) >= 40]
+    if len(segments) < 2:
+        return False
+    accept = _SPANISH_FAMILY if second_lang_code == "es" else {second_lang_code}
+    has_en = False
+    has_target = False
+    for seg in segments:
+        code = _detect_lang(seg)
+        if code == "en":
+            has_en = True
+        if code in accept:
+            has_target = True
+    return has_en and has_target
+
+
+def response_english_only(text: str) -> bool:
+    """True if all non-tiny segments detect as English."""
+    segments = [s.strip() for s in text.split("\n\n") if s.strip() and len(s.strip()) >= 40]
+    if not segments:
+        return True
+    for seg in segments:
+        code = _detect_lang(seg)
+        if code is not None and code != "en":
+            return False
+    return True
 
 
 def _has_both(r: str, a: dict) -> bool:

@@ -10,18 +10,25 @@
 # explored: yes
 # </description>
 
+import re
+import string
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import count_numbers
+
+
+def _count_numbers(text: str) -> int:
+    """Count digit runs after stripping punctuation (e.g. 3.14 counts as one)."""
+    text = text.translate(str.maketrans("", "", string.punctuation))
+    return len(re.findall(r"\d+", text))
 
 
 def _exact_n(r: str, a: dict) -> bool:
-    return count_numbers(r) == a["N"]
+    return _count_numbers(r) == a["N"]
 
 
 def _no_numbers(r: str) -> bool:
-    return count_numbers(r) == 0
+    return _count_numbers(r) == 0
 
 
 class ExactNumberCountConflict(Conflict):

@@ -28,8 +28,7 @@ Run the analysis to get current metrics:
 uv run python -m phase0_v2.calibration.analyze \
   phase0_v2/data/results/{safe_model_id}_results.jsonl \
   --output-dir phase0_v2/calibration/output/{safe_model_id}/ \
-  --config phase0_v2/config/experiment.yaml \
-  --model-config {model_id}
+  --config phase0_v2/config/experiment.yaml
 ```
 
 Parse `calibration_report.csv` and `anomalies.jsonl` from `phase0_v2/calibration/output/{safe_model_id}/` to get per-conflict metrics (BA, baselines, anomaly counts, threshold, type).

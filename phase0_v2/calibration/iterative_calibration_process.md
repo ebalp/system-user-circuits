@@ -127,8 +127,7 @@ uv run python -m phase0_v2.calibration.analyze \
 | `<results_file>` | Input JSONL file (positional) |
 | `--output-dir` | Output directory for CSV/JSONL files (default: `calibration_output/`) |
 | `--conflict` | Analyze a single conflict only |
-| `--model-config` | Model ID for per-model threshold overrides |
-| `--config` | Path to experiment YAML (used with `--model-config`) |
+| `--config` | Path to experiment YAML (for completeness checks) |
 
 ### Output files
 
@@ -243,7 +242,7 @@ The `rescore.py` tool updates stored results **without re-querying the model**.
 | Changed prompt template text | Delete stale records + re-run experiments (new hash) |
 | Changed `sample_args()` | Delete stale records + re-run experiments |
 | Added new conflict | Run experiments with `--conflicts` filter |
-| Excluded a conflict | Remove records from results file, update per-model config |
+| Excluded a conflict | Remove records from results file, update `exclude_conflicts` in experiment YAML |
 
 ### Reverify (re-run verify functions)
 
@@ -274,10 +273,9 @@ uv run python -m phase0_v2.calibration.rescore \
   input.jsonl output.jsonl \
   --thresholds '{"active_vs_passive_voice": 0.455}'
 
-# Per-model thresholds from config
+# Reverify + rescore (after verifier code changes)
 uv run python -m phase0_v2.calibration.rescore \
-  input.jsonl output.jsonl \
-  --model-config meta-llama/Llama-3.1-8B-Instruct
+  input.jsonl output.jsonl --reverify
 ```
 
 ### Recompute hashes
@@ -363,7 +361,7 @@ Multiple conflicts are diagnosed in parallel via subagents.
 | Category | Description | Typical action |
 |----------|-------------|----------------|
 | Verifier bug | Scorer has a code-level defect (regex mismatch, edge case, wrong check) | Fix verifier code, then `--reverify` |
-| Threshold issue | Current threshold is suboptimal for this model | Adjust threshold in per-model config |
+| Threshold issue | Current threshold is suboptimal for this model | Update `verify_threshold` in conflict definition |
 | Model limitation | Model can't execute the constraint (too hard, too specific) | Accept as Tier 2/3 or exclude |
 | Non-discriminative | System/user verifiers don't form a true either/or | Exclude (like `max_word_repeat`) |
 | Scorer-model mismatch | Scorer checks one thing, model does something equivalent but different | Fix scorer to detect both patterns |
@@ -416,26 +414,21 @@ All float-scored conflicts use the **inverted pair** pattern: one score function
 
 ## 9. Per-model configuration
 
-The experiment config (`phase0_v2/config/experiment.yaml`) supports per-model settings:
+The experiment config (`phase0_v2/config/experiment.yaml`) supports per-model exclusions:
 
 ```yaml
 models:
   - id: meta-llama/Llama-3.1-8B-Instruct
-    thresholds:
-      first_vs_third_person: 0.182
-      title_case_vs_sentence_case: 0.420
     exclude_conflicts:
       - max_word_repeat
       - repeat_answer_twice
 ```
 
-### Threshold priority
+### Threshold management
 
-CLI override > per-model config > conflict definition default.
+Thresholds are stored in conflict definition files as the `verify_threshold` class attribute. This is the single source of truth — set to the midpoint of the optimal range from calibration analysis. No per-model threshold overrides; the threshold should work across models.
 
-- **Conflict definition**: Set to the threshold that works best across most models (the default).
-- **Per-model config**: When a specific model needs a different threshold.
-- **CLI**: For one-off testing or analysis sweeps.
+CLI `--thresholds` override is available for one-off testing or analysis sweeps.
 
 ### Conflict exclusions
 

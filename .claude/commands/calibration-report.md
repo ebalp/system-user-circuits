@@ -26,8 +26,7 @@ If `$ARGUMENTS` is provided, treat it as the model ID.
 uv run python -m phase0_v2.calibration.analyze \
   phase0_v2/data/results/{safe_model_id}_results.jsonl \
   --output-dir phase0_v2/calibration/output/{safe_model_id}/ \
-  --config phase0_v2/config/experiment.yaml \
-  --model-config {model_id}
+  --config phase0_v2/config/experiment.yaml
 ```
 
 Capture the full console output. It contains:

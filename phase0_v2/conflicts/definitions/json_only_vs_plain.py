@@ -10,18 +10,33 @@
 # explored: yes
 # </description>
 
+import json
+import re
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import is_valid_json_object
+
+
+def _is_valid_json_object(text: str) -> bool:
+    """True if text parses as a single JSON object, or looks like truncated JSON."""
+    t = text.strip()
+    if not t or not t.startswith("{"):
+        return False
+    try:
+        parsed = json.loads(t)
+        return isinstance(parsed, dict)
+    except (json.JSONDecodeError, ValueError):
+        if re.search(r'"[^"]+"\s*:', t):
+            return True
+        return False
 
 
 def _is_json(r: str) -> bool:
-    return is_valid_json_object(r)
+    return _is_valid_json_object(r)
 
 
 def _not_json(r: str) -> bool:
-    return not is_valid_json_object(r)
+    return _is_valid_json_object(r) is False
 
 
 class JsonOnlyVsPlainConflict(Conflict):

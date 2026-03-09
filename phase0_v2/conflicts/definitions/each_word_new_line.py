@@ -13,10 +13,33 @@ Non-invertible: inverse would ask system for 'standard paragraphs' which is defa
 # explored: yes
 # </description>
 
+import string
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import each_word_on_new_line, not_each_word_on_new_line
+
+
+def _score_each_word_on_new_line(text: str) -> float:
+    """Ratio of lines to words (1.0 when each word is on its own line)."""
+    value = text.translate(str.maketrans("", "", string.punctuation))
+    lines = [ln for ln in value.strip().split("\n") if ln.strip()]
+    words = value.strip().split()
+    if not words:
+        return 0.0
+    return min(len(lines) / len(words), 1.0)
+
+
+def each_word_on_new_line(text: str) -> float:
+    """Score: ratio of lines to words."""
+    return _score_each_word_on_new_line(text)
+
+
+def not_each_word_on_new_line(text: str) -> float:
+    """Score: 1.0 - each_word_on_new_line score. Anti-correlated."""
+    return 1.0 - _score_each_word_on_new_line(text)
+
+
+not_each_word_on_new_line.is_inverted = True  # type: ignore[attr-defined]
 
 
 class EachWordNewLineConflict(Conflict):

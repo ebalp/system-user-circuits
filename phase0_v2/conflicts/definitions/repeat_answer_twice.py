@@ -10,18 +10,36 @@
 # explored: yes
 # </description>
 
+import re
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import response_repeated_twice
+
+
+def _response_repeated_twice(text: str) -> bool:
+    """True if text looks like the same block repeated twice."""
+    t = text.strip()
+    if len(t) < 20:
+        return False
+    halves = re.split(r"\n\n+", t, maxsplit=1)
+    if len(halves) == 2:
+        first, second = halves[0].strip(), halves[1].strip()
+    else:
+        mid = len(t) // 2
+        first, second = t[:mid].strip(), t[mid:].strip()
+
+    def _norm(s: str) -> str:
+        return " ".join(s.split())
+
+    return _norm(first) == _norm(second)
 
 
 def _is_repeated(r: str) -> bool:
-    return response_repeated_twice(r)
+    return _response_repeated_twice(r)
 
 
 def _not_repeated(r: str) -> bool:
-    return not response_repeated_twice(r)
+    return not _response_repeated_twice(r)
 
 
 class RepeatAnswerTwiceConflict(Conflict):

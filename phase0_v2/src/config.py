@@ -55,7 +55,6 @@ class CounterbalancingConfig:
 class ModelConfig:
     """Per-model configuration."""
     id: str
-    thresholds: dict[str, float] = field(default_factory=dict)
     exclude_conflicts: list[str] = field(default_factory=list)
 
 
@@ -183,13 +182,12 @@ def load_config(path: str | Path) -> ExperimentConfig:
             # Backwards compatible: plain model ID string
             models.append(ModelConfig(id=entry))
         elif isinstance(entry, dict):
-            # New format: {id: ..., thresholds: {...}, exclude_conflicts: [...]}
+            # New format: {id: ..., exclude_conflicts: [...]}
             model_id = entry.get("id")
             if not model_id:
                 raise ValueError(f"Model entry missing 'id': {entry}")
             models.append(ModelConfig(
                 id=model_id,
-                thresholds=entry.get("thresholds", {}),
                 exclude_conflicts=entry.get("exclude_conflicts", []),
             ))
         else:
@@ -284,9 +282,4 @@ def validate_config(config: ExperimentConfig) -> list[str]:
             if cid not in valid_ids:
                 import warnings
                 warnings.warn(f"Model '{mc.id}' excludes unknown conflict '{cid}'")
-        for cid in mc.thresholds:
-            if cid not in valid_ids:
-                import warnings
-                warnings.warn(f"Model '{mc.id}' has threshold for unknown conflict '{cid}'")
-
     return errors

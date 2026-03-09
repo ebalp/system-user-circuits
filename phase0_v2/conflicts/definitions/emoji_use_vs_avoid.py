@@ -12,16 +12,17 @@
 
 from typing import Any
 
+import emoji as _emoji_lib
+
 from ..conflict_base import Conflict
-from ..verify_utils import has_emoji
 
 
 def _has_emoji(r: str) -> bool:
-    return has_emoji(r)
+    return _emoji_lib.emoji_count(r) > 0
 
 
 def _no_emoji(r: str) -> bool:
-    return not has_emoji(r)
+    return _emoji_lib.emoji_count(r) == 0
 
 
 class EmojiUseVsAvoidConflict(Conflict):

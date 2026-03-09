@@ -43,7 +43,7 @@ _score_passive_voice.is_inverted = True  # type: ignore[attr-defined]
 
 class ActiveVsPassiveVoiceConflict(Conflict):
     conflict_id = "active_vs_passive_voice"
-    verify_threshold = 0.455  # optimal bal_acc=0.960 across all 4 (constraint, role) combinations
+    verify_threshold = 0.477  # midpoint of optimal range [0.455, 0.500]
 
     system_template = (
         "Write your entire response in active voice. The subject of each sentence "

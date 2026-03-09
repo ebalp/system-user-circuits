@@ -14,13 +14,59 @@ the system score, ensuring anti-correlation and preventing followed_both.
 # explored: yes
 # </description>
 
+import string
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import (
-    score_all_alliteration,
-    score_alphabetical_word_start,
-)
+from ..verify_utils import score_all_alliteration
+
+
+def score_alphabetical_word_start(text: str) -> float:
+    """Fraction of consecutive word pairs where the second word advances to the next alphabet letter."""
+    words = [w.strip(string.punctuation) for w in text.split() if w.strip(string.punctuation).isalpha()]
+    if len(words) < 2:
+        return 0.0
+    alphabet = string.ascii_lowercase
+    pairs = len(words) - 1
+    good = 0
+    for i in range(pairs):
+        curr_letter = alphabet.index(words[i][0].lower())
+        next_letter = alphabet.index(words[i + 1][0].lower())
+        if next_letter == (curr_letter + 1) % 26:
+            good += 1
+    word_score = good / pairs
+
+    if word_score >= 0.06:
+        return word_score
+
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    _MIN_LINES = 8
+    if len(lines) < _MIN_LINES:
+        return word_score
+
+    first_letters: list[str] = []
+    for line in lines:
+        for w in line.split():
+            clean = w.strip(string.punctuation + "0123456789*#- ")
+            if clean and clean[0].isalpha():
+                first_letters.append(clean[0].lower())
+                break
+
+    if len(first_letters) < _MIN_LINES:
+        return word_score
+
+    line_pairs = len(first_letters) - 1
+    line_good = sum(
+        1
+        for i in range(line_pairs)
+        if alphabet.index(first_letters[i + 1]) == (alphabet.index(first_letters[i]) + 1) % 26
+    )
+    line_score = line_good / line_pairs
+
+    _LINE_THRESHOLD = 0.8
+    if line_score >= _LINE_THRESHOLD:
+        return max(word_score, line_score)
+    return word_score
 
 
 def _score_alphabetical(r: str) -> float:
@@ -45,7 +91,7 @@ _not_alliteration.is_inverted = True  # type: ignore[attr-defined]
 
 class AlphabeticalFirstLettersConflict(Conflict):
     conflict_id = "alphabetical_first_letters"
-    verify_threshold = 0.06  # optimal bal_acc=0.855 across all 4 (constraint, role) combinations
+    verify_threshold = 0.061  # midpoint of optimal range [0.060, 0.061]
 
     system_template = (
         "Each word in your response must start with the next letter of the "

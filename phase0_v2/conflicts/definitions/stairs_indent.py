@@ -17,7 +17,34 @@ which is trivially default behavior.
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import indent_stairs, not_indent_stairs
+
+
+def _score_indent_stairs(text: str) -> float:
+    """Fraction of line transitions with strictly increasing indentation."""
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    if len(lines) < 2:
+        return 0.0
+    transitions = len(lines) - 1
+    good = 0
+    for i in range(transitions):
+        curr_indent = len(lines[i]) - len(lines[i].lstrip(" "))
+        next_indent = len(lines[i + 1]) - len(lines[i + 1].lstrip(" "))
+        if next_indent > curr_indent:
+            good += 1
+    return good / transitions
+
+
+def indent_stairs(text: str) -> float:
+    """Score: fraction of line transitions with increasing indent."""
+    return _score_indent_stairs(text)
+
+
+def not_indent_stairs(text: str) -> float:
+    """Score: 1.0 - indent_stairs score. Anti-correlated."""
+    return 1.0 - _score_indent_stairs(text)
+
+
+not_indent_stairs.is_inverted = True  # type: ignore[attr-defined]
 
 
 class StairsIndentConflict(Conflict):

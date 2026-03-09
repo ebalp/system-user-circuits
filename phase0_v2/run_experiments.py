@@ -49,12 +49,9 @@ def _run_work_items(
 
     def run_one(item: tuple) -> dict | None:
         nonlocal error_count
-        model_id, prompt, conflict, threshold_overrides = item
+        model_id, prompt, conflict = item
         with model_semaphores[model_id]:
-            record = runner.run_single(
-                prompt, conflict, model_id,
-                threshold_overrides=threshold_overrides,
-            )
+            record = runner.run_single(prompt, conflict, model_id)
             if record.get("error"):
                 error_count += 1
                 if error_count <= 3:
@@ -237,9 +234,6 @@ def main():
         else:
             model_prompts = all_prompts
 
-        # Get threshold overrides for this model
-        threshold_overrides = model_config.thresholds if model_config.thresholds else None
-
         completed_counts = _hash_runner.load_completed_hash_counts(model_id)
         logger.info(
             "Model %s: %d experiments already completed",
@@ -255,7 +249,7 @@ def main():
             if completed_counts.get(h, 0) > 0:
                 skipped += 1
                 continue
-            work_items.append((model_id, prompt, conflict, threshold_overrides))
+            work_items.append((model_id, prompt, conflict))
 
     logger.info("Pending: %d, Already done: %d", len(work_items), skipped)
 

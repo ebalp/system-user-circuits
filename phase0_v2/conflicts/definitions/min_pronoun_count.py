@@ -10,10 +10,36 @@
 # explored: yes
 # </description>
 
+import re
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import pronoun_count
+
+_ALL_PRONOUNS = [
+    "i", "me", "my", "mine", "myself",
+    "we", "us", "our", "ours", "ourselves",
+    "he", "him", "his", "himself",
+    "she", "her", "hers", "herself",
+    "they", "them", "their", "theirs", "themselves",
+    "it", "its", "itself",
+    "you", "your", "yours", "yourself", "yourselves",
+]
+
+_IMPERSONAL_PRONOUNS = {"it", "its", "itself"}
+
+
+def pronoun_count(text: str, exclude_impersonal: bool = False) -> int:
+    """Count total pronoun occurrences (case-insensitive, word-boundary matched)."""
+    pronouns = (
+        [p for p in _ALL_PRONOUNS if p not in _IMPERSONAL_PRONOUNS]
+        if exclude_impersonal
+        else _ALL_PRONOUNS
+    )
+    lower = text.lower()
+    count = 0
+    for p in pronouns:
+        count += len(re.findall(r"\b" + re.escape(p) + r"\b", lower))
+    return count
 
 
 def _at_least_n(r: str, a: dict) -> bool:

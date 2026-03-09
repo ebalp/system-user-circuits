@@ -10,10 +10,46 @@
 # explored: yes
 # </description>
 
+import re
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import has_sub_bullets, no_bullets
+
+
+def has_sub_bullets(text: str) -> bool:
+    """True if text has * bullet points with - sub-bullets.
+
+    Requires at least 2 bullets that each have at least one - sub-bullet.
+    Tolerates truncation (final bullet without subs is OK).
+    """
+    lines = text.split("\n")
+    bullet_count = 0
+    current_has_sub = False
+    bullets_with_subs = 0
+
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r"^\*\s", stripped):
+            if bullet_count > 0 and current_has_sub:
+                bullets_with_subs += 1
+            bullet_count += 1
+            current_has_sub = False
+        elif re.match(r"^\s*-\s", stripped) and bullet_count > 0:
+            current_has_sub = True
+
+    if bullet_count > 0 and current_has_sub:
+        bullets_with_subs += 1
+
+    return bullets_with_subs >= 2
+
+
+def no_bullets(text: str) -> bool:
+    """True if no bullet-point formatting (* or - list items at line start)."""
+    if re.search(r"^\s*\*\s", text, re.MULTILINE):
+        return False
+    if re.search(r"^\s*-\s+\w", text, re.MULTILINE):
+        return False
+    return True
 
 
 class BulletsAndSubBulletsConflict(Conflict):

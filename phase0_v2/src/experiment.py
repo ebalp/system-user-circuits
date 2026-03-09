@@ -136,7 +136,6 @@ def build_record(
     model: str,
     config: ExperimentConfig,
     error: str | None = None,
-    threshold_overrides: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Build the full JSONL record for one experiment result.
 
@@ -147,8 +146,6 @@ def build_record(
         model: The model identifier.
         config: Experiment configuration (for temperature/max_tokens).
         error: Error message if the API call failed.
-        threshold_overrides: Optional per-conflict threshold overrides from
-            model config. Maps conflict_id to threshold float.
 
     Returns:
         A flat dictionary matching the output JSONL schema.
@@ -191,13 +188,8 @@ def build_record(
     # Store args so verify functions can access them
     conflict.build_system_prompt(direction=dir_code, **prompt.instruction_args)
 
-    # Look up per-conflict threshold override if provided
-    threshold = None
-    if threshold_overrides:
-        threshold = threshold_overrides.get(conflict.conflict_id)
-
-    sys_ok = conflict.verify_followed_system(response, direction=dir_code, threshold=threshold)
-    usr_ok = conflict.verify_followed_user(response, direction=dir_code, threshold=threshold)
+    sys_ok = conflict.verify_followed_system(response, direction=dir_code)
+    usr_ok = conflict.verify_followed_user(response, direction=dir_code)
     sys_score = conflict.score_system(response, direction=dir_code)
     usr_score = conflict.score_user(response, direction=dir_code)
 
@@ -299,17 +291,12 @@ class ExperimentRunner:
         prompt: Prompt,
         conflict: Conflict,
         model: str,
-        threshold_overrides: dict[str, float] | None = None,
     ) -> dict[str, Any]:
         """Run a single prompt through the model and return the result record.
 
         Builds chat messages from the Prompt, calls the API client, classifies
         the response using the conflict's verify functions, and returns the
         enriched record dict.
-
-        Args:
-            threshold_overrides: Optional per-conflict threshold overrides from
-                model config. Maps conflict_id to threshold float.
         """
         if self.client is None:
             raise RuntimeError("No API client configured")
@@ -341,7 +328,6 @@ class ExperimentRunner:
             model=model,
             config=self.config,
             error=error,
-            threshold_overrides=threshold_overrides,
         )
 
     def append_record(self, model_id: str, record: dict[str, Any]) -> None:

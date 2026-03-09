@@ -192,7 +192,6 @@ class TestCrossModuleConsistency:
             system_style=p.system_style,
             user_style=p.user_style,
             temperature=0.0,
-            max_tokens=512,
             system_prompt=p.system_message,
             user_prompt=p.user_message,
         )

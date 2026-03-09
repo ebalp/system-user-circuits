@@ -578,23 +578,6 @@ class TestBuildRecordIntegration:
         assert record["verify_system_result"] is False
         assert record["verify_user_result"] is False
 
-    def test_build_record_with_threshold_overrides(self):
-        """build_record passes threshold overrides through to verify functions."""
-        config = _make_config()
-        prompt = _make_prompt()
-        conflict = get_conflict("forbidden_words")
-        record = build_record(
-            prompt=prompt,
-            response="Sorting works well.",
-            conflict=conflict,
-            model="test-model",
-            config=config,
-            threshold_overrides={"forbidden_words": 0.5},
-        )
-        assert record["label"] in {
-            "followed_system", "followed_user", "followed_neither", "followed_both",
-        }
-
     def test_build_record_preserves_prompt_metadata(self):
         """build_record should preserve all prompt metadata fields in the record."""
         config = _make_config()
