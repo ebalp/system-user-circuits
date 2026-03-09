@@ -4,12 +4,13 @@ from .conflict_base import Conflict
 
 # -- Batch 1: original Phase 0 conflicts --
 from .definitions.language_en_es import LanguageEnEsConflict
+from .definitions.format_json_markdown import FormatJsonMarkdownConflict
 from .definitions.format_json_yaml import FormatJsonYamlConflict
 from .definitions.starting_word_hello_greetings import StartingWordHelloGreetingsConflict
 from .definitions.emoji_use_vs_avoid import EmojiUseVsAvoidConflict
 from .definitions.capitalization_all_caps import CapitalizationAllCapsConflict
 from .definitions.list_bullets_vs_numbered import ListBulletsVsNumberedConflict
-from .definitions.disclaimer_add_vs_none import DisclaimerAddVsNoneConflict
+from .definitions.disclaimer_first_vs_none import DisclaimerFirstVsNoneConflict
 from .definitions.self_reference_ai_mention import SelfReferenceAiMentionConflict
 
 # -- Batch 1: dataset conflicts --
@@ -32,7 +33,7 @@ from .definitions.italics_thesis import ItalicsThesisConflict
 
 # -- Batch 3 --
 from .definitions.alphabetical_first_letters import AlphabeticalFirstLettersConflict
-from .definitions.keyword_in_nth_sentence import KeywordInNthSentenceConflict
+from .definitions.keyword_in_early_sentence import KeywordInEarlySentenceConflict
 from .definitions.max_word_repeat import MaxWordRepeatConflict
 from .definitions.no_consecutive_first_letter import NoConsecutiveFirstLetterConflict
 from .definitions.odd_even_syllables import OddEvenSyllablesConflict
@@ -60,18 +61,18 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     BulletsAndSubBulletsConflict,
     CapitalizationAllCapsConflict,
     DirectAnswerVsHedgingConflict,
-    DisclaimerAddVsNoneConflict,
+    DisclaimerFirstVsNoneConflict,
     EachWordNewLineConflict,
     EmojiUseVsAvoidConflict,
     ExactNumberCountConflict,
     FirstVsThirdPersonConflict,
     ForbiddenWordsConflict,
     FormalVsCasualToneConflict,
-    FormatJsonYamlConflict,
+    FormatJsonMarkdownConflict,
     ItalicsThesisConflict,
     JsonOnlyVsPlainConflict,
     KeywordExactCountConflict,
-    KeywordInNthSentenceConflict,
+    KeywordInEarlySentenceConflict,
     LanguageEnEsConflict,
     ListBulletsVsNumberedConflict,
     MaxSentenceLengthConflict,

@@ -126,15 +126,32 @@ def _compute_metrics(records: list[dict]) -> dict:
     else:
         metrics["ba"] = None
 
-    # SBR/UCR from condition A/B baselines
+    # Per-constraint SBR/UCR from condition A/B baselines
+    # SBR(a) = Cond A, a_to_b (system has constraint_a)
+    # SBR(b) = Cond A, b_to_a (system has constraint_b)
+    # UCR(a) = Cond B, b_to_a (user has constraint_a)
+    # UCR(b) = Cond B, a_to_b (user has constraint_b)
     a_recs = by_condition.get("A", [])
     b_recs = by_condition.get("B", [])
+
+    def _dir_acc(recs: list[dict], direction: str, expected: str) -> float | None:
+        subset = [r for r in recs if r["direction"] == direction]
+        if not subset:
+            return None
+        return sum(1 for r in subset if r["label"] == expected) / len(subset)
+
     if a_recs:
-        a_correct = sum(1 for r in a_recs if r["label"] == "followed_system")
-        metrics["sbr"] = a_correct / len(a_recs)
+        metrics["sbr_a"] = _dir_acc(a_recs, "a_to_b", "followed_system")
+        metrics["sbr_b"] = _dir_acc(a_recs, "b_to_a", "followed_system")
     if b_recs:
-        b_correct = sum(1 for r in b_recs if r["label"] == "followed_user")
-        metrics["ucr"] = b_correct / len(b_recs)
+        metrics["ucr_a"] = _dir_acc(b_recs, "b_to_a", "followed_user")
+        metrics["ucr_b"] = _dir_acc(b_recs, "a_to_b", "followed_user")
+
+    # BA from baselines (mean of 4 component BAs, matching calibration-report)
+    rates = [metrics.get(k) for k in ("sbr_a", "ucr_a", "sbr_b", "ucr_b")]
+    valid = [r for r in rates if r is not None]
+    if valid:
+        metrics["baseline_ba"] = sum(valid) / len(valid)
 
     return metrics
 
@@ -146,11 +163,29 @@ def _print_report(metrics: dict, conflict_id: str) -> None:
     print(f"{'=' * 60}")
     print(f"Total records: {metrics['total_records']}, Errors: {metrics['errors']}")
 
-    if "sbr" in metrics:
-        print(f"SBR (Cond A): {metrics['sbr']:.3f}")
-    if "ucr" in metrics:
-        print(f"UCR (Cond B): {metrics['ucr']:.3f}")
+    # Per-constraint baseline rates
+    has_baselines = any(k in metrics for k in ("sbr_a", "ucr_a", "sbr_b", "ucr_b"))
+    if has_baselines:
+        print(f"\nBaseline rates (per constraint):")
+        print(f"{'':>12} {'SBR':>8} {'UCR':>8}")
+        print(f"{'':>12} {'(system)':>8} {'(user)':>8}")
+        print("-" * 32)
+        for label in ("a", "b"):
+            sbr = metrics.get(f"sbr_{label}")
+            ucr = metrics.get(f"ucr_{label}")
+            sbr_s = f"{sbr:.3f}" if sbr is not None else "  n/a"
+            ucr_s = f"{ucr:.3f}" if ucr is not None else "  n/a"
+            print(f"  {label:>10} {sbr_s:>8} {ucr_s:>8}")
+        if "baseline_ba" in metrics:
+            print(f"\n  Baseline BA: {metrics['baseline_ba']:.3f}")
+            if metrics["baseline_ba"] >= 0.95:
+                print("  PASS — scorer is reliable, ready for full experiments")
+            elif metrics["baseline_ba"] >= 0.90:
+                print("  MARGINAL — check failures, scorer may need tuning")
+            else:
+                print("  FAIL — scorer or constraint issue, investigate before proceeding")
 
+    # Per-condition detail (always shown)
     print(f"\nPer-condition breakdown:")
     print(f"{'Cond':<6} {'Total':>6} {'Correct':>8} {'Acc':>8}  Direction detail")
     print("-" * 60)
@@ -167,17 +202,6 @@ def _print_report(metrics: dict, conflict_id: str) -> None:
                 f"{l}={c}" for l, c in sorted(info["labels"].items())
             )
             print(f"{'':>6} labels: {label_str}")
-
-    if metrics["ba"] is not None:
-        print(f"\nCondition C BA: {metrics['ba']:.3f}")
-        if metrics["ba"] >= 0.95:
-            print("PASS — conflict is ready for full experiments")
-        elif metrics["ba"] >= 0.80:
-            print("MARGINAL — verifier may need tuning (re-run with --conditions A,B --n-tasks 10)")
-        else:
-            print("FAIL — likely design or verifier issue, reconsider before proceeding")
-    else:
-        print("\nNo Condition C data — cannot compute BA")
 
 
 def run_smoke_test(
@@ -285,7 +309,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--config", default="phase0_v2/config/experiment.yaml", help="Experiment config YAML")
     parser.add_argument("--conditions", default=None, help="Comma-separated conditions (default: A,B,C,D)")
     parser.add_argument("--n-tasks", type=int, default=None, help="Number of tasks (default: 4 representative)")
-    parser.add_argument("--concurrent", type=int, default=4, help="Concurrent API calls")
+    parser.add_argument("--concurrent", type=int, default=16, help="Concurrent API calls")
     parser.add_argument("--output", default=None, help="Save raw results to JSONL file")
     args = parser.parse_args(argv)
 

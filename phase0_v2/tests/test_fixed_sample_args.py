@@ -29,10 +29,10 @@ class TestFixedArgs:
         args = c.sample_args()
         assert args == {"word1": "however", "word2": "important", "word3": "example"}
 
-    def test_keyword_in_nth_sentence_fixed_values(self):
-        c = get_conflict("keyword_in_nth_sentence")
+    def test_keyword_in_early_sentence_fixed_values(self):
+        c = get_conflict("keyword_in_early_sentence")
         args = c.sample_args()
-        assert args == {"keyword": "important", "N": 3}
+        assert args == {"keyword": "important"}
 
     def test_keyword_exact_count_fixed_values(self):
         c = get_conflict("keyword_exact_count")
@@ -129,24 +129,23 @@ class TestFixedArgsEdgeCases:
             "This is however a test.", direction="a"
         )
 
-    def test_keyword_in_nth_sentence_verify_with_fixed(self):
-        c = get_conflict("keyword_in_nth_sentence")
+    def test_keyword_in_early_sentence_verify_with_fixed(self):
+        c = get_conflict("keyword_in_early_sentence")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        # keyword="important", N=3 -> 3rd sentence should contain "important"
-        text = "First sentence. Second sentence. This is important to note."
+        # keyword="important" -> should appear anywhere in response
+        text = "This is important to note. Second sentence. Third sentence."
         assert c.verify_followed_system(text, direction="a")
         # User side: keyword should be absent
         text_no_kw = "First sentence. Second sentence. Third sentence."
         assert c.verify_followed_user(text_no_kw, direction="a")
 
-    def test_keyword_in_nth_sentence_system_fails_wrong_position(self):
-        """Keyword in wrong sentence position should fail system."""
-        c = get_conflict("keyword_in_nth_sentence")
+    def test_keyword_in_early_sentence_system_fails_absent(self):
+        """Keyword absent entirely should fail system."""
+        c = get_conflict("keyword_in_early_sentence")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        # keyword in sentence 1, not 3
-        text = "This is important. Second sentence. Third sentence."
+        text = "First sentence. Second sentence. Third sentence."
         assert not c.verify_followed_system(text, direction="a")
 
     def test_keyword_exact_count_verify_with_fixed(self):
@@ -222,7 +221,7 @@ class TestFixedArgsEdgeCases:
     def test_all_fixed_conflicts_build_valid_prompts(self):
         """Every conflict with fixed args produces valid prompts."""
         fixed_ids = [
-            "word_count_range", "forbidden_words", "keyword_in_nth_sentence",
+            "word_count_range", "forbidden_words", "keyword_in_early_sentence",
             "keyword_exact_count", "bilingual_english_plus", "max_sentence_length",
             "min_unique_words", "min_pronoun_count", "exact_number_count",
         ]

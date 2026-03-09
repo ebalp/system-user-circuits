@@ -4,7 +4,7 @@ description: "Design and implement new or redesigned conflict definitions for Ph
 
 # Conflict Proposal & Implementation
 
-Design new conflicts or redesign existing weak ones. Handles the full lifecycle: propose, vet, implement, smoke test, and clean up old data.
+Design new conflicts or redesign existing weak ones. Handles the full lifecycle: propose, vet, implement, validate against vLLM, and clean up old data.
 
 ## Inputs
 
@@ -99,9 +99,37 @@ For each proposal, include:
 
 Present proposals and ask the user which to implement (if any).
 
-## Step 4: Implement (only with user approval)
+## Step 4: Detect vLLM server
+
+Before launching the implementation subagent, detect the vLLM server and extract the port and model ID:
+
+```bash
+uv run python -c "
+import urllib.request, json, sys
+for port in (8000, 8001):
+    try:
+        r = urllib.request.urlopen(f'http://localhost:{port}/v1/models', timeout=3)
+        data = json.loads(r.read())
+        model_id = data['data'][0]['id']
+        print(f'VLLM_URL=http://localhost:{port}/v1')
+        print(f'MODEL_ID={model_id}')
+        sys.exit(0)
+    except Exception:
+        continue
+print('NO_VLLM_SERVER')
+sys.exit(1)
+"
+```
+
+This outputs exactly `VLLM_URL=...` and `MODEL_ID=...` on success, or `NO_VLLM_SERVER` on failure. Use these values directly — do not guess or hardcode ports.
+
+If no server is found, warn the user that smoke testing won't be possible and ask if they want to proceed without it. The base model for conflict design is **meta-llama/Llama-3.1-8B-Instruct** (Llama 3.1 8B).
+
+## Step 5: Implement & validate (only with user approval)
 
 For each user-approved conflict, confirm before proceeding. Then launch one Agent per conflict (subagent_type=general-purpose, run_in_background=true).
+
+The subagent owns the full implement-validate-iterate loop. Pass it the vLLM connection info so it can smoke test immediately after implementation.
 
 **Agent prompt template:**
 
@@ -116,7 +144,12 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
 - Type: {bool_or_float}
 - Scorer approach: {scorer_description}
 
-**Your task:**
+**vLLM server:** {vllm_url or "not available"}
+**Model:** {model_id or "meta-llama/Llama-3.1-8B-Instruct"}
+
+**Your task — implement, validate, iterate:**
+
+### Phase 1: Implement
 
 1. **Read reference files** to understand conventions:
    - `phase0_v2/conflicts/conflict_base.py` (base class, all fields)
@@ -162,71 +195,57 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
      uv run python -m phase0_v2.calibration.archive_conflict {old_conflict_id} phase0_v2/data/results/
      ```
 
-5. **Create tests** in `phase0_v2/tests/`:
+### Phase 2: Validate against vLLM (skip if no server)
+
+5. **Smoke test — baselines only** (conditions A,B with 20 tasks = 80 samples):
+   ```bash
+   uv run python -m phase0_v2.calibration.smoke_test \
+     --conflict {conflict_id} \
+     --vllm-url {vllm_url} \
+     --model {model_id} \
+     --conditions A,B \
+     --n-tasks 20 \
+     --output /tmp/{conflict_id}_smoke_ab.jsonl
+   ```
+   Conditions A and B are baselines (no conflict). Each task produces 2 prompts per condition (a_to_b + b_to_a), so 20 tasks = 40 samples per condition = 80 total. If the verifier can't score these correctly (~100%), the scorer is wrong — fix the scorer before testing conflict conditions.
+
+   **IMPORTANT: Only test conditions A and B.** Do NOT run conditions C or D during the propose workflow. C/D measure hierarchy behavior, which is the job of the full experiment — testing them here wastes server time and provides no scorer validation signal.
+
+6. **Inspect failures**: Read the output JSONL. For each failure, look at:
+   - The actual model response text
+   - What the scorer returned vs what it should have returned
+   - Whether the constraint template is unclear to the model
+
+7. **Iterate on scorer/constraints**: If baseline accuracy < 95%:
+   - Fix scorer logic based on actual model output patterns
+   - Adjust constraint templates if the model misunderstands them
+   - Re-run the smoke test (step 5)
+   - Repeat up to 3 times
+
+### Phase 3: Tests (after validation)
+
+9. **Create tests** in `phase0_v2/tests/`:
    - Add to an existing test file or create new one following conventions
    - Contract tests: verify class attributes, template placeholders, counterbalancing support
    - Edge case tests: empty response, very short response, truncated response
-   - Scorer tests: known inputs with expected outputs
+   - Scorer tests: use examples from actual model responses seen during smoke testing — these are grounded in real behavior, not hypothetical inputs
 
-6. **Run tests**:
-   ```bash
-   uv run pytest phase0_v2/tests/ -v --tb=short -k {conflict_id_keyword}
-   uv run pytest phase0_v2/tests/ -v --tb=short
-   ```
+10. **Run tests**:
+    ```bash
+    uv run pytest phase0_v2/tests/ -v --tb=short -k {conflict_id_keyword}
+    uv run pytest phase0_v2/tests/ -v --tb=short
+    ```
 
-7. **Report**: what was created, any design decisions made, test results
+11. **Report**: what was created, design decisions made, baseline SBR/UCR, iterations needed, test results
 
 **Rules:**
 - Follow the quality checklist strictly. If you can't satisfy a MUST criterion, stop and report why.
 - Keep scorer logic simple and deterministic.
 - Don't add unnecessary complexity or configuration.
 - New conflict_id for redesigns — never reuse the old ID.
+- Validate early with the model — don't write tests for scorer logic you haven't verified against real responses.
+- When iterating on the scorer, focus on what the model actually produces, not what you expect it to produce.
 ```
-
-## Step 5: Smoke test & verifier tuning (requires vLLM)
-
-After implementation, if a vLLM server is available, iteratively test and tune the conflict. The goal is **BA > 0.95** — conflicts below this threshold are not useful for the experiment.
-
-### 5a. Initial smoke test
-
-Run the smoke test to get a first BA estimate:
-
-```bash
-uv run python -m phase0_v2.calibration.smoke_test \
-  --conflict {conflict_id} \
-  --vllm-url {vllm_url} \
-  --model {model_id}
-```
-
-This generates ~24 prompts (3 tasks × 4 conditions × 2 directions), sends them to vLLM, and computes BA with per-condition breakdown.
-
-### 5b. Verifier tuning loop
-
-If BA < 0.95, inspect the smoke test output to understand failures:
-- Which conditions fail? (A/B baselines should be near 100% — if not, the verifier is wrong)
-- Are scores clustered near the threshold? (threshold tuning may help)
-- Are there systematic misclassifications? (scorer logic needs fixing)
-
-Fix the verifier code, then re-run the smoke test. Use `--conditions A,B` with more samples to focus on baseline accuracy:
-
-```bash
-uv run python -m phase0_v2.calibration.smoke_test \
-  --conflict {conflict_id} \
-  --vllm-url {vllm_url} \
-  --model {model_id} \
-  --conditions A,B \
-  --n-tasks 10
-```
-
-Repeat until:
-- **Conditions A and B**: near 100% correct (verifier accurately detects constraint compliance)
-- **Overall BA > 0.95**: conflict is ready for full experiment
-
-If BA stays below 0.95 after 2-3 tuning rounds, the conflict design may be fundamentally flawed — reconsider the constraints or scorer approach before proceeding.
-
-### 5c. No vLLM available
-
-If no vLLM server is available, skip smoke testing and note it as deferred. The conflict will need tuning via `/calibration-optimize` after full data collection, but this is less efficient — prefer smoke testing when possible.
 
 ## Step 6: Post-implementation
 
@@ -243,12 +262,12 @@ Present a summary:
 ```markdown
 ## Conflicts implemented
 
-| Conflict ID | Replaces | Type | Counterbalancing | Smoke BA | Tests |
-|-------------|----------|------|------------------|----------|-------|
+| Conflict ID | Replaces | Type | SBR(a) | UCR(a) | SBR(b) | UCR(b) | BA | Tests |
+|-------------|----------|------|--------|--------|--------|--------|----|-------|
 ```
 
 Remind the user:
-- If smoke test BA > 0.95: conflict is ready — run full experiments to collect data (see CLAUDE.md)
+- If baseline BA > 0.95: conflict is ready — run full experiments to collect data (see CLAUDE.md)
 - If smoke test was skipped: verifier tuning will be needed after data collection via `/calibration-optimize`
 - After collecting full data, run `/calibration-report` to confirm quality
 - New conflicts start with `explored: no` — update to `explored: yes` after full calibration confirms BA > 0.95

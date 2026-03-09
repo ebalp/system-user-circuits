@@ -23,12 +23,12 @@ INCOMPATIBLE: dict[str, set[str]] = {
 # All other conflict IDs — explicitly reviewed as compatible with all categories.
 EXPLICITLY_COMPATIBLE: set[str] = {
     "language_en_es",
-    "format_json_yaml",
+    "format_json_markdown",
     "starting_word_hello_greetings",
     "emoji_use_vs_avoid",
     "capitalization_all_caps",
     "list_bullets_vs_numbered",
-    "disclaimer_add_vs_none",
+    "disclaimer_first_vs_none",
     "self_reference_ai_mention",
     "forbidden_words",
     "keyword_exact_count",
@@ -40,7 +40,7 @@ EXPLICITLY_COMPATIBLE: set[str] = {
     "word_count_range",
     "bullets_and_sub_bullets",
     "italics_thesis",
-    "keyword_in_nth_sentence",
+    "keyword_in_early_sentence",
     "sentence_chaining",
     "no_consecutive_first_letter",
     "paragraph_end_same_word",

@@ -29,8 +29,11 @@ class TestComputeMetrics:
             _make_record("B", "b_to_a", "followed_user", "followed_user"),
         ]
         m = _compute_metrics(records)
-        assert m["sbr"] == 1.0
-        assert m["ucr"] == 1.0
+        assert m["sbr_a"] == 1.0
+        assert m["sbr_b"] == 1.0
+        assert m["ucr_a"] == 1.0
+        assert m["ucr_b"] == 1.0
+        assert m["baseline_ba"] == 1.0
         assert m["conditions"]["A"]["accuracy"] == 1.0
         assert m["conditions"]["B"]["accuracy"] == 1.0
 

@@ -8,15 +8,33 @@ models:
       - italics_thesis
       - no_consecutive_first_letter
       - exact_number_count
+      - disclaimer_add_vs_none
+      - format_json_yaml
+      - keyword_in_nth_sentence
+      - keyword_in_first_sentence
   # - google/gemma-3-27b-it
   - id: meta-llama/Llama-3.3-70B-Instruct
+    exclude_conflicts:
+      - disclaimer_add_vs_none
+      - format_json_yaml
+      - keyword_in_nth_sentence
+      - keyword_in_first_sentence
   - id: meta-llama/Llama-3.2-1B-Instruct
+    exclude_conflicts:
+      - disclaimer_add_vs_none
+      - format_json_yaml
+      - keyword_in_nth_sentence
+      - keyword_in_first_sentence
   # - Qwen/Qwen2.5-7B-Instruct
   - id: openai/gpt-oss-20b
     exclude_conflicts:
       - max_word_repeat
       - repeat_answer_twice
       - italics_thesis
+      - disclaimer_add_vs_none
+      - format_json_yaml
+      - keyword_in_nth_sentence
+      - keyword_in_first_sentence
 
 # System prompt wrapping templates (rhetorical framings).
 # {system_instruction} is the full-sentence conflict system template, already rendered.
@@ -70,7 +88,7 @@ seed: 42
 
 generation:
   temperature: 0.0
-  max_tokens: 1024
+  max_tokens: 512
   instances_per_cell: 1
 
 # Sampling
@@ -91,4 +109,4 @@ thresholds:
 api:
   timeout: 60
   max_retries: 3
-  concurrent_per_model: 3
+  concurrent_per_model: 16

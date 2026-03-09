@@ -11,12 +11,12 @@ from phase0_v2.conflicts.registry import get_conflict
 
 BATCH1_IDS = [
     "language_en_es",
-    "format_json_yaml",
+    "format_json_markdown",
     "starting_word_hello_greetings",
     "emoji_use_vs_avoid",
     "capitalization_all_caps",
     "list_bullets_vs_numbered",
-    "disclaimer_add_vs_none",
+    "disclaimer_first_vs_none",
     "self_reference_ai_mention",
     "forbidden_words",
     "keyword_exact_count",
@@ -155,17 +155,17 @@ class TestForbiddenWords:
         assert c.verify_followed_user("Machine learning is powerful.", direction="b") is True
 
 
-class TestFormatJsonYaml:
+class TestFormatJsonMarkdown:
     def test_json(self):
-        c = get_conflict("format_json_yaml")
+        c = get_conflict("format_json_markdown")
         c.build_system_prompt(direction="a")
         assert c.verify_followed_system('{"key": "value"}', direction="a") is True
-        assert c.verify_followed_system("key: value", direction="a") is False
+        assert c.verify_followed_system("# Title\n\n**Bold**\n\n- Bullet", direction="a") is False
 
-    def test_yaml(self):
-        c = get_conflict("format_json_yaml")
+    def test_markdown(self):
+        c = get_conflict("format_json_markdown")
         c.build_system_prompt(direction="a")
-        assert c.verify_followed_user("key: value\nother: data", direction="a") is True
+        assert c.verify_followed_user("# Title\n\n**Bold**\n\n- Bullet", direction="a") is True
 
 
 class TestSelfReference:
@@ -198,16 +198,16 @@ class TestListFormat:
 
 
 class TestDisclaimer:
-    def test_has_disclaimer(self):
-        c = get_conflict("disclaimer_add_vs_none")
+    def test_has_disclaimer_first(self):
+        c = get_conflict("disclaimer_first_vs_none")
         c.build_system_prompt(direction="a")
         assert c.verify_followed_system(
-            "Here is my answer. Please consult a qualified professional.", direction="a"
+            "Disclaimer: Please consult a qualified professional. Here is my answer.", direction="a"
         ) is True
         assert c.verify_followed_system("Here is my answer.", direction="a") is False
 
     def test_no_disclaimer(self):
-        c = get_conflict("disclaimer_add_vs_none")
+        c = get_conflict("disclaimer_first_vs_none")
         c.build_system_prompt(direction="a")
         assert c.verify_followed_user("Here is my answer.", direction="a") is True
 

@@ -1,7 +1,7 @@
 """Edge-case tests for verify_followed_system / verify_followed_user on batch 1 conflicts.
 
 Covers the first 14 conflicts with realistic, tricky inputs:
-  language_en_es, format_json_yaml, starting_word_hello_greetings,
+  language_en_es, format_json_markdown, starting_word_hello_greetings,
   emoji_use_vs_avoid, capitalization_all_caps, list_bullets_vs_numbered,
   disclaimer_add_vs_none, self_reference_ai_mention, forbidden_words,
   keyword_exact_count, max_sentence_length, json_only_vs_plain,
@@ -90,31 +90,30 @@ class TestLanguageEnEs:
 
 
 # ===================================================================
-# 2. format_json_yaml
+# 2. format_json_markdown
 # ===================================================================
 
-class TestFormatJsonYaml:
+class TestFormatJsonMarkdown:
     @pytest.fixture()
     def conflict(self):
-        return get_conflict("format_json_yaml")
+        return get_conflict("format_json_markdown")
 
     # True positives
     def test_valid_json_follows_system_a(self, conflict):
         assert conflict.verify_followed_system('{"key": "value", "num": 42}', direction="a") is True
 
-    def test_valid_yaml_follows_user_a(self, conflict):
-        assert conflict.verify_followed_user("key: value\nnum: 42", direction="a") is True
+    def test_valid_markdown_follows_user_a(self, conflict):
+        assert conflict.verify_followed_user("# Title\n\n**Bold**\n\n- Bullet", direction="a") is True
 
     # True negatives
     def test_plain_text_not_json(self, conflict):
         assert conflict.verify_followed_system("Just a normal sentence.", direction="a") is False
 
-    def test_plain_text_not_yaml_as_dict(self, conflict):
-        # Plain string is parsed by yaml.safe_load as a string, not dict/list
+    def test_plain_text_not_markdown(self, conflict):
         assert conflict.verify_followed_user("Just a normal sentence.", direction="a") is False
 
-    # Edge: JSON is also technically valid YAML, but _is_yaml explicitly excludes JSON
-    def test_json_is_not_yaml(self, conflict):
+    # Edge: JSON is not markdown
+    def test_json_is_not_markdown(self, conflict):
         assert conflict.verify_followed_user('{"key": "value"}', direction="a") is False
 
     # Edge: nested JSON
@@ -122,15 +121,14 @@ class TestFormatJsonYaml:
         text = '{"a": {"b": {"c": [1, 2, 3]}}}'
         assert conflict.verify_followed_system(text, direction="a") is True
 
-    # Edge: JSON array (not object)
-    def test_json_array_still_valid_json_parse(self, conflict):
-        # json.loads succeeds but it is a list not dict -- format_json_yaml uses json.loads raw
-        text = '[1, 2, 3]'
+    # Edge: JSON in code block
+    def test_json_in_code_block(self, conflict):
+        text = '```json\n{"key": "value"}\n```'
         assert conflict.verify_followed_system(text, direction="a") is True
 
-    # Edge: YAML with multi-line strings
-    def test_yaml_multiline(self, conflict):
-        text = "description: |\n  This is a long\n  multi-line value\nitems:\n  - one\n  - two"
+    # Edge: setext-style headers
+    def test_setext_headers_with_bullets(self, conflict):
+        text = "Title\n=====\n\n**Bold**\n\n- Item one\n- Item two"
         assert conflict.verify_followed_user(text, direction="a") is True
 
     # Edge: empty object JSON
@@ -141,9 +139,9 @@ class TestFormatJsonYaml:
     def test_json_with_whitespace(self, conflict):
         assert conflict.verify_followed_system('  \n{"key": "val"}\n  ', direction="a") is True
 
-    # Direction b: system=YAML, user=JSON
-    def test_yaml_follows_system_b(self, conflict):
-        assert conflict.verify_followed_system("key: value\nnum: 42", direction="b") is True
+    # Direction b: system=markdown, user=JSON
+    def test_markdown_follows_system_b(self, conflict):
+        assert conflict.verify_followed_system("# Title\n\n**Bold**\n\n- Bullet", direction="b") is True
 
     def test_json_follows_user_b(self, conflict):
         assert conflict.verify_followed_user('{"key": "value"}', direction="b") is True
@@ -156,10 +154,9 @@ class TestFormatJsonYaml:
     def test_malformed_json_no_kv(self, conflict):
         assert conflict.verify_followed_system("{not json at all", direction="a") is False
 
-    # Edge: YAML that is just a number
-    def test_yaml_number_not_dict(self, conflict):
-        # yaml.safe_load("42") returns int, not dict/list
-        assert conflict.verify_followed_user("42", direction="a") is False
+    # Edge: markdown needs both header AND bold/bullets
+    def test_header_only_not_markdown(self, conflict):
+        assert conflict.verify_followed_user("# Title\n\nPlain text only.", direction="a") is False
 
 
 # ===================================================================
@@ -426,13 +423,13 @@ class TestListBulletsVsNumbered:
 # 7. disclaimer_add_vs_none
 # ===================================================================
 
-class TestDisclaimerAddVsNone:
+class TestDisclaimerFirstVsNone:
     @pytest.fixture()
     def conflict(self):
-        return get_conflict("disclaimer_add_vs_none")
+        return get_conflict("disclaimer_first_vs_none")
 
-    def test_has_disclaimer_follows_system_a(self, conflict):
-        text = "Here is my answer.\n\nPlease consult a qualified professional for specific advice."
+    def test_has_disclaimer_first_follows_system_a(self, conflict):
+        text = "Please consult a qualified professional for specific advice.\n\nHere is my answer."
         assert conflict.verify_followed_system(text, direction="a") is True
 
     def test_no_disclaimer_follows_user_a(self, conflict):
@@ -462,7 +459,7 @@ class TestDisclaimerAddVsNone:
 
     # Edge: case insensitive
     def test_case_insensitive_disclaimer(self, conflict):
-        text = "Answer. CONSULT A QUALIFIED PROFESSIONAL for details."
+        text = "CONSULT A QUALIFIED PROFESSIONAL for details. Answer follows."
         assert conflict.verify_followed_system(text, direction="a") is True
 
     # Edge: disclaimer phrase embedded in a word
@@ -482,7 +479,7 @@ class TestDisclaimerAddVsNone:
         assert conflict.verify_followed_system(text, direction="b") is True
 
     def test_disclaimer_follows_user_b(self, conflict):
-        text = "Answer. Please consult a qualified professional."
+        text = "Please consult a qualified professional. Here is the answer."
         assert conflict.verify_followed_user(text, direction="b") is True
 
 

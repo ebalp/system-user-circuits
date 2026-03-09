@@ -83,65 +83,60 @@ class TestBilingualEnglishPlus:
 
 
 # ===========================================================================
-# keyword_in_nth_sentence
+# keyword_in_early_sentence
 # ===========================================================================
 
-class TestKeywordInNthSentence:
-    """verify_system checks keyword in Nth sentence; verify_user checks keyword absent."""
+class TestKeywordInEarlySentence:
+    """verify_system checks keyword present anywhere; verify_user checks keyword absent."""
 
-    def test_system_keyword_in_second_sentence(self):
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "important", "N": 2})
+    def test_system_keyword_present(self):
+        c = _prepare("keyword_in_early_sentence", {"keyword": "important"})
+        response = "This is important to note. The end."
+        assert c.verify_followed_system(response, direction="a") is True
+
+    def test_system_keyword_in_later_sentence_still_passes(self):
+        c = _prepare("keyword_in_early_sentence", {"keyword": "important"})
         response = "The sky is blue. This is important to note. The end."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_system_keyword_wrong_sentence(self):
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "important", "N": 3})
-        response = "The sky is blue. This is important to note. The end."
-        assert c.verify_followed_system(response, direction="a") is False
-
-    def test_system_not_enough_sentences(self):
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "critical", "N": 5})
-        response = "Short answer. Only two."
+    def test_system_keyword_absent_fails(self):
+        c = _prepare("keyword_in_early_sentence", {"keyword": "important"})
+        response = "The sky is blue. Nothing special here. The end."
         assert c.verify_followed_system(response, direction="a") is False
 
     def test_system_keyword_case_insensitive(self):
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "key", "N": 1})
+        c = _prepare("keyword_in_early_sentence", {"keyword": "key"})
         response = "The KEY point is here. Another sentence."
         assert c.verify_followed_system(response, direction="a") is True
 
     def test_user_keyword_absent(self):
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "important", "N": 2})
+        c = _prepare("keyword_in_early_sentence", {"keyword": "important"})
         response = "The sky is blue. Nothing special here. The end."
         assert c.verify_followed_user(response, direction="a") is True
 
     def test_user_keyword_present_fails(self):
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "main", "N": 2})
+        c = _prepare("keyword_in_early_sentence", {"keyword": "main"})
         response = "The main idea is clear. That is the main point."
         assert c.verify_followed_user(response, direction="a") is False
 
     def test_keyword_as_substring_not_counted(self):
         """'key' should not match 'keyboard' as word boundary."""
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "key", "N": 1})
+        c = _prepare("keyword_in_early_sentence", {"keyword": "key"})
         response = "The keyboard is broken. Another sentence."
         assert c.verify_followed_system(response, direction="a") is False
 
     def test_direction_b_system_forbids_keyword(self):
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "critical", "N": 3}, direction="b")
+        c = _prepare("keyword_in_early_sentence", {"keyword": "critical"}, direction="b")
         response = "The sky is blue. The grass is green. Everything is fine."
         assert c.verify_followed_system(response, direction="b") is True
 
-    def test_direction_b_user_wants_keyword_in_nth(self):
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "critical", "N": 2}, direction="b")
-        response = "The sky is blue. This is critical to understand. The end."
+    def test_direction_b_user_wants_keyword(self):
+        c = _prepare("keyword_in_early_sentence", {"keyword": "critical"}, direction="b")
+        response = "This is critical to understand. The end."
         assert c.verify_followed_user(response, direction="b") is True
 
-    def test_exclamation_as_sentence_delimiter(self):
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "main", "N": 2})
-        response = "Wow! The main idea is here. Good."
-        assert c.verify_followed_system(response, direction="a") is True
-
     def test_empty_response(self):
-        c = _prepare("keyword_in_nth_sentence", {"keyword": "key", "N": 1})
+        c = _prepare("keyword_in_early_sentence", {"keyword": "key"})
         assert c.verify_followed_system("", direction="a") is False
 
 
