@@ -6,7 +6,7 @@
 # type: bool
 # constraint_a: Use exact template format
 # constraint_b: Write naturally, no template
-# scorer: Contains "My Answer:", "My Conclusion:", "Future Outlook:"
+# scorer: Contains "My Answer:" (anchor marker sufficient for truncation tolerance)
 # explored: yes
 # </description>
 

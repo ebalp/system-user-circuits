@@ -665,7 +665,7 @@ def _print_calibration_table(calibration: list[dict]) -> None:
     header = (
         f"{'conflict_id':<35} {'con':>3} {'role':>6} "
         f"{'try_mean':>8} {'ign_mean':>8} "
-        f"{'gap':>7} {'thresh':>6} {'inv':>3} {'opt_range':>16} {'bal_acc':>7}"
+        f"{'gap':>7} {'thresh':>6} {'inv':>3} {'opt_range':>16} {'opt_mid':>7} {'bal_acc':>7}"
     )
     print(header)
     print("-" * 130)
@@ -680,11 +680,13 @@ def _print_calibration_table(calibration: list[dict]) -> None:
             opt_str = f"{t_low:.3f}"
         else:
             opt_str = f"[{t_low:.3f}, {t_high:.3f}]"
+        opt_mid = (t_low + t_high) / 2
+        opt_mid_str = f"{opt_mid:.3f}"
         ba_str = f"{row['balanced_accuracy']:.3f}"
         print(
             f"{row['conflict_id']:<35} {row['constraint']:>3} {row['role']:>6} "
             f"{try_mean:>8} {ign_mean:>8} "
-            f"{gap_str:>7} {row['current_threshold']:>6.2f} {inv_str:>3} {opt_str:>16} {ba_str:>7}"
+            f"{gap_str:>7} {row['current_threshold']:>6.2f} {inv_str:>3} {opt_str:>16} {opt_mid_str:>7} {ba_str:>7}"
         )
 
 

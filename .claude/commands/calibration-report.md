@@ -11,8 +11,12 @@ Generate a structured markdown calibration report from Phase 0 v2 experiment res
 You need:
 1. **Model ID** -- e.g., `meta-llama/Llama-3.1-8B-Instruct`. Ask user if not specified.
 2. **Results file** -- at `phase0_v2/data/results/{safe_model_id}_results.jsonl` where `/` in model ID becomes `_`. Confirm it exists.
-3. **Output directory** -- default `phase0_v2/calibration/output/`. Ask user if they want a different one.
-4. **Report filename** -- ask user for a short model name (e.g., "llama_8b") to use in `verifier_calibration_report_{name}.md`, or propose one.
+
+Derived paths (all under a per-model directory):
+- **Output directory**: `phase0_v2/calibration/output/{safe_model_id}/` -- analysis CSV and anomalies JSONL go here
+- **Report file**: `phase0_v2/calibration/output/{safe_model_id}/calibration_report_{MMDD}_{HHMM}.md` (timestamp = current time)
+
+Create the output directory if it doesn't exist: `mkdir -p phase0_v2/calibration/output/{safe_model_id}`
 
 If `$ARGUMENTS` is provided, treat it as the model ID.
 
@@ -21,7 +25,7 @@ If `$ARGUMENTS` is provided, treat it as the model ID.
 ```bash
 uv run python -m phase0_v2.calibration.analyze \
   phase0_v2/data/results/{safe_model_id}_results.jsonl \
-  --output-dir {output_dir} \
+  --output-dir phase0_v2/calibration/output/{safe_model_id}/ \
   --config phase0_v2/config/experiment.yaml \
   --model-config {model_id}
 ```
@@ -35,6 +39,18 @@ Capture the full console output. It contains:
 - Anomaly summary (by reason and by conflict)
 
 **If threshold consistency shows mismatches**, warn the user: "Stored results were scored with different thresholds. Run `rescore` before generating the report, or the report will reflect stale labels." Ask whether to proceed or stop.
+
+## Step 1b: Check for previous reports
+
+Look for existing reports in the model's output directory:
+
+```bash
+ls -t phase0_v2/calibration/output/{safe_model_id}/calibration_report_*.md 2>/dev/null || true
+```
+
+If a previous report exists, read it and extract the per-conflict BA and tier assignments from its "Complete conflict status" section. Store these as the baseline for comparison in Step 5 (Section 8: Changes since last report).
+
+If no previous report exists, skip the comparison section.
 
 ## Step 2: Parse analysis outputs
 
@@ -53,10 +69,11 @@ Extract per conflict:
 - **Type**: `bool` if `trying_mean` is empty, `float` otherwise
 - **Threshold**: `threshold` column (for float conflicts)
 - **Optimal range**: `optimal_threshold_low`, `optimal_threshold_high`
+- **Optimal midpoint**: `optimal_threshold` column (midpoint of optimal range — this is the recommended threshold)
 
 ### anomalies.jsonl
 
-Count records by `(conflict_id, reason)`. Reasons: `followed_both`, `cond_A_followed_user`, `cond_B_followed_system`.
+Count records by `(conflict_id, anomaly_reason)`. Reasons: `followed_both`, `cond_A_followed_user`, `cond_B_followed_system`. Note: the field name in the JSONL is `anomaly_reason`, not `reason`.
 
 ## Step 3: Assign tiers
 
@@ -103,7 +120,7 @@ Do NOT create or modify description blocks in this command. If a conflict is mis
 
 ## Step 5: Write the report
 
-Write to `{output_dir}/verifier_calibration_report_{name}.md` (same directory as the analysis CSV and anomalies JSONL) following this exact structure:
+Write to `phase0_v2/calibration/output/{safe_model_id}/calibration_report_{MMDD}_{HHMM}.md` following this exact structure:
 
 ### Section 1: Header and dataset status
 
@@ -182,12 +199,11 @@ Format baselines to 2 decimal places, BA to 3.
 ```markdown
 ## Float threshold results
 
-| Conflict | Current T | Optimal range | BA | Needs change? |
-|----------|-----------|---------------|----|---------------|
+| Conflict | Current T | Optimal mid | Optimal range | BA | Needs change? |
+|----------|-----------|-------------|---------------|----|---------------|
 ```
 
-"Needs change?" = "Yes" if current threshold is outside [optimal_threshold_low, optimal_threshold_high], "No" otherwise.
-Format the optimal range as `[T_low, T_high]` or just `T` if T_low == T_high.
+The **optimal midpoint** (`optimal_threshold` column in the CSV) is the recommended threshold — it maximizes margin from the range edges. "Needs change?" = "Yes" if current threshold differs from the optimal midpoint (not just outside the range). Format the optimal range as `[T_low, T_high]` or just `T` if T_low == T_high.
 
 ### Section 5: Anomaly summary
 
@@ -240,6 +256,47 @@ Write a specific justification per conflict citing the metrics that trigger the 
 ```
 
 This section is analytical commentary, not a fixed table. Be specific about what to fix and how.
+
+### Section 8: Changes since last report (if previous report exists)
+
+If a previous report was found in Step 1b, include a comparison section:
+
+```markdown
+## Changes since last report
+
+**Previous report:** {previous_report_filename}
+
+### BA changes
+
+| Conflict | Previous BA | Current BA | Change | Notes |
+|----------|-----------|------------|--------|-------|
+```
+
+Only list conflicts where BA changed, tier changed, or exclusion status changed. Sort by largest improvement first.
+
+Summarize:
+- Number of conflicts with improved BA, degraded BA, unchanged
+- Tier migrations (e.g., "2 conflicts promoted from Tier 2 to Tier 1")
+- New exclusions or removals from exclusion list
+- Total anomaly count change
+
+If no previous report exists, omit this section entirely.
+
+### Section 9: Diagnostic summary (placeholder)
+
+Always include this section as a placeholder at the end of the report:
+
+```markdown
+## Diagnostic summary
+
+_No diagnostics have been run for this report yet. Run `/calibration-diagnose` to populate this section._
+```
+
+**After diagnostics are run:** When `/calibration-diagnose` completes in the same conversation, append its compiled diagnostic table and root-cause groupings to this section of the most recent report, replacing the placeholder text. Use the Edit tool to update the report file in place. The appended content should include:
+
+- The diagnostic results summary table (Conflict | BA | Root Cause | Est. BA After | Confidence | Proposed Action)
+- The root-cause groupings (model inability, verifier issues, constraint design, threshold issues)
+- Links to the individual diagnostic report files in `phase0_v2/calibration/output/{safe_model_id}/diagnosis/`
 
 ## Step 6: Present summary and suggest next steps
 

@@ -4,6 +4,8 @@ models:
   - id: meta-llama/Llama-3.1-8B-Instruct
     thresholds:
       first_vs_third_person: 0.182
+      active_vs_passive_voice: 0.477
+      direct_answer_vs_hedging: 0.769
       title_case_vs_sentence_case: 0.475
       sentence_chaining: 0.800
       alphabetical_first_letters: 0.061

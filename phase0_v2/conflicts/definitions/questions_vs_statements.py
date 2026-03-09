@@ -6,21 +6,19 @@
 # type: bool
 # constraint_a: Respond entirely in questions
 # constraint_b: Respond only in statements
-# scorer: Every sentence ends with ? (a) or none do (b)
+# scorer: NLTK sent_tokenize splits sentences; every sentence ends with ? (a) or none do (b)
 # explored: yes
 # </description>
 
-import re
+import nltk
 from typing import Any
 
 from ..conflict_base import Conflict
 
 
 def _split_sentences(text: str) -> list[str]:
-    """Split text into sentences, ignoring very short fragments."""
-    # Split on sentence-ending punctuation
-    parts = re.split(r'(?<=[.!?])\s+', text.strip())
-    return [s.strip() for s in parts if len(s.strip()) > 5]
+    """Split text into sentences using NLTK, ignoring very short fragments."""
+    return [s.strip() for s in nltk.sent_tokenize(text.strip()) if len(s.strip()) > 5]
 
 
 def _is_all_questions(r: str) -> bool:

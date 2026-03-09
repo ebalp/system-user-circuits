@@ -516,8 +516,14 @@ class TestSelfReferenceAiMention:
         text = "As a language model, I don't have personal experiences."
         assert conflict.verify_followed_system(text, direction="a") is True
 
-    def test_artificial_intelligence(self, conflict):
+    def test_artificial_intelligence_topical(self, conflict):
+        # Topical reference without self-identification should NOT trigger
         text = "Artificial intelligence has many applications."
+        assert conflict.verify_followed_system(text, direction="a") is False
+
+    def test_artificial_intelligence_self_ref(self, conflict):
+        # Self-referential use SHOULD trigger
+        text = "I am an artificial intelligence designed to help you."
         assert conflict.verify_followed_system(text, direction="a") is True
 
     def test_i_am_an_ai(self, conflict):

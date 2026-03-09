@@ -476,12 +476,18 @@ def is_sentence_case(text: str) -> float:
 
 
 def has_template_markers(text: str) -> bool:
-    """True if text contains My Answer:, My Conclusion:, Future Outlook:."""
-    return "My Answer:" in text and "My Conclusion:" in text and "Future Outlook:" in text
+    """True if text follows the template structure.
+
+    Requires "My Answer:" — the leading marker that anchors the template.
+    Truncated responses may lack "My Conclusion:" or "Future Outlook:" due
+    to the max_tokens limit, but "My Answer:" alone is sufficient since
+    natural/flowing responses never contain this marker.
+    """
+    return "My Answer:" in text
 
 
 def no_template(text: str) -> bool:
-    """True if text does not contain any of the template markers."""
+    """True if text does not contain template markers."""
     return not has_template_markers(text)
 
 

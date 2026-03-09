@@ -4,44 +4,34 @@ description: "Optimize conflict verifiers and run the reverify-analyze-rescore p
 
 # Calibration Optimizer
 
-Fix conflict verifiers to improve Balanced Accuracy, then run the full reverify-analyze-rescore pipeline. This command **modifies conflict definitions and verifier code**.
+Implement verifier fixes from diagnostic reports, validate they work without regressions, then run the full reverify-analyze-rescore pipeline. This command **modifies conflict definitions and verifier code**.
+
+**Prerequisite:** Run `/calibration-diagnose` first. This command reads the diagnosis reports and implements the proposed fixes — it does NOT re-diagnose from scratch.
 
 ## Inputs
 
 You need:
 1. **Model ID** -- e.g., `meta-llama/Llama-3.1-8B-Instruct`. Ask user if not specified.
 2. **Results file** -- at `phase0_v2/data/results/{safe_model_id}_results.jsonl` where `/` in model ID becomes `_`. Confirm it exists.
-3. **Output directory** -- default `phase0_v2/calibration/output/`.
 
 Optional:
-- **Specific conflict IDs** -- comma-separated list to optimize only those conflicts (e.g., from a `/calibration-diagnose` recommendation)
+- **Specific conflict IDs** -- comma-separated list to optimize only those conflicts
 
 If `$ARGUMENTS` is provided, treat it as the model ID.
 
 ## Step 1: Identify optimization targets
 
-Run analysis to get current metrics:
+Find the latest diagnosis reports:
 
 ```bash
-uv run python -m phase0_v2.calibration.analyze \
-  phase0_v2/data/results/{safe_model_id}_results.jsonl \
-  --output-dir {output_dir} \
-  --config phase0_v2/config/experiment.yaml \
-  --model-config {model_id}
+ls -t phase0_v2/calibration/output/{safe_model_id}/diagnosis/*.md 2>/dev/null || true
 ```
 
-Parse `calibration_report.csv` and `anomalies.jsonl`. Extract description blocks:
+For each target conflict, find its most recent diagnosis report: `{conflict_id}_*.md` (sorted by timestamp, take latest).
 
-```bash
-awk '/# <description>/,/# <\/description>/{print FILENAME": "$0}' phase0_v2/conflicts/definitions/*.py
-```
+If specific conflicts were requested, use those. Otherwise, read the latest calibration report's diagnostic summary to identify conflicts with actionable verifier fixes (root cause = "verifier issue" or "threshold issue").
 
-If specific conflicts were requested, use those. Otherwise target all conflicts that are:
-- Not excluded in `experiment.yaml`
-- `explored: no` in their description block
-- Imperfect: BA < 1.0, or any anomalies > 0, or min(baseline) < 1.0
-
-Present the target list with metrics and ask for confirmation.
+Present the target list with: conflict_id, current BA, diagnosed root cause, proposed fix from diagnosis, estimated BA after fix. Ask for confirmation before launching agents.
 
 ## Step 2: Launch optimization subagents
 
@@ -52,78 +42,93 @@ For each target conflict, launch one Agent (subagent_type=general-purpose, run_i
 ```
 You are optimizing the `{conflict_id}` conflict verifier to maximize Balanced Accuracy (BA).
 
+**Diagnosis report:** {diagnosis_report_path}
 **Current metrics:** BA={ba}, SBR(a)={sbr_a}, UCR(a)={ucr_a}, SBR(b)={sbr_b}, UCR(b)={ucr_b}, Threshold={threshold}
 **Results file:** {results_path}
 **Conflict file:** phase0_v2/conflicts/definitions/{conflict_id}.py
 **Scorer functions in:** phase0_v2/conflicts/verify_utils.py
 
-**Your task (all steps required):**
+**Your task:**
 
-1. **Read** the conflict definition and scorer functions
-2. **Sample anomalous records** to understand failure patterns:
+1. **Read the diagnosis report** — this is your primary input. It contains root cause analysis, sampled anomalies, and proposed fixes with estimated BA improvements.
+
+2. **Read** the conflict definition file and any scorer functions it references from `phase0_v2/conflicts/verify_utils.py`.
+
+3. **Implement the proposed fix** from the diagnosis report. If the diagnosis proposes multiple options, start with the highest-confidence one.
+
+4. **Validate the fix** with the test harness:
+   ```bash
+   uv run python -m phase0_v2.calibration.test_verifier \
+     {results_path} --conflict {conflict_id} --sample-mismatches 10
+   ```
+   Check that:
+   - BA improved (or at least didn't regress)
+   - No new anomaly categories appeared
+   - The fix matches the diagnosis estimate
+
+5. **Verify no regressions** by sampling records that were previously correct:
    ```python
    import json, random
-   records = []
+   correct, wrong = [], []
    with open('{results_path}') as f:
        for line in f:
            r = json.loads(line)
            if r.get('error') or r['conflict_id'] != '{conflict_id}': continue
-           if (r['condition'] == 'A' and r['label'] != 'followed_system') or \
-              (r['condition'] == 'B' and r['label'] != 'followed_user'):
-               records.append(r)
+           if (r['condition'] == 'A' and r['label'] == 'followed_system') or \
+              (r['condition'] == 'B' and r['label'] == 'followed_user'):
+               correct.append(r)
+           elif r['condition'] in ('A', 'B'):
+               wrong.append(r)
    random.seed(42)
-   for r in random.sample(records, min(15, len(records))):
-       print(json.dumps({{k: (v[:400] if k == 'response' else v)
+   # Check a sample of previously-correct records still pass
+   print(f"=== Previously correct: {{len(correct)}} | Previously wrong: {{len(wrong)}} ===")
+   for r in random.sample(correct, min(10, len(correct))):
+       print(json.dumps({{k: (v[:300] if isinstance(v, str) and k == 'response' else v)
            for k, v in r.items()
            if k in ('condition','direction','label','verify_system_score',
-                     'verify_user_score','verify_system_result','verify_user_result','response')
+                     'verify_user_score','response')
        }}, indent=2))
    ```
-3. **Sample correct records** for comparison (same snippet but filter for correct labels)
-4. **Diagnose** the root cause of each failure type
-5. **Implement fixes** if verifier improvements are possible
-6. **Validate** every change with the test harness:
-   ```bash
-   uv run python -m phase0_v2.calibration.test_verifier \
-     {results_path} --conflict {conflict_id}
-   ```
+   Re-run the verifier on these samples with a temp script to confirm they still produce correct labels. If any previously-correct record now fails, the fix has a regression — investigate and adjust.
+
+6. **If the diagnosis fix doesn't work or regresses**, try alternative approaches. But always validate against both anomalous AND correct records. Do not chase BA improvements that introduce new failure patterns.
+
 7. **Fix any tests** that break due to your changes:
    ```bash
    uv run pytest phase0_v2/tests/ -v --tb=short -k {conflict_id_keyword}
    ```
+
 8. **Update the `<description>` block** in the conflict file:
-   - Set `# explored: yes`
    - Update `scorer` text if you changed scoring logic
    - If no `<description>` block exists, create one after the module docstring, before imports:
      ```python
-     # If you modify the scoring logic, update the description block below
-     # and set explored to 'no'.
      # <description>
      # type: bool or float
      # constraint_a: Short phrase from system_template
      # constraint_b: Short phrase from user_template
      # scorer: What the verify function measures
-     # explored: yes
      # </description>
      ```
-9. **Report:**
-   - Root cause classification: **model inability** (model doesn't follow instruction), **verifier issue** (scorer doesn't detect what model does), or **constraint design** (the constraint itself is problematic)
-   - If constraint design issue: recommend specific constraint changes
-   - Final BA and baseline rates after changes
-   - What you changed and why
+
+9. **Return a brief summary** (5-8 lines max):
+   - BA before → BA after (and per-baseline changes if relevant)
+   - What you changed (specific functions/logic)
+   - Whether the diagnosis estimate was accurate
+   - Any regressions found and how you addressed them
+   - If the fix didn't work, explain why and what you tried
 
 **Rules:**
 - Do NOT overfit. Every aspect of the verifier logic must make sense from a high-level explanation. If a change only helps on this specific dataset but wouldn't generalize, don't do it.
-- If the root cause is model inability (model simply can't follow the instruction), accept the BA as-is and report that.
-- If you try multiple approaches, keep only the one with the best BA. Revert failed attempts.
-- Iterate: if your first fix improves BA but there's room for more, try additional changes.
+- If the diagnosis says "model inability" and you were still asked to optimize this conflict, investigate whether there's a small verifier improvement the diagnosis missed. But don't force it — accept the BA if the model genuinely can't follow the instruction.
+- Validate against BOTH anomalous and correct records. A fix that resolves anomalies but breaks correct records is worse than no fix.
+- Keep only the best approach. Revert failed attempts cleanly.
 ```
 
 ## Step 3: Validate combined changes
 
 After all agents complete:
 
-1. Collect each agent's results (BA before/after, root cause, changes made)
+1. Collect each agent's results (BA before/after, changes made)
 2. **Revert** any changes that caused BA regression
 3. Run full test suite:
    ```bash
@@ -136,8 +141,8 @@ Present optimization results:
 ```markdown
 ## Optimization results
 
-| Conflict | BA Before | BA After | Root cause | Action taken |
-|----------|-----------|----------|------------|--------------|
+| Conflict | BA Before | BA After | Diagnosis est. | Action taken |
+|----------|-----------|----------|----------------|--------------|
 ```
 
 ## Step 4: Run reverify-analyze-rescore pipeline
@@ -150,7 +155,7 @@ After presenting results, ask user if they want to proceed with the pipeline. Th
 
 2. **Analyze second** -- Computes metrics and finds optimal thresholds from the new score distributions. Must come after reverify.
 
-3. **Optimize thresholds** -- Update `experiment.yaml` with optimal threshold values from analysis output.
+3. **Optimize thresholds** -- Update `experiment.yaml` with the **midpoint** of each optimal threshold range. The midpoint maximizes margin from the range edges, which are more vulnerable to distribution shifts. For each float conflict: `new_threshold = (optimal_threshold_low + optimal_threshold_high) / 2`. The analyze output includes an `opt_mid` column with this value.
 
 4. **Rescore last** -- Re-applies new thresholds to reverified scores. Lightweight pass, no verify re-runs.
 
@@ -167,8 +172,9 @@ uv run python -m phase0_v2.calibration.analyze \
   --config phase0_v2/config/experiment.yaml \
   --model-config {model_id}
 
-# 3. Check the float threshold table in the output for "Needs change?"
-# Update experiment.yaml thresholds to optimal values where needed
+# 3. Check the float threshold table — for each conflict where current threshold
+#    differs from opt_mid, update experiment.yaml to the midpoint value.
+#    Read the CSV: optimal_threshold column has the midpoint.
 
 # 4. Rescore: apply new thresholds to reverified scores
 uv run python -m phase0_v2.calibration.rescore \
@@ -204,6 +210,7 @@ NEVER add conflicts to `exclude_conflicts` automatically. Exclusion decisions ar
 - Rescore tool: `phase0_v2/calibration/rescore.py`
 - Test harness: `phase0_v2/calibration/test_verifier.py`
 - Config: `phase0_v2/config/experiment.yaml`
+- Diagnosis reports: `phase0_v2/calibration/output/{safe_model_id}/diagnosis/`
 
 ## Related commands
 

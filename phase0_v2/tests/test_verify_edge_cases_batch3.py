@@ -617,11 +617,11 @@ class TestTemplateResponse:
         response = "My Answer: The sky is blue. My Conclusion: It is nice. Future Outlook: Sunny."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_system_missing_one_marker(self):
+    def test_system_partial_markers_still_matches(self):
         c = _prepare("template_response")
         response = "My Answer: The sky is blue. My Conclusion: It is nice."
-        # Missing "Future Outlook:"
-        assert c.verify_followed_system(response, direction="a") is False
+        # Missing "Future Outlook:" but "My Answer:" anchors the template
+        assert c.verify_followed_system(response, direction="a") is True
 
     def test_system_missing_all_markers(self):
         c = _prepare("template_response")
@@ -639,14 +639,14 @@ class TestTemplateResponse:
         response = "My Answer: The sky. My Conclusion: Nice. Future Outlook: Good."
         assert c.verify_followed_user(response, direction="a") is False
 
-    def test_user_passes_with_partial_markers(self):
-        """Partial markers (not all 3) pass user check — complementary of has_template_markers."""
+    def test_user_fails_with_my_answer_marker(self):
+        """'My Answer:' alone triggers template detection — user check fails."""
         c = _prepare("template_response")
         response = "My Answer: The sky is blue."
-        assert c.verify_followed_user(response, direction="a") is True
+        assert c.verify_followed_user(response, direction="a") is False
 
     def test_user_allows_conclusion_without_answer(self):
-        """'My Conclusion:' alone passes user check (not all 3 markers)."""
+        """'My Conclusion:' without 'My Answer:' passes user check."""
         c = _prepare("template_response")
         response = "My Conclusion: The sky is blue. Future Outlook: sunny."
         assert c.verify_followed_user(response, direction="a") is True
