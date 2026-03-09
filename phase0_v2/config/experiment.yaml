@@ -3,54 +3,26 @@
 models:
   - id: meta-llama/Llama-3.1-8B-Instruct
     exclude_conflicts:
-      - alphabetical_first_letters
       - max_word_repeat
-      - min_pronoun_count
       - repeat_answer_twice
       - italics_thesis
       - no_consecutive_first_letter
       - exact_number_count
-      - disclaimer_add_vs_none
-      - format_json_yaml
       - keyword_exact_count
-      - keyword_in_nth_sentence
-      - keyword_in_first_sentence
-      - paragraph_end_same_word
   # - google/gemma-3-27b-it
   - id: meta-llama/Llama-3.3-70B-Instruct
     exclude_conflicts:
-      - alphabetical_first_letters
-      - min_pronoun_count
-      - disclaimer_add_vs_none
-      - format_json_yaml
       - keyword_exact_count
-      - keyword_in_nth_sentence
-      - keyword_in_first_sentence
-      - paragraph_end_same_word
   - id: meta-llama/Llama-3.2-1B-Instruct
     exclude_conflicts:
-      - alphabetical_first_letters
-      - min_pronoun_count
-      - disclaimer_add_vs_none
-      - format_json_yaml
       - keyword_exact_count
-      - keyword_in_nth_sentence
-      - keyword_in_first_sentence
-      - paragraph_end_same_word
   # - Qwen/Qwen2.5-7B-Instruct
   - id: openai/gpt-oss-20b
     exclude_conflicts:
-      - alphabetical_first_letters
       - max_word_repeat
-      - min_pronoun_count
       - repeat_answer_twice
       - italics_thesis
-      - disclaimer_add_vs_none
-      - format_json_yaml
       - keyword_exact_count
-      - keyword_in_nth_sentence
-      - keyword_in_first_sentence
-      - paragraph_end_same_word
 
 # System prompt wrapping templates (rhetorical framings).
 # {system_instruction} is the full-sentence conflict system template, already rendered.

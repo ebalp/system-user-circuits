@@ -211,7 +211,7 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
 
 4. **If redesign — clean up old conflict:**
    - Do NOT delete the old definition file (keep for reference)
-   - Add the old conflict_id to `exclude_conflicts` for ALL models in `phase0_v2/config/experiment.yaml`
+   - Do NOT add the old conflict_id to `exclude_conflicts` — since it's being removed from the registry, it won't be discovered by the experiment runner. Only conflicts that are registered but should be skipped need exclusion entries.
    - Archive old data from results files:
      ```bash
      uv run python -m phase0_v2.calibration.archive_conflict {old_conflict_id} phase0_v2/data/results/
@@ -275,6 +275,11 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
      ```
    - Only re-run `smoke_test.py` (step 5) if constraint **templates** changed — because the model needs to generate new responses to different prompts.
    - Repeat up to 3 times.
+
+8b. **Minimum baseline gate**: After iteration, ALL four baseline rates must be ≥ 0.95:
+   - SBR(a) ≥ 0.95, UCR(a) ≥ 0.95, SBR(b) ≥ 0.95, UCR(b) ≥ 0.95
+   - If any rate is below 0.95 after 3 iterations, **stop and report the conflict as not viable**. Do not proceed to tests. Include the root cause (scorer bug, template clarity, or model inability) in the report.
+   - BA alone is not sufficient — a conflict with BA=0.96 but SBR(b)=0.88 is not acceptable.
 
 9. **Set optimal threshold** (float-scored conflicts only — skip for boolean):
    - Read the `opt_mid` value from the FLOAT SCORE CALIBRATION table
