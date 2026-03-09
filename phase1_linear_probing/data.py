@@ -11,6 +11,7 @@ from __future__ import annotations
 import gc
 import hashlib
 import json
+import logging
 import os
 import re
 import time
@@ -22,6 +23,8 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm.auto import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -166,8 +169,16 @@ class ProbeConfig:
 # ── Data Loading ──────────────────────────────────────────────────────────────
 
 
-def load_results(data_dir: Path, model_name: str) -> pd.DataFrame:
-    """Load JSONL experiment results for *model_name* from *data_dir*."""
+def load_results(
+    data_dir: Path,
+    model_name: str,
+    config_path: str | Path = "phase0_v2/config/experiment.yaml",
+) -> pd.DataFrame:
+    """Load JSONL experiment results for *model_name* from *data_dir*.
+
+    Filters out unregistered conflicts (stale/redesigned) and per-model
+    excluded conflicts from the experiment config.
+    """
     safe_name = model_name.replace("/", "_")
     path = Path(data_dir) / f"{safe_name}_results.jsonl"
     records: list[dict] = []
@@ -176,7 +187,32 @@ def load_results(data_dir: Path, model_name: str) -> pd.DataFrame:
             line = line.strip()
             if line:
                 records.append(json.loads(line))
-    return pd.DataFrame(records)
+    df = pd.DataFrame(records)
+
+    if df.empty:
+        return df
+
+    # Filter to registered conflicts only
+    from phase0_v2.conflicts.registry import get_all_conflicts
+    valid_ids = {c.conflict_id for c in get_all_conflicts()}
+    before = len(df)
+    df = df[df["conflict_id"].isin(valid_ids)]
+
+    # Apply per-model exclusions from experiment config
+    config_path = Path(config_path)
+    if config_path.exists():
+        from phase0_v2.src.config import load_config
+        config = load_config(config_path)
+        model_config = next((m for m in config.models if m.id == model_name), None)
+        if model_config and model_config.exclude_conflicts:
+            excluded = set(model_config.exclude_conflicts)
+            df = df[~df["conflict_id"].isin(excluded)]
+
+    filtered = before - len(df)
+    if filtered > 0:
+        logger.info("Filtered %d/%d records (unregistered or excluded conflicts)", filtered, before)
+
+    return df
 
 
 def prepare_condition_c(

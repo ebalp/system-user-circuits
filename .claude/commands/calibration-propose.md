@@ -1,46 +1,52 @@
 ---
-description: "Design and implement new conflict definitions for Phase 0 v2. Use when the user wants to create new conflicts, fill gaps in the constraint landscape, propose new behavioral tests, or expand the conflict set. Includes quality checklist based on calibration learnings."
+description: "Design and implement new or redesigned conflict definitions for Phase 0 v2. Use when the user wants to create new conflicts, redesign weak ones, fill gaps in the constraint landscape, or expand the conflict set."
 ---
 
 # Conflict Proposal & Implementation
 
-Design new conflict definitions based on gap analysis and quality principles learned from calibration. This command helps propose, vet, and implement new conflicts.
+Design new conflicts or redesign existing weak ones. Handles the full lifecycle: propose, vet, implement, smoke test, and clean up old data.
 
 ## Inputs
 
-Optional:
-- **Conflict idea** from the user (description of what they want to test)
-- If no idea provided, this command analyzes the landscape and proposes based on gaps
+- `$ARGUMENTS`: conflict idea, conflict ID to redesign, or empty for gap analysis
 
-If `$ARGUMENTS` is provided, treat it as the conflict idea description.
+## Step 0: Determine mode
+
+Decide whether this is a **new conflict** or a **redesign** of an existing one.
+
+- If `$ARGUMENTS` matches an existing registered conflict_id → **redesign mode**
+- If `$ARGUMENTS` is a description or idea → **new conflict mode**
+- If `$ARGUMENTS` is empty → **gap analysis mode** (proposes both new and redesigns)
+
+For redesign mode, check if a diagnosis report exists for the conflict:
+```bash
+ls phase0_v2/calibration/output/*/diagnosis/{conflict_id}*.md 2>/dev/null
+```
+Read the most recent diagnosis file — it contains root cause analysis, failure patterns, and redesign recommendations.
 
 ## Step 1: Analyze the conflict landscape
 
-Review all registered conflicts to understand coverage:
+Review registered conflicts dynamically (no hard-coded categories):
 
 ```bash
 uv run python -c "
 from phase0_v2.conflicts.registry import get_all_conflicts
 for c in get_all_conflicts():
-    print(f'{c.conflict_id}: cb={c.counterbalance_quality}, args={c.arg_keys}')
+    print(f'{c.conflict_id}: cb={c.counterbalance_quality}, threshold={c.verify_threshold}, args={c.arg_keys}')
 "
 ```
 
-Extract descriptions for type/category context:
+Extract description blocks for type/constraint context:
 ```bash
 awk '/# <description>/,/# <\/description>/{print FILENAME": "$0}' phase0_v2/conflicts/definitions/*.py
 ```
 
-Categorize existing conflicts by type:
-- **Language**: language_en_es, bilingual_english_plus
-- **Format**: format_json_yaml, json_only_vs_plain, template_response
-- **List/Structure**: list_bullets_vs_numbered, bullets_and_sub_bullets, numbered_sections_vs_prose, short_paragraphs_vs_single_block, stairs_indent, each_word_new_line
-- **Style**: capitalization_all_caps, title_case_vs_sentence_case, formal_vs_casual_tone, first_vs_third_person, active_vs_passive_voice, direct_answer_vs_hedging
-- **Content**: emoji_use_vs_avoid, disclaimer_add_vs_none, self_reference_ai_mention, starting_word_hello_greetings, questions_vs_statements
-- **Word/Count**: forbidden_words, keyword_exact_count, keyword_in_nth_sentence, min_unique_words, min_pronoun_count, word_count_range, max_sentence_length, exact_number_count, max_word_repeat
-- **Pattern**: alphabetical_first_letters, paragraph_end_same_word, sentence_chaining, no_consecutive_first_letter, odd_even_syllables, repeat_answer_twice, italics_thesis
+For **redesign mode**, also read:
+1. The old conflict's definition file: `phase0_v2/conflicts/definitions/{old_conflict_id}.py`
+2. Its diagnosis report (if available): `phase0_v2/calibration/output/*/diagnosis/{old_conflict_id}*.md`
+3. Its calibration data from the latest report output
 
-Identify underrepresented categories or missing dimensions.
+For **gap analysis mode**, group the description block output by `# type:` to identify underrepresented areas.
 
 ## Step 2: Quality checklist
 
@@ -72,18 +78,24 @@ For properties that are matters of degree, use this pattern:
 3. Set `verify_threshold = 0.5` (or tune after data collection)
 4. The base class `_dispatch_verify` handles anti-correlated threshold logic automatically
 
-## Step 3: Propose conflicts
+## Step 3: Design the conflict
 
+### For redesign mode:
+Present the old conflict's weaknesses (from calibration data or proposals file) and explain how the redesign addresses them. The new conflict MUST have a **different conflict_id** from the old one.
+
+### For new conflict mode:
 If the user provided an idea, evaluate it against the quality checklist and refine it.
 
-If no idea, propose 3-5 new conflicts with:
+### For gap analysis mode:
+Propose 3-5 conflicts (mix of new and redesigns) with:
+
+For each proposal, include:
 - **ID**: snake_case name following existing conventions
-- **Category**: which type category it fills
-- **Gap rationale**: why this is needed (what dimension is underrepresented)
+- **Replaces** (if redesign): old conflict_id and why it's weak
 - **Constraint A / B**: the two opposing instructions
 - **Scorer approach**: how verification would work
 - **Quality assessment**: checklist pass/fail for each criterion
-- **Predicted difficulty**: easy/medium/hard based on model capability expectations
+- **Predicted BA**: expected balanced accuracy based on model capabilities
 
 Present proposals and ask the user which to implement (if any).
 
@@ -94,10 +106,11 @@ For each user-approved conflict, confirm before proceeding. Then launch one Agen
 **Agent prompt template:**
 
 ```
-You are implementing a new conflict definition for the Phase 0 v2 experiment system.
+You are implementing a conflict definition for the Phase 0 v2 experiment system.
 
 **Conflict spec:**
 - ID: {conflict_id}
+- Replaces: {old_conflict_id or "none (new conflict)"}
 - Constraint A (system): {constraint_a}
 - Constraint B (user): {constraint_b}
 - Type: {bool_or_float}
@@ -107,8 +120,9 @@ You are implementing a new conflict definition for the Phase 0 v2 experiment sys
 
 1. **Read reference files** to understand conventions:
    - `phase0_v2/conflicts/conflict_base.py` (base class, all fields)
-   - `phase0_v2/conflicts/verify_utils.py` (shared scorer utilities)
+   - `phase0_v2/conflicts/verify_utils.py` (shared scorer utilities — only 8 primitives, prefer self-contained scorers)
    - One existing similar conflict for structural reference
+   - If redesign: read the old conflict definition file
 
 2. **Create** `phase0_v2/conflicts/definitions/{conflict_id}.py`:
    - Module docstring: one-line summary
@@ -124,7 +138,7 @@ You are implementing a new conflict definition for the Phase 0 v2 experiment sys
      # explored: no
      # </description>
      ```
-   - Scorer function(s) -- put shared logic in verify_utils.py if reusable
+   - Scorer function(s) — keep self-contained, only use verify_utils for the 8 shared primitives
    - Class inheriting from Conflict with:
      - `conflict_id`
      - `system_template` / `user_template` (with {{topic}} placeholder)
@@ -136,10 +150,17 @@ You are implementing a new conflict definition for the Phase 0 v2 experiment sys
      - `verify_threshold` (for float scorers)
 
 3. **Register** in `phase0_v2/conflicts/registry.py`:
-   - Add import in the appropriate batch section
+   - Add import in the appropriate section
    - Add to `_ALL_CONFLICT_CLASSES` in alphabetical order by class name
+   - If redesign: **remove** the old conflict class from registry (remove its import and list entry)
 
-4. **Check compatibility** -- if the conflict could interfere with existing ones (e.g., both constrain formatting), note it for the compatibility matrix
+4. **If redesign — clean up old conflict:**
+   - Do NOT delete the old definition file (keep for reference)
+   - Add the old conflict_id to `exclude_conflicts` for ALL models in `phase0_v2/config/experiment.yaml`
+   - Archive old data from results files:
+     ```bash
+     uv run python -m phase0_v2.calibration.archive_conflict {old_conflict_id} phase0_v2/data/results/
+     ```
 
 5. **Create tests** in `phase0_v2/tests/`:
    - Add to an existing test file or create new one following conventions
@@ -158,11 +179,56 @@ You are implementing a new conflict definition for the Phase 0 v2 experiment sys
 **Rules:**
 - Follow the quality checklist strictly. If you can't satisfy a MUST criterion, stop and report why.
 - Keep scorer logic simple and deterministic.
-- Use existing verify_utils functions where applicable.
 - Don't add unnecessary complexity or configuration.
+- New conflict_id for redesigns — never reuse the old ID.
 ```
 
-## Step 5: Post-implementation
+## Step 5: Smoke test & verifier tuning (requires vLLM)
+
+After implementation, if a vLLM server is available, iteratively test and tune the conflict. The goal is **BA > 0.95** — conflicts below this threshold are not useful for the experiment.
+
+### 5a. Initial smoke test
+
+Run the smoke test to get a first BA estimate:
+
+```bash
+uv run python -m phase0_v2.calibration.smoke_test \
+  --conflict {conflict_id} \
+  --vllm-url {vllm_url} \
+  --model {model_id}
+```
+
+This generates ~24 prompts (3 tasks × 4 conditions × 2 directions), sends them to vLLM, and computes BA with per-condition breakdown.
+
+### 5b. Verifier tuning loop
+
+If BA < 0.95, inspect the smoke test output to understand failures:
+- Which conditions fail? (A/B baselines should be near 100% — if not, the verifier is wrong)
+- Are scores clustered near the threshold? (threshold tuning may help)
+- Are there systematic misclassifications? (scorer logic needs fixing)
+
+Fix the verifier code, then re-run the smoke test. Use `--conditions A,B` with more samples to focus on baseline accuracy:
+
+```bash
+uv run python -m phase0_v2.calibration.smoke_test \
+  --conflict {conflict_id} \
+  --vllm-url {vllm_url} \
+  --model {model_id} \
+  --conditions A,B \
+  --n-tasks 10
+```
+
+Repeat until:
+- **Conditions A and B**: near 100% correct (verifier accurately detects constraint compliance)
+- **Overall BA > 0.95**: conflict is ready for full experiment
+
+If BA stays below 0.95 after 2-3 tuning rounds, the conflict design may be fundamentally flawed — reconsider the constraints or scorer approach before proceeding.
+
+### 5c. No vLLM available
+
+If no vLLM server is available, skip smoke testing and note it as deferred. The conflict will need tuning via `/calibration-optimize` after full data collection, but this is less efficient — prefer smoke testing when possible.
+
+## Step 6: Post-implementation
 
 After all agents complete:
 
@@ -172,31 +238,36 @@ After all agents complete:
    ```
 2. Fix any failures
 
-Present a summary of what was implemented:
+Present a summary:
 
 ```markdown
-## New conflicts created
+## Conflicts implemented
 
-| Conflict ID | Type | Counterbalancing | Tests |
-|-------------|------|------------------|-------|
+| Conflict ID | Replaces | Type | Counterbalancing | Smoke BA | Tests |
+|-------------|----------|------|------------------|----------|-------|
 ```
 
 Remind the user:
-- Run experiments to collect data: see CLAUDE.md for experiment running instructions
-- After collecting data, run `/calibration-report` to assess the new conflicts
-- New conflicts start with `explored: no` -- use `/calibration-optimize` after data collection to tune them
+- If smoke test BA > 0.95: conflict is ready — run full experiments to collect data (see CLAUDE.md)
+- If smoke test was skipped: verifier tuning will be needed after data collection via `/calibration-optimize`
+- After collecting full data, run `/calibration-report` to confirm quality
+- New conflicts start with `explored: no` — update to `explored: yes` after full calibration confirms BA > 0.95
+- If redesigns were done: old data was archived, old conflict_ids added to `exclude_conflicts`
 
 ## Key references
 
 - Base class: `phase0_v2/conflicts/conflict_base.py`
 - Registry: `phase0_v2/conflicts/registry.py`
 - Existing definitions: `phase0_v2/conflicts/definitions/*.py`
-- Scorer utilities: `phase0_v2/conflicts/verify_utils.py`
+- Scorer utilities: `phase0_v2/conflicts/verify_utils.py` (8 shared primitives only)
 - Test examples: `phase0_v2/tests/test_conflicts_*.py`
 - Config: `phase0_v2/config/experiment.yaml`
+- Archive tool: `phase0_v2/calibration/archive_conflict.py`
+- Smoke test: `phase0_v2/calibration/smoke_test.py`
+- Diagnosis reports: `phase0_v2/calibration/output/*/diagnosis/{conflict_id}*.md`
 
 ## Related commands
 
-- **`/calibration-report`** -- Generate calibration report after collecting data for new conflicts
-- **`/calibration-diagnose`** -- Diagnose issues with new conflicts after data collection
-- **`/calibration-optimize`** -- Tune verifiers for new conflicts after data collection
+- **`/calibration-report`** — Generate calibration report after collecting data for new conflicts
+- **`/calibration-diagnose`** — Diagnose issues with new conflicts after data collection
+- **`/calibration-optimize`** — Tune verifiers for new conflicts after data collection
