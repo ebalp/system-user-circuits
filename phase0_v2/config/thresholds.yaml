@@ -11,11 +11,12 @@ first_vs_third_person: 0.178
 formal_vs_casual_tone: 0.994
 html_emphasis_tags: 0.250
 imperative_vs_declarative: 0.454
+keyword_avoidance: 0.625
 keyword_frequency: 0.201
 leetspeak_encoding: 0.153
 number_density: 0.750
 paragraph_end_same_word: 0.083
-paragraph_start_same_word: 0.750
+paragraph_start_word: 0.500
 parenthetical_asides: 0.275
 past_vs_present_tense: 0.695
 pronoun_density: 0.032

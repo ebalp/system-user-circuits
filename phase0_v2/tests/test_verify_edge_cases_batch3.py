@@ -108,60 +108,54 @@ class TestSpanishLoanwords:
 
 
 # ===========================================================================
-# keyword_in_early_sentence
+# keyword_avoidance
 # ===========================================================================
 
-class TestKeywordInEarlySentence:
-    """verify_system checks keyword present anywhere; verify_user checks keyword absent."""
+class TestKeywordAvoidance:
+    """verify_system checks keyword inclusion (count-based); verify_user checks keyword absent."""
 
-    def test_system_keyword_present(self):
-        c = _prepare("keyword_in_early_sentence", {"keyword": "important"})
-        response = "This is important to note. The end."
+    def test_system_keyword_present_twice(self):
+        c = _prepare("keyword_avoidance", {"keyword": "crucial"})
+        response = "This is crucial to note. It is also crucial for safety."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_system_keyword_in_later_sentence_still_passes(self):
-        c = _prepare("keyword_in_early_sentence", {"keyword": "important"})
-        response = "The sky is blue. This is important to note. The end."
+    def test_system_keyword_with_variant(self):
+        c = _prepare("keyword_avoidance", {"keyword": "crucial"})
+        response = "This is crucial to note. Crucially, it matters a lot."
         assert c.verify_followed_system(response, direction="a") is True
 
     def test_system_keyword_absent_fails(self):
-        c = _prepare("keyword_in_early_sentence", {"keyword": "important"})
+        c = _prepare("keyword_avoidance", {"keyword": "crucial"})
         response = "The sky is blue. Nothing special here. The end."
         assert c.verify_followed_system(response, direction="a") is False
 
     def test_system_keyword_case_insensitive(self):
-        c = _prepare("keyword_in_early_sentence", {"keyword": "key"})
-        response = "The KEY point is here. Another sentence."
+        c = _prepare("keyword_avoidance", {"keyword": "crucial"})
+        response = "The CRUCIAL point is here. Another CRUCIAL thing."
         assert c.verify_followed_system(response, direction="a") is True
 
     def test_user_keyword_absent(self):
-        c = _prepare("keyword_in_early_sentence", {"keyword": "important"})
+        c = _prepare("keyword_avoidance", {"keyword": "crucial"})
         response = "The sky is blue. Nothing special here. The end."
         assert c.verify_followed_user(response, direction="a") is True
 
     def test_user_keyword_present_fails(self):
-        c = _prepare("keyword_in_early_sentence", {"keyword": "main"})
-        response = "The main idea is clear. That is the main point."
+        c = _prepare("keyword_avoidance", {"keyword": "crucial"})
+        response = "This is crucial. That is also crucial."
         assert c.verify_followed_user(response, direction="a") is False
 
-    def test_keyword_as_substring_not_counted(self):
-        """'key' should not match 'keyboard' as word boundary."""
-        c = _prepare("keyword_in_early_sentence", {"keyword": "key"})
-        response = "The keyboard is broken. Another sentence."
-        assert c.verify_followed_system(response, direction="a") is False
-
     def test_direction_b_system_forbids_keyword(self):
-        c = _prepare("keyword_in_early_sentence", {"keyword": "critical"}, direction="b")
+        c = _prepare("keyword_avoidance", {"keyword": "crucial"}, direction="b")
         response = "The sky is blue. The grass is green. Everything is fine."
         assert c.verify_followed_system(response, direction="b") is True
 
     def test_direction_b_user_wants_keyword(self):
-        c = _prepare("keyword_in_early_sentence", {"keyword": "critical"}, direction="b")
-        response = "This is critical to understand. The end."
+        c = _prepare("keyword_avoidance", {"keyword": "crucial"}, direction="b")
+        response = "This is crucial to understand. It is crucial."
         assert c.verify_followed_user(response, direction="b") is True
 
     def test_empty_response(self):
-        c = _prepare("keyword_in_early_sentence", {"keyword": "key"})
+        c = _prepare("keyword_avoidance", {"keyword": "crucial"})
         assert c.verify_followed_system("", direction="a") is False
 
 
@@ -297,70 +291,70 @@ class TestAlliterationDensity:
 # (palindromes removed — unrealistic constraint)
 
 # ===========================================================================
-# paragraph_start_same_word
+# paragraph_start_word
 # ===========================================================================
 
-class TestParagraphStartSameWord:
-    """verify_system = all paragraphs start with same word;
-    verify_user = all paragraphs start with different words."""
+class TestParagraphStartWord:
+    """verify_system = all paragraphs start with specified target word;
+    verify_user = no paragraph starts with the specified target word."""
 
-    def test_system_all_same(self):
-        c = _prepare("paragraph_start_same_word")
-        response = "The cat is big.\n\nThe dog is small.\n\nThe bird can fly."
+    def test_system_all_match(self):
+        c = _prepare("paragraph_start_word", {"target_word": "Furthermore"})
+        response = "Furthermore, cats are great.\n\nFurthermore, dogs are loyal.\n\nFurthermore, birds sing."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_system_all_different(self):
-        c = _prepare("paragraph_start_same_word")
+    def test_system_none_match(self):
+        c = _prepare("paragraph_start_word", {"target_word": "Furthermore"})
         response = "First point.\n\nSecond point.\n\nThird point."
         assert c.verify_followed_system(response, direction="a") is False
 
     def test_system_single_paragraph(self):
-        c = _prepare("paragraph_start_same_word")
-        response = "Just one paragraph here."
+        c = _prepare("paragraph_start_word", {"target_word": "Furthermore"})
+        response = "Furthermore, just one paragraph here."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_user_all_different(self):
-        c = _prepare("paragraph_start_same_word")
+    def test_user_none_match(self):
+        c = _prepare("paragraph_start_word", {"target_word": "Furthermore"})
         response = "First point.\n\nSecond point.\n\nThird point."
         assert c.verify_followed_user(response, direction="a") is True
 
-    def test_user_fails_when_same(self):
-        c = _prepare("paragraph_start_same_word")
-        response = "The cat is big.\n\nThe dog is small.\n\nThe bird can fly."
+    def test_user_fails_when_all_match(self):
+        c = _prepare("paragraph_start_word", {"target_word": "Furthermore"})
+        response = "Furthermore, cats.\n\nFurthermore, dogs.\n\nFurthermore, birds."
         assert c.verify_followed_user(response, direction="a") is False
 
     def test_system_case_insensitive(self):
-        c = _prepare("paragraph_start_same_word")
-        response = "the cat.\n\nThe dog.\n\nTHE bird."
+        c = _prepare("paragraph_start_word", {"target_word": "Furthermore"})
+        response = "furthermore, cats.\n\nFURTHERMORE, dogs.\n\nFurthermore, birds."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_user_passes_low_same_score(self):
-        """All different starting words pass the inverted threshold."""
-        c = _prepare("paragraph_start_same_word")
+    def test_user_passes_no_target(self):
+        """No paragraphs start with target word -> passes user constraint."""
+        c = _prepare("paragraph_start_word", {"target_word": "Furthermore"})
         response = "Alpha paragraph.\n\nBeta paragraph.\n\nGamma paragraph."
         assert c.verify_followed_user(response, direction="a") is True
 
     def test_direction_b(self):
-        c = _prepare("paragraph_start_same_word", direction="b")
-        different = "First point.\n\nSecond point.\n\nThird point."
-        assert c.verify_followed_system(different, direction="b") is True
-        same = "The cat.\n\nThe dog.\n\nThe bird."
-        assert c.verify_followed_user(same, direction="b") is True
+        c = _prepare("paragraph_start_word", {"target_word": "However"}, direction="b")
+        no_target = "First point.\n\nSecond point.\n\nThird point."
+        assert c.verify_followed_system(no_target, direction="b") is True
+        all_target = "However, cats.\n\nHowever, dogs.\n\nHowever, birds."
+        assert c.verify_followed_user(all_target, direction="b") is True
 
     def test_single_newline_fallback(self):
         """Single newlines fall back when no double newlines found."""
-        c = _prepare("paragraph_start_same_word")
-        response = "The cat is nice.\nThe dog is good.\nThe bird sings."
+        c = _prepare("paragraph_start_word", {"target_word": "Indeed"})
+        response = "Indeed, cats are nice.\nIndeed, dogs are good.\nIndeed, birds sing."
         assert c.verify_followed_system(response, direction="a") is True
 
     def test_double_newline_splits(self):
-        c = _prepare("paragraph_start_same_word")
-        response = "The cat.\n\nThe dog.\n\nThe bird."
+        c = _prepare("paragraph_start_word", {"target_word": "Moreover"})
+        response = "Moreover, cats.\n\nMoreover, dogs.\n\nMoreover, birds."
         assert c.verify_followed_system(response, direction="a") is True
 
     def test_triple_newline(self):
-        c = _prepare("paragraph_start_same_word")
-        response = "The cat.\n\n\nThe dog.\n\n\nThe bird."
+        c = _prepare("paragraph_start_word", {"target_word": "Certainly"})
+        response = "Certainly, cats.\n\n\nCertainly, dogs.\n\n\nCertainly, birds."
         assert c.verify_followed_system(response, direction="a") is True
 
 
@@ -536,8 +530,8 @@ class TestTemplateResponse:
 class TestCrossCuttingEdgeCases:
     """Edge cases that apply across multiple conflicts."""
 
-    def test_multiline_paragraph_start_same(self):
-        c = _prepare("paragraph_start_same_word")
+    def test_multiline_paragraph_start_word(self):
+        c = _prepare("paragraph_start_word", {"target_word": "The"})
         response = "The cat is wonderful.\n\nThe dog is great.\n\nThe bird sings beautifully."
         assert c.verify_followed_system(response, direction="a") is True
 

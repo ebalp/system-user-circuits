@@ -31,11 +31,11 @@ from .definitions.html_emphasis_tags import HtmlEmphasisTagsConflict
 
 # -- Batch 3 --
 from .definitions.alphabetical_sentences import AlphabeticalSentencesConflict
-from .definitions.keyword_in_early_sentence import KeywordInEarlySentenceConflict
+from .definitions.keyword_avoidance import KeywordAvoidanceConflict
 from .definitions.word_repetition_density import WordRepetitionDensityConflict
 from .definitions.alliteration_density import AlliterationDensityConflict
 from .definitions.paragraph_end_same_word import ParagraphEndSameWordConflict
-from .definitions.paragraph_start_same_word import ParagraphStartSameWordConflict
+from .definitions.paragraph_start_word import ParagraphStartWordConflict
 from .definitions.parenthetical_asides import ParentheticalAsidesConflict
 from .definitions.past_vs_present_tense import PastVsPresentTenseConflict
 from .definitions.pronoun_density import PronounDensityConflict
@@ -77,7 +77,7 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     HtmlEmphasisTagsConflict,
     JsonOnlyVsPlainConflict,
     KeywordFrequencyConflict,
-    KeywordInEarlySentenceConflict,
+    KeywordAvoidanceConflict,
     LanguageEnEsConflict,
     LanguageEnZhConflict,
     LeetspeakEncodingConflict,
@@ -87,7 +87,7 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     VocabularyDiversityConflict,
     AlliterationDensityConflict,
     NumberedSectionsVsProseConflict,
-    ParagraphStartSameWordConflict,
+    ParagraphStartWordConflict,
     ParentheticalAsidesConflict,
     PastVsPresentTenseConflict,
     PronounDensityConflict,

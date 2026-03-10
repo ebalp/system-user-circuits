@@ -28,10 +28,10 @@ class TestFixedArgs:
         args = c.sample_args()
         assert args == {}
 
-    def test_keyword_in_early_sentence_fixed_values(self):
-        c = get_conflict("keyword_in_early_sentence")
+    def test_keyword_avoidance_fixed_values(self):
+        c = get_conflict("keyword_avoidance")
         args = c.sample_args()
-        assert args == {"keyword": "important"}
+        assert args == {"keyword": "crucial"}
 
     def test_spanish_loanwords_fixed_values(self):
         c = get_conflict("spanish_loanwords")
@@ -116,20 +116,20 @@ class TestFixedArgsEdgeCases:
             "This is a plain test.", direction="a"
         )
 
-    def test_keyword_in_early_sentence_verify_with_fixed(self):
-        c = get_conflict("keyword_in_early_sentence")
+    def test_keyword_avoidance_verify_with_fixed(self):
+        c = get_conflict("keyword_avoidance")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        # keyword="important" -> should appear anywhere in response
-        text = "This is important to note. Second sentence. Third sentence."
+        # keyword="crucial" -> should appear at least twice
+        text = "This is crucial to note. It is also crucial for safety."
         assert c.verify_followed_system(text, direction="a")
         # User side: keyword should be absent
         text_no_kw = "First sentence. Second sentence. Third sentence."
         assert c.verify_followed_user(text_no_kw, direction="a")
 
-    def test_keyword_in_early_sentence_system_fails_absent(self):
+    def test_keyword_avoidance_system_fails_absent(self):
         """Keyword absent entirely should fail system."""
-        c = get_conflict("keyword_in_early_sentence")
+        c = get_conflict("keyword_avoidance")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
         text = "First sentence. Second sentence. Third sentence."
@@ -188,7 +188,7 @@ class TestFixedArgsEdgeCases:
     def test_all_fixed_conflicts_build_valid_prompts(self):
         """Every conflict with fixed args produces valid prompts."""
         fixed_ids = [
-            "response_length", "forbidden_words", "keyword_in_early_sentence",
+            "response_length", "forbidden_words", "keyword_avoidance",
             "short_vs_long_sentences",
             "vocabulary_diversity", "pronoun_density", "number_density",
         ]

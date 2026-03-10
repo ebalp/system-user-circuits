@@ -235,11 +235,12 @@ class TestFirstVsThirdPerson:
             "The book was hers. She wrote it herself.", direction="a"
         )
 
-    def test_no_pronouns_fails_both(self, c):
-        """Text with zero pronouns fails both sides."""
+    def test_no_pronouns_fails_system_passes_user(self, c):
+        """Zero pronouns → first_person score 0.0, so fails system (first person)
+        but passes user (third person = 'not first person' = 1 - 0.0 = 1.0)."""
         text = "The algorithm runs in linear time. Performance scales well."
         assert not c.verify_followed_system(text, direction="a")
-        assert not c.verify_followed_user(text, direction="a")
+        assert c.verify_followed_user(text, direction="a")
 
     def test_followed_both_impossible_in_practice(self, c):
         """Even split (50/50 ratio) should not pass both sides at threshold 0.435."""

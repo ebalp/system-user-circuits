@@ -1,9 +1,10 @@
 """first_vs_third_person: System enforces first person vs user requests third person.
 
-Uses 1-score inversion: score_third_person = 1 - score_first_person (when pronouns
-exist), so marking score_third_person as is_inverted makes the threshold checks
-mutually exclusive: score_first >= T vs score_third > (1-T), which is equivalent
-to score_first >= T vs score_first < T. Eliminates followed_both by construction.
+Uses true 1-score inversion: score_third = 1 - score_first_person, so zero-pronoun
+responses score 1.0 for third person (= "not first person"). Marking the inverted
+scorer with is_inverted makes the threshold checks mutually exclusive:
+score_first >= T vs (1 - score_first) > (1-T), i.e. score_first < T.
+Eliminates followed_both by construction.
 """
 
 # If you modify the scoring logic, update the description block below
@@ -39,18 +40,8 @@ def score_first_person(text: str) -> float:
     return first / total
 
 
-def _score_third_person(text: str) -> float:
-    """Ratio of third-person to (first + third) person pronouns."""
-    first = len(_FIRST_PERSON_RE.findall(text))
-    third = len(_THIRD_PERSON_RE.findall(text))
-    total = first + third
-    if total == 0:
-        return 0.0
-    return third / total
-
-
 def _score_third_inverted(r: str) -> float:
-    return _score_third_person(r)
+    return 1 - score_first_person(r)
 
 
 _score_third_inverted.is_inverted = True  # type: ignore[attr-defined]
