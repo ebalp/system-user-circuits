@@ -1,10 +1,10 @@
 """Test conflicts batch 5: formal_vs_casual_tone, numbered_sections_vs_prose,
-short_paragraphs_vs_single_block, active_vs_passive_voice, direct_answer_vs_hedging."""
+short_paragraphs_vs_single_block, imperative_vs_declarative, direct_answer_vs_hedging."""
 
 import pytest
-from phase0_v2.conflicts.registry import get_conflict, get_all_conflicts, get_conflict_ids
+from phase0_v2.conflicts.registry import get_conflict, get_conflict_ids
 from phase0_v2.conflicts.compatibility import (
-    INCOMPATIBLE, EXPLICITLY_COMPATIBLE, validate_matrix_coverage, is_compatible,
+    INCOMPATIBLE, EXPLICITLY_COMPATIBLE, validate_matrix_coverage,
 )
 
 # Import the underlying scoring/detection functions for direct testing
@@ -17,8 +17,8 @@ from phase0_v2.conflicts.definitions.numbered_sections_vs_prose import (
 from phase0_v2.conflicts.definitions.short_paragraphs_vs_single_block import (
     _has_short_paragraphs, _is_single_block,
 )
-from phase0_v2.conflicts.definitions.active_vs_passive_voice import (
-    _score_active_voice, _score_passive_voice,
+from phase0_v2.conflicts.definitions.imperative_vs_declarative import (
+    score_imperative, _score_declarative,
 )
 from phase0_v2.conflicts.definitions.direct_answer_vs_hedging import (
     _score_directness, _score_hedging,
@@ -29,7 +29,7 @@ BATCH5_IDS = [
     "formal_vs_casual_tone",
     "numbered_sections_vs_prose",
     "short_paragraphs_vs_single_block",
-    "active_vs_passive_voice",
+    "imperative_vs_declarative",
     "direct_answer_vs_hedging",
 ]
 
@@ -280,54 +280,48 @@ class TestShortParagraphsVsSingleBlock:
         assert _has_short_paragraphs(text) is True
 
 
-# ── Active vs Passive Voice ──
+# ── Imperative vs Declarative ──
 
 
-class TestActiveVsPassiveVoice:
-    def test_active_voice_high_score(self):
+class TestImperativeVsDeclarative:
+    def test_imperative_text_high_score(self):
         text = (
-            "The team completed the project on time. "
-            "The manager approved the budget. "
-            "The developer wrote the code."
+            "Consider the evidence carefully. "
+            "Note the trends in the data. "
+            "Examine each variable closely."
         )
-        score = _score_active_voice(text)
-        assert score >= 0.7, f"Expected high active voice score, got {score}"
+        score = score_imperative(text)
+        assert score >= 0.7, f"Expected high imperative score, got {score}"
 
-    def test_passive_voice_low_active_score(self):
+    def test_declarative_text_low_imperative_score(self):
         text = (
-            "The project was completed by the team. "
-            "The budget was approved by the manager. "
-            "The code was written by the developer."
+            "The evidence shows clear results. "
+            "The trends in the data are significant. "
+            "Each variable reveals important patterns."
         )
-        score = _score_active_voice(text)
-        assert score < 0.5, f"Expected low active voice score for passive text, got {score}"
+        score = score_imperative(text)
+        assert score < 0.3, f"Expected low imperative score for declarative text, got {score}"
 
     def test_scores_complementary(self):
-        text = "The cake was eaten by the children."
-        a = _score_active_voice(text)
-        p = _score_passive_voice(text)
-        assert abs(a + p - 1.0) < 1e-9, "Scores must sum to 1.0"
+        text = "Consider the evidence. The data is clear."
+        a = score_imperative(text)
+        d = _score_declarative(text)
+        assert abs(a + d - 1.0) < 1e-9, "Scores must sum to 1.0"
 
-    def test_passive_is_inverted(self):
-        assert getattr(_score_passive_voice, "is_inverted", False) is True
+    def test_declarative_is_inverted(self):
+        assert getattr(_score_declarative, "is_inverted", False) is True
 
     def test_empty_text(self):
-        assert _score_active_voice("") == 1.0
-        assert _score_passive_voice("") == 0.0
+        assert score_imperative("") == 0.5
+        assert _score_declarative("") == 0.5
 
     def test_verify_mutual_exclusion(self):
-        c = get_conflict("active_vs_passive_voice")
+        c = get_conflict("imperative_vs_declarative")
         c.build_system_prompt(direction="a")
-        text = "The team completed the project successfully."
+        text = "Consider the facts. Note the trends. Examine the data."
         sys_pass = c.verify_followed_system(text, direction="a")
         usr_pass = c.verify_followed_user(text, direction="a")
         assert not (sys_pass and usr_pass), "Should not pass both sides"
-
-    def test_incompatible_with_coding_math(self):
-        assert not is_compatible("active_vs_passive_voice", "coding")
-        assert not is_compatible("active_vs_passive_voice", "math")
-        assert is_compatible("active_vs_passive_voice", "creative")
-        assert is_compatible("active_vs_passive_voice", "general")
 
 
 # ── Direct Answer vs Hedging ──

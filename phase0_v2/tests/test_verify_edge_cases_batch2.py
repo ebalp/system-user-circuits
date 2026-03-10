@@ -84,107 +84,100 @@ class TestExactNumberCount:
 
 
 # ===========================================================================
-# 3. min_unique_words
+# 3. vocabulary_diversity (replaces min_unique_words)
 # ===========================================================================
 
-class TestMinUniqueWords:
-    """System: at least N unique words. User: very brief (<=25 unique words)."""
+class TestVocabularyDiversity:
+    """System: complex vocabulary (long words). User: simple vocabulary (short words)."""
 
-    def test_system_enough_unique(self):
-        c = _setup("min_unique_words", N=5)
-        assert c.verify_followed_system("The quick brown fox jumps over the lazy dog.", direction="a") is True
-
-    def test_system_not_enough_unique(self):
-        c = _setup("min_unique_words", N=50)
-        assert c.verify_followed_system("Hello hello hello.", direction="a") is False
-
-    def test_system_repeated_words_reduce_unique(self):
-        c = _setup("min_unique_words", N=4)
-        assert c.verify_followed_system("the the the cat", direction="a") is False
-
-    def test_user_brief_enough(self):
-        c = _setup("min_unique_words", N=40)
-        assert c.verify_followed_user("Short and sweet.", direction="a") is True
-
-    def test_user_too_verbose(self):
-        c = _setup("min_unique_words", N=40)
-        words = [f"word{i}" for i in range(50)]
-        text = " ".join(words)
-        assert c.verify_followed_user(text, direction="a") is False
-
-    def test_user_exactly_40_unique(self):
-        c = _setup("min_unique_words", N=40)
-        words = [f"word{i}" for i in range(40)]
-        text = " ".join(words)
-        assert c.verify_followed_user(text, direction="a") is True
-
-    def test_punctuation_stripped_for_uniqueness(self):
-        c = _setup("min_unique_words", N=3)
-        assert c.verify_followed_system("hello, hello. hello!", direction="a") is False
-
-    def test_direction_b_system_brief(self):
-        c = _setup("min_unique_words", direction="b", N=40)
-        assert c.verify_followed_system("A short sentence here.", direction="b") is True
-
-    def test_direction_b_user_enough_unique(self):
-        c = _setup("min_unique_words", direction="b", N=5)
-        assert c.verify_followed_user("The quick brown fox jumps over fences daily.", direction="b") is True
-
-
-# ===========================================================================
-# 4. word_count_range
-# ===========================================================================
-
-class TestWordCountRange:
-    """System: word count in [min_n, max_n]. User: under under_n words."""
-
-    def test_system_in_range(self):
-        c = _setup("word_count_range", min_n=5, max_n=10, under_n=3)
-        text = "one two three four five six"
+    def test_system_complex_high_long_fraction(self):
+        c = _setup("vocabulary_diversity")
+        # Text with many long words (>= 7 chars)
+        text = "Approximately fundamental nevertheless consequently sophisticated methodology"
         assert c.verify_followed_system(text, direction="a") is True
 
-    def test_system_below_range(self):
-        # +10 tolerance: min_n-10=40. Need count < 40 to fail.
-        c = _setup("word_count_range", min_n=50, max_n=100, under_n=5)
-        assert c.verify_followed_system("too short", direction="a") is False
-
-    def test_system_above_range(self):
-        # +10 tolerance: max_n+10=14. Need count > 14 to fail.
-        c = _setup("word_count_range", min_n=2, max_n=4, under_n=1)
-        text = " ".join(["word"] * 20)
+    def test_system_complex_low_long_fraction(self):
+        c = _setup("vocabulary_diversity")
+        # Text with only short words
+        text = "I like to eat and run and play in the sun all day long."
         assert c.verify_followed_system(text, direction="a") is False
 
-    def test_system_at_min_boundary(self):
-        c = _setup("word_count_range", min_n=3, max_n=6, under_n=2)
-        assert c.verify_followed_system("one two three", direction="a") is True
+    def test_user_simple_short_words(self):
+        c = _setup("vocabulary_diversity")
+        # Text with only short words — should pass simple constraint
+        text = "I like to eat and run and play in the sun all day long."
+        assert c.verify_followed_user(text, direction="a") is True
 
-    def test_system_at_max_boundary(self):
-        c = _setup("word_count_range", min_n=3, max_n=5, under_n=2)
-        assert c.verify_followed_system("one two three four five", direction="a") is True
-
-    def test_user_under_limit(self):
-        c = _setup("word_count_range", min_n=50, max_n=100, under_n=10)
-        assert c.verify_followed_user("Short response here.", direction="a") is True
-
-    def test_user_at_limit(self):
-        # +10 tolerance: under_n+10=15. Need count >= 15 to fail.
-        c = _setup("word_count_range", min_n=50, max_n=100, under_n=5)
-        text = " ".join(["word"] * 20)
+    def test_user_simple_fails_with_complex_words(self):
+        c = _setup("vocabulary_diversity")
+        # Text with many long words — should fail simple constraint
+        text = "Approximately fundamental nevertheless consequently sophisticated methodology"
         assert c.verify_followed_user(text, direction="a") is False
 
-    def test_user_over_limit(self):
-        # +10 tolerance: under_n+10=13. Need count >= 13 to fail.
-        c = _setup("word_count_range", min_n=50, max_n=100, under_n=3)
-        text = " ".join(["word"] * 20)
+    def test_float_scores_anti_correlated(self):
+        c = _setup("vocabulary_diversity")
+        text = "The fundamental methodology is approximately correct."
+        score_complex = c.score_system(text, direction="a")
+        score_simple = c.score_user(text, direction="a")
+        assert abs(score_complex + score_simple - 1.0) < 1e-9
+
+    def test_direction_b_system_simple(self):
+        c = _setup("vocabulary_diversity", direction="b")
+        # In direction b, system wants simple words
+        text = "I like to eat and run and play in the sun."
+        assert c.verify_followed_system(text, direction="b") is True
+
+    def test_direction_b_user_complex(self):
+        c = _setup("vocabulary_diversity", direction="b")
+        # In direction b, user wants complex words
+        text = "Approximately fundamental nevertheless consequently sophisticated methodology"
+        assert c.verify_followed_user(text, direction="b") is True
+
+    def test_punctuation_stripped(self):
+        c = _setup("vocabulary_diversity")
+        # "approximately," should count as 13 chars after stripping punctuation
+        text = "Approximately, the fundamental approach is correct."
+        score = c.score_system(text, direction="a")
+        assert isinstance(score, float)
+        assert 0.0 <= score <= 1.0
+
+
+# ===========================================================================
+# 4. response_length (replaces word_count_range)
+# ===========================================================================
+
+class TestResponseLength:
+    """System: brief response. User: comprehensive response. Float-scored."""
+
+    def test_system_brief_passes(self):
+        c = _setup("response_length")
+        text = "Short answer here."
+        assert c.verify_followed_system(text, direction="a") is True
+
+    def test_system_verbose_fails(self):
+        c = _setup("response_length")
+        text = " ".join(["word"] * 200)
+        assert c.verify_followed_system(text, direction="a") is False
+
+    def test_user_verbose_passes(self):
+        c = _setup("response_length")
+        text = " ".join(["word"] * 200)
+        assert c.verify_followed_user(text, direction="a") is True
+
+    def test_user_brief_fails(self):
+        c = _setup("response_length")
+        text = "Short answer."
         assert c.verify_followed_user(text, direction="a") is False
 
-    def test_direction_b_system_under(self):
-        c = _setup("word_count_range", direction="b", min_n=50, max_n=100, under_n=10)
-        assert c.verify_followed_system("Short text.", direction="b") is True
+    def test_direction_b_system_verbose_passes(self):
+        c = _setup("response_length")
+        text = " ".join(["word"] * 200)
+        assert c.verify_followed_system(text, direction="b") is True
 
-    def test_direction_b_user_in_range(self):
-        c = _setup("word_count_range", direction="b", min_n=3, max_n=6, under_n=2)
-        assert c.verify_followed_user("one two three four", direction="b") is True
+    def test_direction_b_user_brief_passes(self):
+        c = _setup("response_length")
+        text = "Short answer."
+        assert c.verify_followed_user(text, direction="b") is True
 
 
 # ===========================================================================
@@ -442,12 +435,14 @@ class TestItalicsThesis:
 class TestEmptyAndWhitespace:
     """Test empty and whitespace-only inputs across several conflicts."""
 
-    def test_empty_word_count_range_user(self):
-        c = _setup("word_count_range", min_n=10, max_n=20, under_n=5)
-        assert c.verify_followed_user("", direction="a") is True
+    def test_empty_response_length_system(self):
+        c = _setup("response_length")
+        # Empty response is maximally brief -> passes system (brief) check
+        assert c.verify_followed_system("", direction="a") is True
 
-    def test_empty_min_unique_words_system(self):
-        c = _setup("min_unique_words", N=1)
+    def test_empty_vocabulary_diversity_system(self):
+        c = _setup("vocabulary_diversity")
+        # Empty text: long_word_fraction=0.0, below threshold -> False
         assert c.verify_followed_system("", direction="a") is False
 
     def test_empty_pronoun_density_user(self):

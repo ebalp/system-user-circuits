@@ -6,7 +6,7 @@ from phase0_v2.conflicts.registry import get_conflict
 
 BATCH2_IDS = [
     "exact_number_count",
-    "min_unique_words", "word_count_range", "stairs_indent",
+    "vocabulary_diversity", "response_length", "stairs_indent",
     "each_word_new_line", "bullets_and_sub_bullets", "italics_thesis",
 ]
 
@@ -74,12 +74,12 @@ class TestNonInvertible:
 
 
 class TestParametrizedConflicts:
-    def test_word_count_range_args(self):
-        c = get_conflict("word_count_range")
-        args = c.sample_args()
-        assert "min_n" in args and "max_n" in args and "under_n" in args
-        assert args["min_n"] < args["max_n"]
-        assert args["under_n"] < args["min_n"]
+    def test_word_count_range_replaced_by_response_length(self):
+        """word_count_range was replaced by response_length."""
+        assert get_conflict("word_count_range") is None
+        c = get_conflict("response_length")
+        assert c is not None
+        assert c.sample_args() == {}
 
     def test_exact_number_count(self):
         c = get_conflict("exact_number_count")

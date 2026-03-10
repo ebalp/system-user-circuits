@@ -19,10 +19,10 @@ class TestFixedArgs:
             a2 = conflict.sample_args()
             assert a1 == a2, f"{conflict.conflict_id}: sample_args not deterministic"
 
-    def test_word_count_range_fixed_values(self):
-        c = get_conflict("word_count_range")
+    def test_response_length_fixed_values(self):
+        c = get_conflict("response_length")
         args = c.sample_args()
-        assert args == {"min_n": 100, "max_n": 150, "under_n": 30}
+        assert args == {}
 
     def test_forbidden_words_fixed_values(self):
         c = get_conflict("forbidden_words")
@@ -39,20 +39,20 @@ class TestFixedArgs:
         args = c.sample_args()
         assert args == {"keyword": "important", "N": 3}
 
-    def test_bilingual_fixed_values(self):
-        c = get_conflict("bilingual_english_plus")
+    def test_spanish_loanwords_fixed_values(self):
+        c = get_conflict("spanish_loanwords")
         args = c.sample_args()
-        assert args == {"language": "Spanish", "language_code": "es"}
+        assert args == {}
 
-    def test_max_sentence_length_fixed_values(self):
-        c = get_conflict("max_sentence_length")
+    def test_short_vs_long_sentences_fixed_values(self):
+        c = get_conflict("short_vs_long_sentences")
         args = c.sample_args()
-        assert args == {"N": 8, "min_words": 12}
+        assert args == {}
 
-    def test_min_unique_words_fixed_values(self):
-        c = get_conflict("min_unique_words")
+    def test_vocabulary_diversity_fixed_values(self):
+        c = get_conflict("vocabulary_diversity")
         args = c.sample_args()
-        assert args == {"N": 50}
+        assert args == {}
 
     def test_pronoun_density_fixed_values(self):
         c = get_conflict("pronoun_density")
@@ -68,44 +68,37 @@ class TestFixedArgs:
 class TestFixedArgsEdgeCases:
     """Edge case tests for fixed values: template rendering and verify functions."""
 
-    def test_word_count_range_templates_render(self):
-        """Fixed values produce valid templates with no unfilled placeholders."""
-        c = get_conflict("word_count_range")
-        args = c.sample_args()
-        sys_prompt = c.build_system_prompt(direction="a", **args)
+    def test_response_length_templates_render(self):
+        """Templates have no unfilled placeholders."""
+        c = get_conflict("response_length")
+        sys_prompt = c.build_system_prompt(direction="a")
         usr_prompt = c.build_user_conflict_prompt(direction="a")
-        assert "{" not in sys_prompt  # no unfilled placeholders
+        assert "{" not in sys_prompt
         assert "{" not in usr_prompt
-        assert "100" in sys_prompt and "150" in sys_prompt  # values rendered
 
-    def test_word_count_range_verify_with_fixed(self):
-        c = get_conflict("word_count_range")
-        args = c.sample_args()
-        c.build_system_prompt(direction="a", **args)
-        # 120 words should pass system (100-150 range)
-        text_120 = " ".join(["word"] * 120)
-        assert c.verify_followed_system(text_120, direction="a")
-        # 20 words should pass user (under 30)
-        text_20 = " ".join(["word"] * 20)
-        assert c.verify_followed_user(text_20, direction="a")
+    def test_response_length_verify_with_fixed(self):
+        c = get_conflict("response_length")
+        c.build_system_prompt(direction="a")
+        # 10 words should pass system (brief)
+        text_10 = " ".join(["word"] * 10)
+        assert c.verify_followed_system(text_10, direction="a")
+        # 200 words should pass user (verbose)
+        text_200 = " ".join(["word"] * 200)
+        assert c.verify_followed_user(text_200, direction="a")
 
-    def test_word_count_range_boundary_system_fail(self):
-        """Word count outside range should fail system verification."""
-        c = get_conflict("word_count_range")
-        args = c.sample_args()
-        c.build_system_prompt(direction="a", **args)
-        text_50 = " ".join(["word"] * 50)
-        assert not c.verify_followed_system(text_50, direction="a")
+    def test_response_length_boundary_system_fail(self):
+        """Long response should fail system (brief) verification."""
+        c = get_conflict("response_length")
+        c.build_system_prompt(direction="a")
         text_200 = " ".join(["word"] * 200)
         assert not c.verify_followed_system(text_200, direction="a")
 
-    def test_word_count_range_boundary_user_fail(self):
-        """Word count >= under_n should fail user verification."""
-        c = get_conflict("word_count_range")
-        args = c.sample_args()
-        c.build_system_prompt(direction="a", **args)
-        text_50 = " ".join(["word"] * 50)
-        assert not c.verify_followed_user(text_50, direction="a")
+    def test_response_length_boundary_user_fail(self):
+        """Short response should fail user (verbose) verification."""
+        c = get_conflict("response_length")
+        c.build_system_prompt(direction="a")
+        text_10 = " ".join(["word"] * 10)
+        assert not c.verify_followed_user(text_10, direction="a")
 
     def test_forbidden_words_verify_with_fixed(self):
         c = get_conflict("forbidden_words")
@@ -168,35 +161,35 @@ class TestFixedArgsEdgeCases:
         text = "This thing is good."
         assert not c.verify_followed_system(text, direction="a")
 
-    def test_max_sentence_length_verify_with_fixed(self):
-        c = get_conflict("max_sentence_length")
+    def test_short_vs_long_sentences_verify_with_fixed(self):
+        c = get_conflict("short_vs_long_sentences")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        # N=8 -> every sentence <= 8 words
-        text_short = "This is short. Also very brief."
+        text_short = "This is short. Also very brief. Simple words."
         assert c.verify_followed_system(text_short, direction="a")
 
-    def test_max_sentence_length_system_fails_long(self):
-        """Sentence exceeding max word count should fail system."""
-        c = get_conflict("max_sentence_length")
+    def test_short_vs_long_sentences_system_fails_long(self):
+        """Long elaborate sentences should fail system (short sentences constraint)."""
+        c = get_conflict("short_vs_long_sentences")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        # N=8, this sentence has more than 8 words
-        text = "This is a very long sentence that exceeds the word limit by far."
+        text = (
+            "This is a very long and elaborate sentence that exceeds any reasonable "
+            "expectation for brevity in a response and goes on at length."
+        )
         assert not c.verify_followed_system(text, direction="a")
 
-    def test_min_unique_words_verify_with_fixed(self):
-        """50+ unique words should pass system, <=25 should pass user."""
-        c = get_conflict("min_unique_words")
+    def test_vocabulary_diversity_verify_with_fixed(self):
+        """Complex vocabulary should pass system, simple should pass user."""
+        c = get_conflict("vocabulary_diversity")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        # 50 unique words
-        unique_words = [f"word{i}" for i in range(50)]
-        text = " ".join(unique_words)
+        # Complex words (many 7+ char words)
+        text = "Approximately fundamental nevertheless consequently sophisticated methodology"
         assert c.verify_followed_system(text, direction="a")
-        # Very brief text
-        text_brief = "Short response here."
-        assert c.verify_followed_user(text_brief, direction="a")
+        # Simple words (all short)
+        text_simple = "I like to eat and run and play."
+        assert c.verify_followed_user(text_simple, direction="a")
 
     def test_pronoun_density_verify_with_fixed(self):
         """High pronoun density should pass system, low should pass user."""
@@ -221,9 +214,9 @@ class TestFixedArgsEdgeCases:
     def test_all_fixed_conflicts_build_valid_prompts(self):
         """Every conflict with fixed args produces valid prompts."""
         fixed_ids = [
-            "word_count_range", "forbidden_words", "keyword_in_early_sentence",
-            "keyword_exact_count", "bilingual_english_plus", "max_sentence_length",
-            "min_unique_words", "pronoun_density", "exact_number_count",
+            "response_length", "forbidden_words", "keyword_in_early_sentence",
+            "keyword_exact_count", "short_vs_long_sentences",
+            "vocabulary_diversity", "pronoun_density", "exact_number_count",
         ]
         for cid in fixed_ids:
             c = get_conflict(cid)

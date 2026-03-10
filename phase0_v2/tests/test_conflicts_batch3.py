@@ -11,9 +11,9 @@ from collections import Counter
 
 BATCH3_IDS = [
     "keyword_in_early_sentence", "alphabetical_sentences",
-    "sentence_chaining", "no_consecutive_first_letter", "odd_even_syllables",
+    "sentence_connector_density", "no_consecutive_first_letter", "odd_even_syllables",
     "paragraph_start_same_word",
-    "max_word_repeat", "title_case_vs_sentence_case",
+    "max_word_repeat", "lowercase_vs_capitalized",
     "template_response",
 ]
 
@@ -109,12 +109,12 @@ class TestCompatibilityMatrix:
 
 # -- Specific conflict verify tests --
 
-class TestTitleCase:
-    def test_title_case_verify(self):
-        c = get_conflict("title_case_vs_sentence_case")
+class TestLowercaseVsCapitalized:
+    def test_lowercase_verify(self):
+        c = get_conflict("lowercase_vs_capitalized")
         c.build_system_prompt(direction="a")
-        assert isinstance(c.verify_followed_system("This Is Title Case Text.", direction="a"), bool)
-        assert isinstance(c.verify_followed_user("This is sentence case text.", direction="a"), bool)
+        assert isinstance(c.verify_followed_system("all lowercase text here.", direction="a"), bool)
+        assert isinstance(c.verify_followed_user("This is Properly Capitalized.", direction="a"), bool)
 
 
 class TestMaxWordRepeat:

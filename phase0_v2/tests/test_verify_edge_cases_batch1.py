@@ -4,7 +4,7 @@ Covers the first 14 conflicts with realistic, tricky inputs:
   language_en_es, format_json_markdown, starting_word_hello_greetings,
   emoji_use_vs_avoid, capitalization_all_caps, list_bullets_vs_numbered,
   disclaimer_add_vs_none, self_reference_ai_mention, forbidden_words,
-  keyword_exact_count, max_sentence_length, json_only_vs_plain,
+  keyword_exact_count, short_vs_long_sentences, json_only_vs_plain,
   ai_disclaimer, repeat_answer_twice.
 """
 
@@ -711,14 +711,14 @@ class TestKeywordExactCount:
 
 
 # ===================================================================
-# 11. max_sentence_length
+# 11. short_vs_long_sentences (replaced max_sentence_length)
 # ===================================================================
 
-class TestMaxSentenceLength:
+class TestShortVsLongSentences:
     @pytest.fixture()
     def conflict(self):
-        c = get_conflict("max_sentence_length")
-        _setup_args(c, N=8, min_words=12)
+        c = get_conflict("short_vs_long_sentences")
+        c.build_system_prompt(direction="a")
         return c
 
     def test_short_sentences_follow_system_a(self, conflict):
@@ -726,79 +726,44 @@ class TestMaxSentenceLength:
         assert conflict.verify_followed_system(text, direction="a") is True
 
     def test_long_sentences_follow_user_a(self, conflict):
-        # all_sentences_min_n_words checks strictly > min_words, so each sentence needs > 12 words
         text = (
-            "This is a very long and elaborate sentence with many many words that exceeds the minimum count. "
-            "Another extremely detailed and comprehensive sentence that provides thorough information about the topic at hand."
+            "This is a very long and elaborate sentence with many words that exceeds "
+            "any reasonable expectation for brevity in a response. "
+            "Another extremely detailed and comprehensive sentence that provides "
+            "thorough information about the topic at hand and beyond."
         )
         assert conflict.verify_followed_user(text, direction="a") is True
 
     def test_long_sentence_fails_system_a(self, conflict):
-        text = "This is a sentence that has more than eight words in it."
+        text = (
+            "This is a sentence that has significantly more than a handful of words "
+            "and goes on and on with elaborate detail about various subjects."
+        )
         assert conflict.verify_followed_system(text, direction="a") is False
 
     def test_short_sentences_fail_user_a(self, conflict):
-        text = "Short one. Another short."
+        text = "Short one. Another short. Brief too."
         assert conflict.verify_followed_user(text, direction="a") is False
 
-    # Edge: exactly N words (should pass, <= N)
-    def test_exactly_n_words(self, conflict):
-        text = "One two three four five six seven eight."
-        assert conflict.verify_followed_system(text, direction="a") is True
-
-    # Edge: N+1 words (passes with +1 tolerance)
-    def test_n_plus_one_words(self, conflict):
-        text = "One two three four five six seven eight nine."
-        assert conflict.verify_followed_system(text, direction="a") is True  # 9 words, N=8, +1 tolerance
-        # N+2 should fail
-        text2 = "One two three four five six seven eight nine ten."
-        assert conflict.verify_followed_system(text2, direction="a") is False
-
-    # Edge: multiple sentence terminators
-    def test_exclamation_and_question(self, conflict):
-        text = "Is this short? Yes it is! Very much so."
-        assert conflict.verify_followed_system(text, direction="a") is True
-
-    # Edge: sentence with no terminator (entire text is one "sentence")
-    def test_no_period_short_enough(self, conflict):
-        # "This has no period at the end" = 7 words <= 8, so it passes
-        text = "This has no period at the end"
-        assert conflict.verify_followed_system(text, direction="a") is True
-
-    def test_no_period_too_long(self, conflict):
-        text = "This sentence has no period and is definitely longer than eight words total"
-        assert conflict.verify_followed_system(text, direction="a") is False
-
-    # Edge: empty text
     def test_empty_text_system(self, conflict):
-        # all_sentences_max_n_words with no sentences returns True
+        # Empty text: _score_short_sentences returns 1.0 (trivially short)
         assert conflict.verify_followed_system("", direction="a") is True
 
     def test_empty_text_user(self, conflict):
-        # all_sentences_min_n_words requires at least one sentence, returns False
+        # Empty text: _score_long_sentences returns 0.0 (not long)
         assert conflict.verify_followed_user("", direction="a") is False
 
-    # Edge: multi-paragraph with mixed lengths
-    def test_multi_paragraph_mixed(self, conflict):
-        text = "Short one. Also short.\n\nThis one is also very brief."
-        assert conflict.verify_followed_system(text, direction="a") is True
-
-    # Direction b: system=min_words, user=max_n
     def test_direction_b(self, conflict):
-        _setup_args_b(conflict, N=8, min_words=12)
-        # all_sentences_min_n_words checks strictly > min_words, so need > 12 words per sentence
+        conflict.build_system_prompt(direction="b")
         long_text = (
-            "This is a very long and elaborate sentence that easily exceeds twelve words for certain. "
-            "Another extremely comprehensive and thorough sentence with plenty of detail included here now."
+            "This is a very long and elaborate sentence that easily exceeds twelve "
+            "words and provides comprehensive detail about the topic for certain. "
+            "Another extremely comprehensive and thorough sentence with plenty of "
+            "detail included here now and extending further."
         )
-        short_text = "Short and sweet. Keep it brief."
+        short_text = "Short and sweet. Keep it brief. Be concise."
         assert conflict.verify_followed_system(long_text, direction="b") is True
         assert conflict.verify_followed_user(short_text, direction="b") is True
-
-    # Edge: sentence with only one word
-    def test_one_word_sentence(self, conflict):
-        text = "Yes. No. Maybe."
-        assert conflict.verify_followed_system(text, direction="a") is True
 
 
 # ===================================================================

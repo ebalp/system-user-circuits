@@ -17,15 +17,15 @@ from .definitions.self_reference_ai_mention import SelfReferenceAiMentionConflic
 from .definitions.forbidden_words import ForbiddenWordsConflict
 from .definitions.keyword_exact_count import KeywordExactCountConflict
 from .definitions.keyword_frequency import KeywordFrequencyConflict
-from .definitions.max_sentence_length import MaxSentenceLengthConflict
+from .definitions.short_vs_long_sentences import ShortVsLongSentencesConflict
 from .definitions.json_only_vs_plain import JsonOnlyVsPlainConflict
 from .definitions.repeat_answer_twice import RepeatAnswerTwiceConflict
-from .definitions.bilingual_english_plus import BilingualEnglishPlusConflict
+from .definitions.spanish_loanwords import SpanishLoanwordsConflict
 
 # -- Batch 2 --
 from .definitions.exact_number_count import ExactNumberCountConflict
-from .definitions.min_unique_words import MinUniqueWordsConflict
-from .definitions.word_count_range import WordCountRangeConflict
+from .definitions.vocabulary_diversity import VocabularyDiversityConflict
+from .definitions.response_length import ResponseLengthConflict
 from .definitions.stairs_indent import StairsIndentConflict
 from .definitions.each_word_new_line import EachWordNewLineConflict
 from .definitions.bullets_and_sub_bullets import BulletsAndSubBulletsConflict
@@ -42,16 +42,16 @@ from .definitions.paragraph_start_same_word import ParagraphStartSameWordConflic
 from .definitions.parenthetical_asides import ParentheticalAsidesConflict
 from .definitions.past_vs_present_tense import PastVsPresentTenseConflict
 from .definitions.pronoun_density import PronounDensityConflict
-from .definitions.sentence_chaining import SentenceChainingConflict
+from .definitions.sentence_connector_density import SentenceConnectorDensityConflict
 from .definitions.template_response import TemplateResponseConflict
-from .definitions.title_case_vs_sentence_case import TitleCaseVsSentenceCaseConflict
+from .definitions.lowercase_vs_capitalized import LowercaseVsCapitalizedConflict
 
 # -- Batch 4 --
 from .definitions.first_vs_third_person import FirstVsThirdPersonConflict
 from .definitions.questions_vs_statements import QuestionsVsStatementsConflict
 
 # -- Batch 5 --
-from .definitions.active_vs_passive_voice import ActiveVsPassiveVoiceConflict
+from .definitions.imperative_vs_declarative import ImperativeVsDeclarativeConflict
 from .definitions.address_reader_directly import AddressReaderDirectlyConflict
 from .definitions.direct_answer_vs_hedging import DirectAnswerVsHedgingConflict
 from .definitions.formal_vs_casual_tone import FormalVsCasualToneConflict
@@ -60,10 +60,10 @@ from .definitions.short_paragraphs_vs_single_block import ShortParagraphsVsSingl
 
 # Alphabetically sorted by class name
 _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
-    ActiveVsPassiveVoiceConflict,
+    ImperativeVsDeclarativeConflict,
     AddressReaderDirectlyConflict,
     AlphabeticalSentencesConflict,
-    BilingualEnglishPlusConflict,
+    SpanishLoanwordsConflict,
     BulletsAndSubBulletsConflict,
     CapitalizationAllCapsConflict,
     DirectAnswerVsHedgingConflict,
@@ -82,9 +82,9 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     KeywordInEarlySentenceConflict,
     LanguageEnEsConflict,
     ListBulletsVsNumberedConflict,
-    MaxSentenceLengthConflict,
+    ShortVsLongSentencesConflict,
     MaxWordRepeatConflict,
-    MinUniqueWordsConflict,
+    VocabularyDiversityConflict,
     NoConsecutiveFirstLetterConflict,
     NumberedSectionsVsProseConflict,
     OddEvenSyllablesConflict,
@@ -95,13 +95,13 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     QuestionsVsStatementsConflict,
     RepeatAnswerTwiceConflict,
     SelfReferenceAiMentionConflict,
-    SentenceChainingConflict,
+    SentenceConnectorDensityConflict,
     ShortParagraphsVsSingleBlockConflict,
     StairsIndentConflict,
     StartingWordHelloGreetingsConflict,
     TemplateResponseConflict,
-    TitleCaseVsSentenceCaseConflict,
-    WordCountRangeConflict,
+    LowercaseVsCapitalizedConflict,
+    ResponseLengthConflict,
 ]
 
 _REGISTRY: dict[str, Conflict] = {}

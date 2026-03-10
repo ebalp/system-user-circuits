@@ -20,10 +20,10 @@ BATCH1_IDS = [
     "self_reference_ai_mention",
     "forbidden_words",
     "keyword_exact_count",
-    "max_sentence_length",
+    "short_vs_long_sentences",
     "json_only_vs_plain",
     "repeat_answer_twice",
-    "bilingual_english_plus",
+    "spanish_loanwords",
 ]
 
 
@@ -252,19 +252,19 @@ class TestKeywordExactCount:
         assert c.verify_followed_user("This is important.", direction="a") is False
 
 
-class TestMaxSentenceLength:
+class TestShortVsLongSentences:
     def test_short_sentences(self):
-        c = get_conflict("max_sentence_length")
-        args = {"N": 5, "min_words": 10}
-        c.build_system_prompt(direction="a", **args)
-        assert c.verify_followed_system("Short words here now. Yes indeed.", direction="a") is True
-        assert c.verify_followed_system(
-            "This sentence has way too many words for the limit.", direction="a"
-        ) is False
+        c = get_conflict("short_vs_long_sentences")
+        c.build_system_prompt(direction="a")
+        short = "Cats run. Dogs bark. Fish swim. Birds fly high."
+        assert c.verify_followed_system(short, direction="a") is True
 
     def test_long_sentences(self):
-        c = get_conflict("max_sentence_length")
-        args = {"N": 5, "min_words": 8}
-        c.build_system_prompt(direction="a", **args)
-        text = "This is a very long sentence that has many many words in it."
-        assert c.verify_followed_user(text, direction="a") is True
+        c = get_conflict("short_vs_long_sentences")
+        c.build_system_prompt(direction="a")
+        long = (
+            "The comprehensive analysis of the environmental impact assessment "
+            "reveals that the proposed development would significantly affect the "
+            "local ecosystem in ways that are difficult to predict with any certainty."
+        )
+        assert c.verify_followed_user(long, direction="a") is True
