@@ -1571,6 +1571,24 @@ wheels = [
 ]
 
 [[package]]
+name = "lambda-cloud-toolkit"
+version = "0.1.0"
+source = { editable = "../lambda-cloud-toolkit" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.2" }]
+
+[[package]]
 name = "langdetect"
 version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
@@ -3678,6 +3696,7 @@ dependencies = [
     { name = "ipykernel" },
     { name = "jupyter" },
     { name = "kaleido" },
+    { name = "lambda-cloud-toolkit" },
     { name = "langdetect" },
     { name = "matplotlib" },
     { name = "nltk" },
@@ -3710,6 +3729,7 @@ requires-dist = [
     { name = "ipykernel", specifier = ">=6.0.0" },
     { name = "jupyter", specifier = ">=1.0.0" },
     { name = "kaleido", specifier = ">=0.2.1" },
+    { name = "lambda-cloud-toolkit", editable = "../lambda-cloud-toolkit" },
     { name = "langdetect", specifier = ">=1.0.9" },
     { name = "matplotlib", specifier = ">=3.7.0" },
     { name = "nltk", specifier = ">=3.8.0" },

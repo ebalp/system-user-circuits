@@ -111,7 +111,7 @@ def main():
         help="vLLM server URL (required for --backend vllm), e.g. http://localhost:8000/v1",
     )
     parser.add_argument(
-        "--lambda-config", type=str, default="lambda_cloud/config/lambda.yaml",
+        "--lambda-config", type=str, default="lambda-cloud.yaml",
         help="Lambda config YAML file (for --backend lambda)",
     )
     parser.add_argument(
@@ -312,10 +312,10 @@ def main():
         logger.info("Completed: %d, Skipped: %d", completed_count, skipped)
 
     elif args.backend == "lambda":
-        from lambda_cloud.config import load_lambda_config
-        from lambda_cloud.manager import LambdaCloudManager
-        from lambda_cloud.ssh import SSHConnection
-        from lambda_cloud.vllm_server import ensure_vllm_running, wait_for_vllm_through_tunnel
+        from lambda_cloud_toolkit.config import load_lambda_config
+        from lambda_cloud_toolkit.manager import LambdaCloudManager
+        from lambda_cloud_toolkit.ssh import SSHConnection
+        from lambda_cloud_toolkit.vllm_server import ensure_vllm_running, wait_for_vllm_through_tunnel
 
         total_completed = 0
         by_model: dict[str, list] = defaultdict(list)

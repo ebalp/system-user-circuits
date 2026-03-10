@@ -17,7 +17,7 @@ import time
 
 import pytest
 
-from lambda_cloud.ssh import SSHConnection
+from lambda_cloud_toolkit.ssh import SSHConnection
 
 # ── Fixtures ──
 

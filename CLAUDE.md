@@ -8,18 +8,17 @@ When running on a Lambda instance, `.sync.env` is auto-sourced on login (credent
 
 ### Data sync
 
-The sync script (`lambda-sync.sh`) has an interactive confirmation prompt. Pipe the response:
+Data sync uses the `lambda-gpu` CLI from `lambda-cloud-toolkit`:
 
 ```bash
 # Upload results to bucket
-printf "y\n" | bash ./lambda-sync.sh upload
+lambda-gpu sync upload phase0_v2/data/results
 
 # Download data from bucket
-printf "y\n" | bash ./lambda-sync.sh download
+lambda-gpu sync download phase0_v2/data
 
-# Targeted sync
-printf "y\n" | bash ./lambda-sync.sh upload phase0/data/results
-printf "y\n" | bash ./lambda-sync.sh download phase0/data
+# List bucket contents
+lambda-gpu sync ls
 ```
 
 Before running, explain to the user what will be synced and the direction (upload overwrites bucket, download overwrites local). Wait for confirmation before running. Always remind the user to upload before terminating an instance.
@@ -36,7 +35,7 @@ Do not add `Co-Authored-By` trailers to commit messages.
 
 | Phase | Directory | What it does |
 |-------|-----------|-------------|
-| **Lambda Cloud** | `lambda_cloud/` | GPU instance lifecycle, SSH operations, vLLM deployment. Used across phases. |
+| **Lambda Cloud** | `lambda-cloud-toolkit` (external package) | GPU instance lifecycle, SSH operations, vLLM deployment. Installed via `lambda-cloud-toolkit`. Config: `lambda-cloud.yaml`. |
 | **Phase 0 v2** | `phase0_v2/` | Class-based behavioral experiments: 33 conflicts, 4 conditions (A-D), 5 system/user styles, counterbalancing. Calibration system for verifier quality analysis and tier assignment. |
 | **Phase 0** | `phase0_behavioral_analysis/` | Original behavioral experiments (legacy). |
 | **Phase 1** | `phase1_linear_probing/` | Mechanistic analysis: trains per-layer linear probes on residual-stream activations to find directions separating "followed system" vs "followed user". Includes metadata baselines, grouped CV, and direction analysis. |
@@ -63,12 +62,6 @@ To run scripts: `uv run python <script.py>` or `uv run pytest`. Or activate: `so
 ### Running Tests
 
 ```bash
-# Lambda Cloud (unit tests only)
-uv run pytest lambda_cloud/tests/ -v -m "not live"
-
-# Lambda Cloud (live tests — requires vLLM running on ssh lambda)
-uv run pytest lambda_cloud/tests/test_live.py -v -m live
-
 # Phase 0 v2
 uv run pytest phase0_v2/tests/ -v
 
@@ -91,13 +84,13 @@ uv run python -m phase0_v2.calibration.analyze \
 
 ```bash
 # Snatch a GPU instance and bootstrap it
-uv run python -m lambda_cloud.scripts.snatch --setup
+lambda-gpu snatch --setup
 
 # Bootstrap an existing instance
-uv run python -m lambda_cloud.scripts.setup_instance --ip IP
+lambda-gpu setup --ip IP
 
 # Launch vLLM on an instance with SSH tunnel
-uv run python -m lambda_cloud.scripts.launch_vllm --ip IP --model meta-llama/Llama-3.1-8B-Instruct --tunnel
+lambda-gpu vllm --ip IP --model meta-llama/Llama-3.1-8B-Instruct --tunnel
 ```
 
 ### Running Phase 0 Experiments

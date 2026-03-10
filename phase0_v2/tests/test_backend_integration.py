@@ -355,8 +355,8 @@ class TestLambdaManagerIntegration:
     @patch("phase0_v2.src.api_client.OpenAI")
     def test_get_base_url_returns_working_url(self, mock_openai_cls, tmp_path):
         """LambdaCloudManager.get_base_url() returns a URL that works with VLLMClient."""
-        from lambda_cloud.config import LambdaConfig, LambdaInstance
-        from lambda_cloud.manager import LambdaCloudManager
+        from lambda_cloud_toolkit.config import LambdaConfig, LambdaInstance
+        from lambda_cloud_toolkit.manager import LambdaCloudManager
 
         mock_client_instance = MagicMock()
         mock_openai_cls.return_value = mock_client_instance
@@ -389,8 +389,8 @@ class TestLambdaManagerIntegration:
 
     def test_get_base_url_without_instance_raises(self):
         """LambdaCloudManager.get_base_url() raises when no instance launched."""
-        from lambda_cloud.config import LambdaConfig
-        from lambda_cloud.manager import LambdaCloudManager
+        from lambda_cloud_toolkit.config import LambdaConfig
+        from lambda_cloud_toolkit.manager import LambdaCloudManager
 
         lconfig = LambdaConfig(
             api_key="k", ssh_key_name="s",
@@ -405,8 +405,8 @@ class TestLambdaManagerIntegration:
 
     def test_lambda_base_url_uses_instance_ip(self):
         """get_base_url() should return URL using the instance IP."""
-        from lambda_cloud.config import LambdaConfig, LambdaInstance
-        from lambda_cloud.manager import LambdaCloudManager
+        from lambda_cloud_toolkit.config import LambdaConfig, LambdaInstance
+        from lambda_cloud_toolkit.manager import LambdaCloudManager
 
         lconfig = LambdaConfig(
             api_key="k", ssh_key_name="s",
@@ -422,13 +422,13 @@ class TestLambdaManagerIntegration:
     def test_lambda_config_yaml_exists(self):
         """The lambda.yaml config file should exist."""
         from pathlib import Path
-        assert Path("lambda_cloud/config/lambda.yaml").exists()
+        assert Path("lambda-cloud.yaml").exists()
 
     def test_lambda_config_has_required_keys(self):
         """lambda.yaml should have expected top-level keys."""
         from pathlib import Path
         import yaml
-        data = yaml.safe_load(Path("lambda_cloud/config/lambda.yaml").read_text())
+        data = yaml.safe_load(Path("lambda-cloud.yaml").read_text())
         assert "ssh_key_name" in data
         assert "defaults" in data
         assert "model_gpu_map" in data
@@ -437,7 +437,7 @@ class TestLambdaManagerIntegration:
         """Each model in gpu_map should have an instance_type."""
         from pathlib import Path
         import yaml
-        data = yaml.safe_load(Path("lambda_cloud/config/lambda.yaml").read_text())
+        data = yaml.safe_load(Path("lambda-cloud.yaml").read_text())
         for model_id, settings in data["model_gpu_map"].items():
             assert "instance_type" in settings, f"{model_id} missing instance_type"
 
@@ -445,7 +445,7 @@ class TestLambdaManagerIntegration:
         """defaults section should have expected fields."""
         from pathlib import Path
         import yaml
-        data = yaml.safe_load(Path("lambda_cloud/config/lambda.yaml").read_text())
+        data = yaml.safe_load(Path("lambda-cloud.yaml").read_text())
         defaults = data["defaults"]
         assert "region" in defaults
         assert "vllm_port" in defaults

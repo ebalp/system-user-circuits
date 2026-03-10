@@ -34,6 +34,9 @@ dependencies = [
     # Configuration
     "pyyaml>=6.0",
 
+    # Lambda Cloud GPU management
+    "lambda-cloud-toolkit",
+
     # Progress tracking
     "tqdm>=4.65.0",
 
@@ -53,6 +56,9 @@ dependencies = [
     "nnterp>=0.1.0",
     "nnsight>=0.3.0",
 ]
+
+[tool.uv.sources]
+lambda-cloud-toolkit = { path = "../lambda-cloud-toolkit", editable = true }
 
 [tool.pytest.ini_options]
 markers = [

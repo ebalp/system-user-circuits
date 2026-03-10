@@ -272,8 +272,8 @@ class TestBackendLambdaImports:
     """Test that Lambda backend imports work."""
 
     def test_lambda_imports(self):
-        from lambda_cloud.config import load_lambda_config
-        from lambda_cloud.manager import LambdaCloudManager
+        from lambda_cloud_toolkit.config import load_lambda_config
+        from lambda_cloud_toolkit.manager import LambdaCloudManager
         assert LambdaCloudManager is not None
         assert load_lambda_config is not None
 
