@@ -6,13 +6,15 @@ ssh_key_file: "~/.ssh/anusha-cre-lambda-key.pem"
 repo_url: "https://github.com/ebalp/system-user-circuits.git"
 repo_dir: "/home/ubuntu/system-user-circuits"  # derived from repo_url if omitted
 # setup_script: "my-custom-setup.sh"  # optional extra setup after bootstrap
+dependency_repos:
+  - "https://github.com/ebalp/lambda-cloud-toolkit.git"
 
 defaults:
   vllm_port: 8000
   vllm_venv_path: /home/ubuntu/vllm-venv
   max_launch_retries: 5
   launch_retry_delay: 60
-  readiness_timeout: 900  # 15 min for model download + load
+  readiness_timeout: 900  # soft timeout; keeps waiting if vLLM process is alive
 
 instance_preferences:
   - gpu_1x_a100
@@ -36,11 +38,21 @@ model_gpu_map:
   Qwen/Qwen2.5-7B-Instruct:
     instance_type: gpu_1x_a10
     vllm_args: "--max-model-len 4096"
+  google/gemma-3-27b-it:
+    instance_type: gpu_1x_gh200
+    instance_preferences:
+      - gpu_1x_gh200
+      - gpu_1x_h100_pcie
+      - gpu_1x_h100_sxm5
+    vllm_args: "--max-model-len 4096"
   openai/gpt-oss-20b:
     instance_type: gpu_1x_a100
     vllm_args: "--max-model-len 4096"
   _default:
     instance_type: gpu_1x_a100
+    instance_preferences:
+      - gpu_1x_a100
+      - gpu_1x_a100_sxm4
     vllm_args: "--max-model-len 4096"
 
 # S3-compatible storage (Lambda Filesystem)
