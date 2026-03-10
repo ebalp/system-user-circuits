@@ -27,6 +27,9 @@ def _score_each_word_on_new_line(text: str) -> float:
     words = value.strip().split()
     if not words:
         return 0.0
+    # Guard: concatenated text (no spaces) is not one-word-per-line
+    if any(len(w) > 50 for w in words):
+        return 0.0
     return min(len(lines) / len(words), 1.0)
 
 

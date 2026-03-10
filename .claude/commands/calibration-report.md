@@ -198,11 +198,11 @@ Format baselines to 2 decimal places, BA to 3.
 ```markdown
 ## Float threshold results
 
-| Conflict | Current T | Optimal mid | Optimal range | BA | Needs change? |
-|----------|-----------|-------------|---------------|----|---------------|
+| Conflict | Current T | Optimal range | BA | In range? |
+|----------|-----------|---------------|----|-----------|
 ```
 
-The **optimal midpoint** (`optimal_threshold` column in the CSV) is the recommended threshold — it maximizes margin from the range edges. "Needs change?" = "Yes" if current threshold differs from the optimal midpoint (not just outside the range). Format the optimal range as `[T_low, T_high]` or just `T` if T_low == T_high.
+"In range?" = "Yes" if current threshold is within [optimal_threshold_low, optimal_threshold_high]. "No" means the cross-model threshold is outside this model's optimal range and may be degrading BA — show the distance from the nearest range edge (e.g., "No (0.012 below)"). Format the optimal range as `[T_low, T_high]` or just `T` if T_low == T_high. Thresholds are managed cross-model via `/calibration-thresholds`, so single-model midpoints are not shown here.
 
 ### Section 5: Anomaly summary
 

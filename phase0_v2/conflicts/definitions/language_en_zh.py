@@ -6,7 +6,7 @@
 # type: bool
 # constraint_a: Respond in English
 # constraint_b: Respond in Chinese
-# scorer: CJK character fraction > 0.3 for Chinese; langdetect == "en" for English
+# scorer: CJK character fraction > 0.3 for Chinese (after stripping parenthetical ASCII annotations); langdetect == "en" for English
 # explored: no
 # </description>
 
@@ -37,17 +37,28 @@ def _is_english(r: str) -> bool:
         return False
 
 
+_PAREN_ASCII_RE = re.compile(r"\([^()]*?[a-zA-Z][^()]*?\)")
+
+
 def _is_chinese(r: str) -> bool:
     """Detect Chinese via CJK character fraction.
 
     langdetect often misclassifies Chinese (especially Traditional) as Korean
     or Vietnamese, so we use Unicode character ranges directly.
+
+    Before computing the fraction, parenthetical annotations containing ASCII
+    letters are stripped. Some models (e.g. Gemma) add pinyin romanizations and
+    English translations in parentheses that dilute the CJK fraction.
     """
     text = r.strip()
     if not text:
         return False
-    cjk_count = len(_CJK_RE.findall(text))
-    return cjk_count / len(text) > 0.3
+    # Strip parenthetical pinyin/translation annotations
+    cleaned = _PAREN_ASCII_RE.sub("", text)
+    if not cleaned.strip():
+        return False
+    cjk_count = len(_CJK_RE.findall(cleaned))
+    return cjk_count / len(cleaned) > 0.3
 
 
 class LanguageEnZhConflict(Conflict):

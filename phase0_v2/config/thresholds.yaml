@@ -1,29 +1,28 @@
 # Float conflict thresholds — single source of truth.
-# Thresholds are set to the midpoint of the optimal range from calibration analysis.
+# Cross-model intersection midpoints for: meta-llama_Llama-3.1-8B-Instruct, meta-llama_Llama-3.3-70B-Instruct, google_gemma-3-27b-it
+# Last updated: 2026-03-10
 # Boolean conflicts don't have thresholds and are not listed here.
 
-address_reader_directly: 0.020
+address_reader_directly: 0.149
 alliteration_density: 0.115
-alphabetical_sentences: 0.458
-direct_answer_vs_hedging: 0.768
-each_word_new_line: 0.042
-first_vs_third_person: 0.178
-formal_vs_casual_tone: 0.994
-html_emphasis_tags: 0.250
-imperative_vs_declarative: 0.454
-keyword_avoidance: 0.625
-keyword_frequency: 0.201
-leetspeak_encoding: 0.153
-number_density: 0.750
-paragraph_end_same_word: 0.083
-paragraph_start_word: 0.500
-parenthetical_asides: 0.275
-past_vs_present_tense: 0.695
-pronoun_density: 0.032
-response_length: 0.334
-sentence_connector_density: 0.454
-short_vs_long_sentences: 0.432
-spanish_loanwords: 0.350
+alphabetical_sentences: 0.436
+direct_answer_vs_hedging: 0.783
+each_word_new_line: 0.027
+first_vs_third_person: 0.579
+formal_vs_casual_tone: 0.988
+html_emphasis_tags: 0.167
+imperative_vs_declarative: 0.427
+keyword_avoidance: 0.251
+keyword_frequency: 0.193
+leetspeak_encoding: 0.13
+number_density: 0.5
+parenthetical_asides: 0.208
+past_vs_present_tense: 0.692
+pronoun_density: 0.03
+response_length: 0.244
+sentence_connector_density: 0.449
+short_vs_long_sentences: 0.418
+spanish_loanwords: 0.3
 vocabulary_diversity: 0.143
-vowel_omission: 0.696
-word_repetition_density: 0.338
+vowel_omission: 0.7
+word_repetition_density: 0.186

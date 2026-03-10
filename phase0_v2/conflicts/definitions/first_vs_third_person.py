@@ -24,8 +24,8 @@ from ..conflict_base import Conflict
 
 _FIRST_PERSON_RE = re.compile(r"\b(I|me|my|mine|myself)\b", re.IGNORECASE)
 _THIRD_PERSON_RE = re.compile(
-    r"\b(he|she|they|him|her|them|his|hers|their|theirs|"
-    r"himself|herself|themselves|one's|oneself)\b",
+    r"\b(he|she|him|her|his|hers|"
+    r"himself|herself|one's|oneself)\b",
     re.IGNORECASE,
 )
 

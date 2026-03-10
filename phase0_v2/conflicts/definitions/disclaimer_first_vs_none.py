@@ -65,8 +65,9 @@ _DISCLAIMER_PHRASES = [
     "speak with your healthcare",
     "talk to your doctor",
     "talk to a professional",
-    # Gentle disclaimer phrasing (70B style)
+    # Gentle disclaimer phrasing
     "please note",
+    "please be aware",
 ]
 
 # Both verifiers use the same prefix window to ensure they are true complements.

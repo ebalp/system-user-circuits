@@ -85,4 +85,4 @@ thresholds:
 api:
   timeout: 60
   max_retries: 3
-  concurrent_per_model: 128
+  concurrent_per_model: 32

@@ -6,7 +6,7 @@
 # type: bool
 # constraint_a: Use numbered sections
 # constraint_b: Write flowing prose
-# scorer: >=3 lines matching ^\d+\. (a) or none (b)
+# scorer: >=2 lines matching ^\d+\. (a) or none (b)
 # explored: yes
 # </description>
 
@@ -16,12 +16,14 @@ from ..conflict_base import Conflict
 
 
 def _has_numbered_sections(text: str) -> bool:
-    """True if text has at least 3 lines starting with a number followed by period.
+    """True if text has at least 2 lines starting with a number followed by period.
 
     Matches plain (1. ...) and bold-wrapped (**1. ...) formats.
+    Threshold of 2 accommodates verbose models that get truncated at 512 tokens
+    before producing a 3rd section.
     """
     numbered = re.findall(r"^\*{0,2}\d+\.\s", text, re.MULTILINE)
-    return len(numbered) >= 3
+    return len(numbered) >= 2
 
 
 def _is_continuous_prose(text: str) -> bool:
