@@ -83,9 +83,9 @@ class TestIsJson:
 
     def test_truncated_json_in_code_block(self):
         text = '```json\n{"photosynthesis": {"steps": [\n  {"step": "Light'
-        # Truncated code block (no closing ```) - code block extraction fails,
-        # but that's OK since the raw text doesn't start with {
-        assert not _is_json(text)
+        # Truncated code block (no closing ```) - extracted via fallback,
+        # inner content starts with { and has key pattern → recognized as JSON
+        assert _is_json(text)
 
     def test_complete_json_in_code_block(self):
         text = '```json\n{"photosynthesis": {"steps": ["absorb", "split"]}}\n```'

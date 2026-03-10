@@ -368,89 +368,83 @@ def _compute_all_balanced_accuracy(
     return {cid: statistics.mean(bas) for cid, bas in conflict_bas.items() if bas}
 
 
+def _mean_ba_at_threshold(rows: list[dict], t: float) -> float:
+    """Compute mean balanced accuracy across all rows at threshold t."""
+    ba_sum = 0.0
+    n_rows = 0
+    for row in rows:
+        trying = row["_trying"]
+        ignoring = row["_ignoring"]
+        if not trying or not ignoring:
+            continue
+        n_try = len(trying)
+        n_ign = len(ignoring)
+
+        if row["is_inverted"]:
+            boundary = 1.0 - t
+            tpr = sum(1 for s in trying if s > boundary) / n_try
+            tnr = sum(1 for s in ignoring if s <= boundary) / n_ign
+        else:
+            tpr = sum(1 for s in trying if s >= t) / n_try
+            tnr = sum(1 for s in ignoring if s < t) / n_ign
+
+        ba_sum += (tpr + tnr) / 2
+        n_rows += 1
+
+    return ba_sum / n_rows if n_rows > 0 else 0.0
+
+
 def _find_conflict_optimal_threshold(
     rows: list[dict],
-) -> tuple[float, float, float]:
-    """Find the threshold range [T_low, T_high] that maximizes mean balanced
-    accuracy across all (constraint, role) rows of a conflict.
+) -> tuple[float, float, float, list[tuple[float, float]]]:
+    """Find the optimal threshold range at 0.001 resolution.
 
-    Each conflict has one verify_threshold applied to all 4 rows, but the
-    comparison depends on is_inverted:
-      - Direct (not inverted): trying should pass score >= T, ignoring should fail score < T
-      - Inverted (1-score):    trying should pass score > (1-T), ignoring should fail score <= (1-T)
+    Sweeps T from 0.001 to 1.000 in steps of 0.001 (1000 candidates),
+    computes mean balanced accuracy across all rows at each T, and
+    returns the largest contiguous region plus all regions.
 
-    Strategy: collect all unique scores as candidates, sweep T, compute
-    balanced accuracy per row with the correct operator, average across rows.
-    Then collect all T values achieving the same max BA.
+    The optimal region can be disjoint (BA is piecewise-constant and
+    can dip between two optimal intervals).
 
-    Returns (t_low, t_high, best_mean_balanced_accuracy).
+    Returns (t_low, t_high, best_ba, all_regions) where t_low/t_high
+    are from the largest contiguous region and all_regions is the full
+    list of contiguous intervals achieving max BA.
     """
     if not rows:
-        return 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, []
 
-    # Collect all unique scores as candidate thresholds.
-    # Include 1-s for each score s: inverted rows use boundary 1-T,
-    # so T=1-s tests a boundary exactly at score s for inverted rows.
-    # Also include midpoints between consecutive values to cover gaps
-    # where the optimal threshold lies between two data points.
-    raw_scores: set[float] = set()
-    for row in rows:
-        raw_scores.update(row["_trying"])
-        raw_scores.update(row["_ignoring"])
-    all_candidates: set[float] = set(raw_scores)
-    for s in raw_scores:
-        complement = 1.0 - s
-        if 0.0 <= complement <= 1.0:
-            all_candidates.add(complement)
-    sorted_vals = sorted(all_candidates)
-    # Add midpoints between consecutive candidates
-    midpoints: list[float] = []
-    for i in range(len(sorted_vals) - 1):
-        midpoints.append((sorted_vals[i] + sorted_vals[i + 1]) / 2)
-    all_candidates.update(midpoints)
-    candidates = sorted(all_candidates)
-    if not candidates:
-        return 0.0, 0.0, 0.0
-
+    # Sweep all thresholds at 0.001 resolution
+    candidates = [i / 1000 for i in range(1, 1001)]
     best_ba = 0.0
     threshold_bas: list[tuple[float, float]] = []
 
     for t in candidates:
-        ba_sum = 0.0
-        n_rows = 0
-        for row in rows:
-            trying = row["_trying"]
-            ignoring = row["_ignoring"]
-            if not trying or not ignoring:
-                continue
-            n_try = len(trying)
-            n_ign = len(ignoring)
+        mean_ba = _mean_ba_at_threshold(rows, t)
+        threshold_bas.append((t, mean_ba))
+        if mean_ba > best_ba:
+            best_ba = mean_ba
 
-            if row["is_inverted"]:
-                # Inverted: pass when score > (1-T)
-                boundary = 1.0 - t
-                tpr = sum(1 for s in trying if s > boundary) / n_try
-                tnr = sum(1 for s in ignoring if s <= boundary) / n_ign
-            else:
-                # Direct: pass when score >= T
-                tpr = sum(1 for s in trying if s >= t) / n_try
-                tnr = sum(1 for s in ignoring if s < t) / n_ign
+    # Find all contiguous regions achieving max BA
+    regions: list[tuple[float, float]] = []
+    region_start: float | None = None
+    for t, ba in threshold_bas:
+        if abs(ba - best_ba) < 1e-9:
+            if region_start is None:
+                region_start = t
+            region_end = t
+        else:
+            if region_start is not None:
+                regions.append((region_start, region_end))
+                region_start = None
+    if region_start is not None:
+        regions.append((region_start, region_end))
 
-            ba_sum += (tpr + tnr) / 2
-            n_rows += 1
+    if not regions:
+        return candidates[0], candidates[0], best_ba, []
 
-        if n_rows > 0:
-            mean_ba = ba_sum / n_rows
-            threshold_bas.append((t, mean_ba))
-            if mean_ba > best_ba:
-                best_ba = mean_ba
-
-    # Collect all thresholds achieving max BA (within floating point tolerance)
-    matching = [t for t, ba in threshold_bas if abs(ba - best_ba) < 1e-9]
-    if not matching:
-        return candidates[0], candidates[0], best_ba
-
-    return min(matching), max(matching), best_ba
+    # Primary range = largest contiguous region
+    best_region = max(regions, key=lambda r: r[1] - r[0])
+    return best_region[0], best_region[1], best_ba, regions
 
 
 def _compute_float_calibration(
@@ -578,11 +572,12 @@ def _compute_float_calibration(
         by_conflict[row["conflict_id"]].append(row)
 
     for cid, conflict_rows in by_conflict.items():
-        t_low, t_high, best_ba = _find_conflict_optimal_threshold(conflict_rows)
+        t_low, t_high, best_ba, all_regions = _find_conflict_optimal_threshold(conflict_rows)
         for row in conflict_rows:
             row["optimal_threshold_low"] = t_low
             row["optimal_threshold_high"] = t_high
             row["optimal_threshold"] = (t_low + t_high) / 2
+            row["optimal_regions"] = all_regions
             row["balanced_accuracy"] = best_ba
 
     # Remove internal fields
@@ -688,12 +683,15 @@ def _print_calibration_table(calibration: list[dict]) -> None:
         ign_mean = f"{row['ignoring_mean']:.3f}" if row["ignoring_mean"] is not None else "   N/A"
         gap_str = f"{row['gap']:+.3f}" if row["gap"] is not None else "  N/A"
         inv_str = "Y" if row["is_inverted"] else "N"
+        all_regions = row.get("optimal_regions", [])
         t_low = row["optimal_threshold_low"]
         t_high = row["optimal_threshold_high"]
         if abs(t_low - t_high) < 1e-9:
             opt_str = f"{t_low:.3f}"
         else:
             opt_str = f"[{t_low:.3f}, {t_high:.3f}]"
+        if len(all_regions) > 1:
+            opt_str += f" +{len(all_regions)-1}"
         opt_mid = (t_low + t_high) / 2
         opt_mid_str = f"{opt_mid:.3f}"
         ba_str = f"{row['balanced_accuracy']:.3f}"
@@ -702,6 +700,26 @@ def _print_calibration_table(calibration: list[dict]) -> None:
             f"{try_mean:>8} {ign_mean:>8} "
             f"{gap_str:>7} {row['current_threshold']:>6.2f} {inv_str:>3} {opt_str:>16} {opt_mid_str:>7} {ba_str:>7}"
         )
+
+    # Print disjoint regions detail (deduplicated by conflict)
+    seen_disjoint: set[str] = set()
+    disjoint_lines: list[str] = []
+    for row in calibration:
+        cid = row["conflict_id"]
+        if cid in seen_disjoint:
+            continue
+        regions = row.get("optimal_regions", [])
+        if len(regions) > 1:
+            seen_disjoint.add(cid)
+            parts = ", ".join(
+                f"[{lo:.3f}, {hi:.3f}]" if abs(hi - lo) > 1e-9 else f"{lo:.3f}"
+                for lo, hi in regions
+            )
+            disjoint_lines.append(f"  {cid}: {parts}")
+    if disjoint_lines:
+        print(f"\nDisjoint optimal regions ({len(disjoint_lines)} conflicts):")
+        for line in disjoint_lines:
+            print(line)
 
 
 def _print_anomaly_summary(anomalies: list[dict]) -> None:
@@ -756,6 +774,7 @@ def _write_combined_csv(
         "ignoring_mean", "ignoring_min", "ignoring_max", "ignoring_std",
         "gap", "threshold", "is_inverted",
         "optimal_threshold", "optimal_threshold_low", "optimal_threshold_high",
+        "optimal_regions",
         "n_trying", "n_ignoring",
     ]
 
@@ -793,12 +812,15 @@ def _write_combined_csv(
                 ]:
                     row[k] = cal[k]
                 row["threshold"] = cal["current_threshold"]
+                regions = cal.get("optimal_regions", [])
+                row["optimal_regions"] = json.dumps(regions) if len(regions) > 1 else ""
             else:
                 for k in [
                     "trying_mean", "trying_min", "trying_max", "trying_std",
                     "ignoring_mean", "ignoring_min", "ignoring_max", "ignoring_std",
                     "gap", "is_inverted",
                     "optimal_threshold", "optimal_threshold_low", "optimal_threshold_high",
+                    "optimal_regions",
                     "n_trying", "n_ignoring", "threshold",
                 ]:
                     row[k] = ""

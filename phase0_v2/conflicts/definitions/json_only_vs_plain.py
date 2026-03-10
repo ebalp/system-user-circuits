@@ -20,6 +20,10 @@ from ..conflict_base import Conflict
 def _is_valid_json_object(text: str) -> bool:
     """True if text parses as a single JSON object, or looks like truncated JSON."""
     t = text.strip()
+    # Strip markdown code fences (e.g. ```json ... ```)
+    m = re.match(r'^```(?:json)?\s*\n(.*?)(?:\n```\s*)?$', t, re.DOTALL)
+    if m:
+        t = m.group(1).strip()
     if not t or not t.startswith("{"):
         return False
     try:

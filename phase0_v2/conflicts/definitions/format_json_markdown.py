@@ -19,7 +19,12 @@ from ..conflict_base import Conflict
 
 def _extract_json_block(text: str) -> str | None:
     """Extract content from a markdown JSON code block if present."""
+    # Complete block
     m = re.search(r"```(?:json)?\s*\n(.*?)```", text, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    # Truncated block (no closing ```)
+    m = re.search(r"```(?:json)?\s*\n(.*)", text, re.DOTALL)
     if m:
         return m.group(1).strip()
     return None
