@@ -6,7 +6,6 @@ from .conflict_base import Conflict
 from .definitions.language_en_es import LanguageEnEsConflict
 from .definitions.language_en_zh import LanguageEnZhConflict
 from .definitions.format_json_markdown import FormatJsonMarkdownConflict
-from .definitions.format_json_yaml import FormatJsonYamlConflict
 from .definitions.starting_word_hello_greetings import StartingWordHelloGreetingsConflict
 from .definitions.emoji_use_vs_avoid import EmojiUseVsAvoidConflict
 from .definitions.capitalization_all_caps import CapitalizationAllCapsConflict
@@ -34,7 +33,6 @@ from .definitions.alphabetical_sentences import AlphabeticalSentencesConflict
 from .definitions.keyword_avoidance import KeywordAvoidanceConflict
 from .definitions.word_repetition_density import WordRepetitionDensityConflict
 from .definitions.alliteration_density import AlliterationDensityConflict
-from .definitions.paragraph_end_same_word import ParagraphEndSameWordConflict
 from .definitions.paragraph_start_word import ParagraphStartWordConflict
 from .definitions.parenthetical_asides import ParentheticalAsidesConflict
 from .definitions.past_vs_present_tense import PastVsPresentTenseConflict

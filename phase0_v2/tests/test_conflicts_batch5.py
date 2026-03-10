@@ -170,11 +170,15 @@ class TestNumberedSectionsVsProse:
         )
         assert _has_numbered_sections(text) is True
 
-    def test_fewer_than_three_sections_rejected(self):
+    def test_two_sections_accepted(self):
         text = (
             "1. First point.\n"
             "2. Second point."
         )
+        assert _has_numbered_sections(text) is True
+
+    def test_single_section_rejected(self):
+        text = "1. First point only."
         assert _has_numbered_sections(text) is False
 
     def test_prose_without_numbers(self):

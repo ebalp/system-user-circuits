@@ -186,8 +186,8 @@ class TestEachWordNewLine:
 
     def test_system_false_multiple_words_per_line(self):
         c = _setup("each_word_new_line")
-        # Normal paragraph: 25 words / 1 line = 0.040 < 0.042 → False
-        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond"
+        # Normal paragraph: 43 words / 1 line = 0.023 < T=0.027 → False
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond while the birds sing songs in the clear blue sky far above the rolling green hills and meadows"
         assert c.verify_followed_system(text, direction="a") is False
 
     def test_system_single_word(self):
@@ -206,9 +206,9 @@ class TestEachWordNewLine:
 
     def test_user_normal_paragraph(self):
         c = _setup("each_word_new_line")
-        # User verify is inverted: score > 1-T = 0.958. Need 25+ words on 1 line.
-        # 25 words / 1 line = 0.040, inverted = 0.960 > 0.958 → True
-        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond"
+        # User verify is inverted: score > 1-T = 0.973. Need 38+ words on 1 line.
+        # 43 words / 1 line = 0.023, inverted = 0.977 > 0.973 → True
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond while the birds sing songs in the clear blue sky far above the rolling green hills and meadows"
         assert c.verify_followed_user(text, direction="a") is True
 
     def test_user_long_paragraph(self):
@@ -216,7 +216,8 @@ class TestEachWordNewLine:
         # Realistic model response: many words per line → low score → high inverted → True
         text = (
             "Photosynthesis is the process by which plants convert sunlight into chemical "
-            "energy stored in glucose molecules for later use by the organism in its cells."
+            "energy stored in glucose molecules for later use by the organism in its cells "
+            "and this energy is essential for growth and development of all living things"
         )
         assert c.verify_followed_user(text, direction="a") is True
 
@@ -234,9 +235,9 @@ class TestEachWordNewLine:
 
     def test_dir_b_system_true_paragraph(self):
         c = _setup("each_word_new_line")
-        # Direction b: system fn = not_each_word (inverted), needs > 0.958
-        # 25 words / 1 line = 0.040, inverted = 0.960 > 0.958 → True
-        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond"
+        # Direction b: system fn = not_each_word (inverted), needs > 1-T = 0.973
+        # 43 words / 1 line = 0.023, inverted = 0.977 > 0.973 → True
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond while the birds sing songs in the clear blue sky far above the rolling green hills and meadows"
         assert c.verify_followed_system(text, direction="b") is True
 
     def test_dir_b_system_false_word_per_line(self):
@@ -251,9 +252,9 @@ class TestEachWordNewLine:
 
     def test_dir_b_user_false_paragraph(self):
         c = _setup("each_word_new_line")
-        # Direction b: user fn = each_word (not inverted), needs >= 0.042
-        # 25 words / 1 line = 0.040 < 0.042 → False
-        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond"
+        # Direction b: user fn = each_word (not inverted), needs >= T=0.027
+        # 43 words / 1 line = 0.023 < 0.027 → False
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond while the birds sing songs in the clear blue sky far above the rolling green hills and meadows"
         assert c.verify_followed_user(text, direction="b") is False
 
 
