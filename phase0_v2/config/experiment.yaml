@@ -3,21 +3,12 @@
 models:
   - id: meta-llama/Llama-3.1-8B-Instruct
     exclude_conflicts:
-      - repeat_answer_twice
       - word_repetition_density
-      - keyword_exact_count
   # - google/gemma-3-27b-it
   - id: meta-llama/Llama-3.3-70B-Instruct
-    exclude_conflicts:
-      - keyword_exact_count
   - id: meta-llama/Llama-3.2-1B-Instruct
-    exclude_conflicts:
-      - keyword_exact_count
   # - Qwen/Qwen2.5-7B-Instruct
   - id: openai/gpt-oss-20b
-    exclude_conflicts:
-      - repeat_answer_twice
-      - keyword_exact_count
 
 # System prompt wrapping templates (rhetorical framings).
 # {system_instruction} is the full-sentence conflict system template, already rendered.
@@ -92,4 +83,4 @@ thresholds:
 api:
   timeout: 60
   max_retries: 3
-  concurrent_per_model: 16
+  concurrent_per_model: 64

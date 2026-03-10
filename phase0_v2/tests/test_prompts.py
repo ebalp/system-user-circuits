@@ -31,13 +31,14 @@ class TestConditionA:
         directions = {p.direction for p in cond_a}
         assert directions == {"a_to_b", "b_to_a"}
 
-    def test_generates_one_for_non_invertible(self, generator, task):
-        """Non-invertible conflict: 1 prompt (side a only)."""
-        conflict = get_conflict("odd_even_syllables")
+    def test_generates_two_for_partial_invertible(self, generator, task):
+        """Partial invertible conflict: 2 prompts (side a + side b baselines)."""
+        conflict = get_conflict("bullets_and_sub_bullets")
         prompts = generator.generate_for_conflict(conflict, [task])
         cond_a = [p for p in prompts if p.condition == "A"]
-        assert len(cond_a) == 1
-        assert cond_a[0].direction == "a_to_b"
+        assert len(cond_a) == 2
+        directions = {p.direction for p in cond_a}
+        assert directions == {"a_to_b", "b_to_a"}
 
     def test_fields(self, generator, task):
         conflict = get_conflict("forbidden_words")
@@ -63,13 +64,14 @@ class TestConditionB:
         for p in cond_b:
             assert p.user_style == config.default_user_style
 
-    def test_generates_one_for_non_invertible(self, generator, task):
-        """Non-invertible conflict: 1 prompt (side a only)."""
-        conflict = get_conflict("odd_even_syllables")
+    def test_generates_two_for_partial_invertible(self, generator, task):
+        """Partial invertible conflict: 2 prompts (side a + side b baselines)."""
+        conflict = get_conflict("bullets_and_sub_bullets")
         prompts = generator.generate_for_conflict(conflict, [task])
         cond_b = [p for p in prompts if p.condition == "B"]
-        assert len(cond_b) == 1
-        assert cond_b[0].direction == "a_to_b"
+        assert len(cond_b) == 2
+        directions = {p.direction for p in cond_b}
+        assert directions == {"a_to_b", "b_to_a"}
 
     def test_fields(self, generator, task):
         conflict = get_conflict("forbidden_words")
@@ -90,13 +92,13 @@ class TestConditionC:
         assert "a_to_b" in directions
         assert "b_to_a" in directions
 
-    def test_non_invertible_only_a_to_b(self, generator, task):
-        conflict = get_conflict("odd_even_syllables")
+    def test_partial_invertible_has_both_directions(self, generator, task):
+        conflict = get_conflict("bullets_and_sub_bullets")
         prompts = generator.generate_for_conflict(conflict, [task])
         cond_c = [p for p in prompts if p.condition == "C"]
         directions = {p.direction for p in cond_c}
         assert "a_to_b" in directions
-        assert "b_to_a" not in directions
+        assert "b_to_a" in directions
 
     def test_all_system_style_user_style_combos(self, generator, config, task):
         conflict = get_conflict("forbidden_words")
@@ -114,12 +116,12 @@ class TestConditionC:
         cond_c = [p for p in prompts if p.condition == "C"]
         assert len(cond_c) == 2 * 5 * 5
 
-    def test_expected_count_non_invertible(self, generator, config, task):
-        """1 dir x 5 system styles x 5 user styles = 25."""
-        conflict = get_conflict("odd_even_syllables")
+    def test_expected_count_partial_invertible(self, generator, config, task):
+        """2 dirs x 5 system styles x 5 user styles = 50."""
+        conflict = get_conflict("bullets_and_sub_bullets")
         prompts = generator.generate_for_conflict(conflict, [task])
         cond_c = [p for p in prompts if p.condition == "C"]
-        assert len(cond_c) == 1 * 5 * 5
+        assert len(cond_c) == 2 * 5 * 5
 
     def test_expected_label(self, generator, task):
         conflict = get_conflict("forbidden_words")
@@ -144,11 +146,12 @@ class TestConditionD:
         cond_d = [p for p in prompts if p.condition == "D"]
         assert len(cond_d) > 0
 
-    def test_not_for_non_invertible(self, generator, task):
-        conflict = get_conflict("odd_even_syllables")
+    def test_also_for_partial_invertible(self, generator, task):
+        """Partial invertible conflict also gets condition D."""
+        conflict = get_conflict("bullets_and_sub_bullets")
         prompts = generator.generate_for_conflict(conflict, [task])
         cond_d = [p for p in prompts if p.condition == "D"]
-        assert len(cond_d) == 0
+        assert len(cond_d) == 2
 
     def test_fields(self, generator, task):
         conflict = get_conflict("forbidden_words")
@@ -192,11 +195,11 @@ class TestPromptMetadata:
         prompts = generator.generate_for_conflict(conflict, [task])
         assert len(prompts) == 56
 
-    def test_total_count_non_invertible(self, generator, task):
-        """A:1 + B:1 + C:25 + D:0 = 27 per task."""
-        conflict = get_conflict("odd_even_syllables")
+    def test_total_count_partial_invertible(self, generator, task):
+        """A:2 + B:2 + C:50 + D:2 = 56 per task (partial invertible = same as full)."""
+        conflict = get_conflict("bullets_and_sub_bullets")
         prompts = generator.generate_for_conflict(conflict, [task])
-        assert len(prompts) == 27
+        assert len(prompts) == 56
 
     def test_multiple_tasks(self, generator):
         """Prompt count scales linearly with task count."""

@@ -33,11 +33,6 @@ class TestFixedArgs:
         args = c.sample_args()
         assert args == {"keyword": "important"}
 
-    def test_keyword_exact_count_fixed_values(self):
-        c = get_conflict("keyword_exact_count")
-        args = c.sample_args()
-        assert args == {"keyword": "important", "N": 3}
-
     def test_spanish_loanwords_fixed_values(self):
         c = get_conflict("spanish_loanwords")
         args = c.sample_args()
@@ -140,26 +135,6 @@ class TestFixedArgsEdgeCases:
         text = "First sentence. Second sentence. Third sentence."
         assert not c.verify_followed_system(text, direction="a")
 
-    def test_keyword_exact_count_verify_with_fixed(self):
-        c = get_conflict("keyword_exact_count")
-        args = c.sample_args()
-        c.build_system_prompt(direction="a", **args)
-        # keyword="important", N=3 -> exactly 3 occurrences
-        text = "This important thing is important and really important."
-        assert c.verify_followed_system(text, direction="a")
-        # No keyword -> user passes
-        text_none = "This is a test response."
-        assert c.verify_followed_user(text_none, direction="a")
-
-    def test_keyword_exact_count_wrong_count_fails(self):
-        """Count differing by >1 from target should fail system (±1 tolerance)."""
-        c = get_conflict("keyword_exact_count")
-        args = c.sample_args()
-        c.build_system_prompt(direction="a", **args)
-        # 0 occurrences, need 3, diff=3 > 1 → fails
-        text = "This thing is good."
-        assert not c.verify_followed_system(text, direction="a")
-
     def test_short_vs_long_sentences_verify_with_fixed(self):
         c = get_conflict("short_vs_long_sentences")
         args = c.sample_args()
@@ -214,7 +189,7 @@ class TestFixedArgsEdgeCases:
         """Every conflict with fixed args produces valid prompts."""
         fixed_ids = [
             "response_length", "forbidden_words", "keyword_in_early_sentence",
-            "keyword_exact_count", "short_vs_long_sentences",
+            "short_vs_long_sentences",
             "vocabulary_diversity", "pronoun_density", "number_density",
         ]
         for cid in fixed_ids:

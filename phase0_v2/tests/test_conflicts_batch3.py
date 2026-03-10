@@ -11,13 +11,13 @@ from collections import Counter
 
 BATCH3_IDS = [
     "keyword_in_early_sentence", "alphabetical_sentences",
-    "sentence_connector_density", "alliteration_density", "odd_even_syllables",
+    "sentence_connector_density", "alliteration_density",
     "paragraph_start_same_word",
     "word_repetition_density", "lowercase_vs_capitalized",
     "template_response",
 ]
 
-NON_INVERTIBLE_BATCH3 = {"odd_even_syllables"}
+NON_INVERTIBLE_BATCH3 = set()
 PARTIAL_BATCH3 = set()  # alliteration_density is "full", not "partial"
 
 
@@ -59,7 +59,7 @@ class TestBatch3Contract:
 
 class TestRegistryComplete:
     def test_total_conflicts(self):
-        assert len(get_all_conflicts()) == 42
+        assert len(get_all_conflicts()) == 41
 
     def test_all_ids_unique(self):
         ids = get_conflict_ids()
@@ -67,13 +67,13 @@ class TestRegistryComplete:
 
     def test_counterbalance_distribution(self):
         counts = Counter(c.counterbalance_quality for c in get_all_conflicts())
-        assert counts["full"] == 38, f"Expected 38 full, got {counts['full']}"
+        assert counts["full"] == 40, f"Expected 40 full, got {counts['full']}"
         assert counts["partial"] == 1, f"Expected 1 partial, got {counts['partial']}"
-        assert counts["none"] == 3, f"Expected 3 none, got {counts['none']}"
+        assert counts.get("none", 0) == 0, f"Expected 0 none, got {counts.get('none', 0)}"
 
     def test_all_non_invertible_ids(self):
         non_inv = {c.conflict_id for c in get_all_conflicts() if c.counterbalance_quality == "none"}
-        assert non_inv == {"stairs_indent", "each_word_new_line", "odd_even_syllables"}
+        assert non_inv == set()
 
 
 # -- Compatibility matrix --
@@ -92,19 +92,9 @@ class TestCompatibilityMatrix:
             invalid = cats - TASK_CATEGORIES
             assert invalid == set(), f"{cid} has invalid categories: {invalid}"
 
-    def test_stairs_indent_incompatible_with_coding_math(self):
-        assert not is_compatible("stairs_indent", "coding")
-        assert not is_compatible("stairs_indent", "math")
-        assert is_compatible("stairs_indent", "general")
-
     def test_language_en_es_compatible_with_all(self):
         for cat in TASK_CATEGORIES:
             assert is_compatible("language_en_es", cat)
-
-    def test_stairs_indent_incompatible_coding_math(self):
-        assert not is_compatible("stairs_indent", "coding")
-        assert not is_compatible("stairs_indent", "math")
-        assert is_compatible("stairs_indent", "creative")
 
 
 # -- Specific conflict verify tests --

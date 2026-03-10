@@ -203,8 +203,8 @@ class TestCrossModuleConsistency:
         uncovered = validate_matrix_coverage(get_conflict_ids())
         assert uncovered == []
 
-    def test_all_42_conflicts_registered(self):
-        assert len(get_all_conflicts()) == 42
+    def test_all_conflicts_registered(self):
+        assert len(get_all_conflicts()) == 41
 
     def test_prompt_count_scales_with_tasks(self, generator):
         """3 tasks should give 3x the prompts of 1 task."""
@@ -250,11 +250,11 @@ class TestDryRun:
 
 class TestRequireInvertible:
     def test_config_require_invertible_set(self, config):
-        """Config has require_invertible set (currently true)."""
+        """Config has require_invertible set (currently true). All conflicts are now invertible."""
         assert config.counterbalancing.require_invertible is True
         all_conflicts = get_all_conflicts()
         non_inv = [c for c in all_conflicts if not c.supports_counterbalancing()]
-        assert len(non_inv) > 0, "Expected some non-invertible conflicts in registry"
+        assert len(non_inv) == 0, "All conflicts should now be invertible"
 
     def test_filter_removes_non_invertible(self):
         """When require_invertible=True, non-invertible conflicts are excluded."""
@@ -265,13 +265,11 @@ class TestRequireInvertible:
         for c in filtered:
             assert c.supports_counterbalancing()
 
-    def test_non_invertible_ids_excluded(self):
-        """Specific non-invertible IDs should be dropped by the filter."""
+    def test_no_non_invertible_ids(self):
+        """All registered conflicts should support counterbalancing."""
         all_conflicts = get_all_conflicts()
-        filtered = [c for c in all_conflicts if c.supports_counterbalancing()]
-        filtered_ids = {c.conflict_id for c in filtered}
-        for cid in ("stairs_indent", "each_word_new_line", "odd_even_syllables"):
-            assert cid not in filtered_ids
+        non_inv = [c.conflict_id for c in all_conflicts if c.counterbalance_quality == "none"]
+        assert non_inv == []
 
     def test_partial_invertible_kept(self):
         """Partial counterbalance conflicts should survive the filter."""
@@ -285,7 +283,7 @@ class TestRequireInvertible:
         """42 total - 3 non-invertible = 39 invertible."""
         all_conflicts = get_all_conflicts()
         filtered = [c for c in all_conflicts if c.supports_counterbalancing()]
-        assert len(filtered) == 39
+        assert len(filtered) == 41
 
     def test_config_parses_require_invertible(self):
         """Config correctly parses require_invertible field."""

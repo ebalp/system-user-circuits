@@ -11,10 +11,8 @@ ALL_CATEGORIES = set(TASK_CATEGORIES)
 INCOMPATIBLE: dict[str, set[str]] = {
     "json_only_vs_plain":          {"coding"},
     "number_density":              {"math"},
-    "stairs_indent":               {"coding", "math"},
     "each_word_new_line":          {"coding", "math"},
     "alphabetical_sentences":      {"coding", "math"},
-    "odd_even_syllables":          {"coding", "math"},
     "first_vs_third_person":       {"coding", "math"},
     "questions_vs_statements":     {"coding", "math"},
     "imperative_vs_declarative":   {"coding", "math"},
@@ -23,6 +21,7 @@ INCOMPATIBLE: dict[str, set[str]] = {
 # All other conflict IDs — explicitly reviewed as compatible with all categories.
 EXPLICITLY_COMPATIBLE: set[str] = {
     "language_en_es",
+    "language_en_zh",
     "format_json_markdown",
     "starting_word_hello_greetings",
     "emoji_use_vs_avoid",
@@ -31,9 +30,7 @@ EXPLICITLY_COMPATIBLE: set[str] = {
     "disclaimer_first_vs_none",
     "self_reference_ai_mention",
     "forbidden_words",
-    "keyword_exact_count",
     "short_vs_long_sentences",
-    "repeat_answer_twice",
     "spanish_loanwords",
     "pronoun_density",
     "vocabulary_diversity",
@@ -55,6 +52,8 @@ EXPLICITLY_COMPATIBLE: set[str] = {
     "parenthetical_asides",
     "past_vs_present_tense",
     "keyword_frequency",
+    "leetspeak_encoding",
+    "vowel_omission",
 }
 
 

@@ -171,76 +171,13 @@ class TestResponseLength:
 
 
 # ===========================================================================
-# 5. stairs_indent (non-invertible, direction "a" only)
-# ===========================================================================
-
-class TestStairsIndent:
-    """System: each line has more leading spaces. User: single paragraph."""
-
-    def test_system_true_stair(self):
-        c = _setup("stairs_indent")
-        text = "First line\n  Second line\n    Third line\n      Fourth line"
-        assert c.verify_followed_system(text, direction="a") is True
-
-    def test_system_false_equal_indent(self):
-        c = _setup("stairs_indent")
-        text = "First\n  Second\n  Third"
-        assert c.verify_followed_system(text, direction="a") is False
-
-    def test_system_false_decreasing_indent(self):
-        c = _setup("stairs_indent")
-        text = "    First\n  Second\nThird"
-        assert c.verify_followed_system(text, direction="a") is False
-
-    def test_system_false_single_line(self):
-        c = _setup("stairs_indent")
-        assert c.verify_followed_system("Just one line.", direction="a") is False
-
-    def test_system_blank_lines_ignored(self):
-        c = _setup("stairs_indent")
-        text = "First\n\n  Second\n\n    Third"
-        assert c.verify_followed_system(text, direction="a") is True
-
-    def test_system_tabs_not_counted_as_spaces(self):
-        c = _setup("stairs_indent")
-        text = "First\n\tSecond\n\t\tThird"
-        assert c.verify_followed_system(text, direction="a") is False
-
-    def test_user_single_paragraph_no_newlines(self):
-        c = _setup("stairs_indent")
-        assert c.verify_followed_user("A single flowing paragraph with no breaks.", direction="a") is True
-
-    def test_user_multiple_paragraphs_no_stairs(self):
-        c = _setup("stairs_indent")
-        # User verify is now 1 - indent_stairs_score. No indentation → score=0 → inverted=1.0 → True
-        assert c.verify_followed_user("First paragraph.\n\nSecond paragraph.", direction="a") is True
-
-    def test_user_single_newline_ok(self):
-        c = _setup("stairs_indent")
-        assert c.verify_followed_user("First line.\nSecond line.", direction="a") is True
-
-    def test_user_multiple_lines_no_stairs(self):
-        c = _setup("stairs_indent")
-        # No increasing indent → score=0 → inverted=1.0 → True
-        assert c.verify_followed_user("Line one.\nLine two.\nLine three.", direction="a") is True
-
-    def test_user_false_when_staircase(self):
-        c = _setup("stairs_indent")
-        # Actual staircase → high score → low inverted → False
-        assert c.verify_followed_user("A\n B\n  C\n   D", direction="a") is False
-
-    def test_system_increment_by_one_space(self):
-        c = _setup("stairs_indent")
-        text = "A\n B\n  C\n   D"
-        assert c.verify_followed_system(text, direction="a") is True
-
-
-# ===========================================================================
-# 6. each_word_new_line (non-invertible, direction "a" only)
+# 5. each_word_new_line (fully invertible, directions "a" and "b")
 # ===========================================================================
 
 class TestEachWordNewLine:
     """System: each word on its own line. User: normal paragraphs."""
+
+    # -- Direction "a": system=word-per-line, user=paragraphs --
 
     def test_system_true_one_word_per_line(self):
         c = _setup("each_word_new_line")
@@ -249,9 +186,8 @@ class TestEachWordNewLine:
 
     def test_system_false_multiple_words_per_line(self):
         c = _setup("each_word_new_line")
-        # "Hello world\nhow\nare you" = 3 lines / 5 words = 0.6 score,
-        # which exceeds threshold 0.2. Use a normal paragraph instead.
-        text = "Hello world how are you doing today"
+        # Normal paragraph: 22 words / 1 line = 0.0455 < 0.048 → False
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree"
         assert c.verify_followed_system(text, direction="a") is False
 
     def test_system_single_word(self):
@@ -270,14 +206,18 @@ class TestEachWordNewLine:
 
     def test_user_normal_paragraph(self):
         c = _setup("each_word_new_line")
-        # User verify is now 1 - word_per_line_score. With T=0.20, inverted needs > 0.80.
-        # 7 words / 1 line = 0.143, inverted = 0.857 > 0.80 → True
-        assert c.verify_followed_user("This is a normal paragraph with spaces.", direction="a") is True
+        # User verify is inverted: score > 1-T = 0.952. Need 22+ words on 1 line.
+        # 22 words / 1 line = 0.0455, inverted = 0.9545 > 0.952 → True
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree"
+        assert c.verify_followed_user(text, direction="a") is True
 
     def test_user_long_paragraph(self):
         c = _setup("each_word_new_line")
         # Realistic model response: many words per line → low score → high inverted → True
-        text = "Photosynthesis is the process by which plants convert sunlight into chemical energy stored in glucose."
+        text = (
+            "Photosynthesis is the process by which plants convert sunlight into chemical "
+            "energy stored in glucose molecules for later use by the organism in its cells."
+        )
         assert c.verify_followed_user(text, direction="a") is True
 
     def test_user_false_one_word_per_line(self):
@@ -289,6 +229,32 @@ class TestEachWordNewLine:
         c = _setup("each_word_new_line")
         # Single word: 1 line / 1 word = 1.0, inverted = 0.0 → False
         assert c.verify_followed_user("Word", direction="a") is False
+
+    # -- Direction "b": system=paragraphs, user=word-per-line --
+
+    def test_dir_b_system_true_paragraph(self):
+        c = _setup("each_word_new_line")
+        # Direction b: system fn = not_each_word (inverted), needs > 0.952
+        # 22 words / 1 line = 0.0455, inverted = 0.9545 > 0.952 → True
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree"
+        assert c.verify_followed_system(text, direction="b") is True
+
+    def test_dir_b_system_false_word_per_line(self):
+        c = _setup("each_word_new_line")
+        text = "Hello\nworld\nhow\nare\nyou"
+        assert c.verify_followed_system(text, direction="b") is False
+
+    def test_dir_b_user_true_word_per_line(self):
+        c = _setup("each_word_new_line")
+        text = "Hello\nworld\nhow\nare\nyou"
+        assert c.verify_followed_user(text, direction="b") is True
+
+    def test_dir_b_user_false_paragraph(self):
+        c = _setup("each_word_new_line")
+        # Direction b: user fn = each_word (not inverted), needs >= 0.048
+        # 22 words / 1 line = 0.0455 < 0.048 → False
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree"
+        assert c.verify_followed_user(text, direction="b") is False
 
 
 # ===========================================================================

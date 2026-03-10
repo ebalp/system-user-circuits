@@ -286,52 +286,6 @@ class TestAlliterationDensity:
         assert c.verify_followed_user(high_allit, direction="b") is True
 
 
-# ===========================================================================
-# odd_even_syllables (non-invertible, direction "a" only)
-# ===========================================================================
-
-class TestOddEvenSyllables:
-    """verify_system = alternating odd/even syllable words; verify_user = NOT alternating."""
-
-    def test_system_true_positive(self):
-        c = _prepare("odd_even_syllables")
-        # "cat"=1(odd) "tiger"=2(even) "dog"=1(odd) "monkey"=2(even)
-        response = "cat tiger dog monkey"
-        assert c.verify_followed_system(response, direction="a") is True
-
-    def test_system_false_same_parity(self):
-        c = _prepare("odd_even_syllables")
-        # "cat"=1 "dog"=1 -- both odd, no alternation
-        response = "cat dog"
-        assert c.verify_followed_system(response, direction="a") is False
-
-    def test_user_natural_english_no_alternation(self):
-        c = _prepare("odd_even_syllables")
-        # With asymmetric threshold (> 1-0.4 = > 0.6), user needs alternation score < 0.4.
-        # Natural English hovers around 0.5 alternation, so the inverted score is ~0.5,
-        # which is NOT > 0.6. This constraint has no real signal (documented in calibration).
-        # Use a response with many same-syllable-count consecutive words to get low alternation.
-        response = "I see the tree and the bee near the sea by the key."
-        result = c.verify_followed_user(response, direction="a")
-        assert result is True
-
-    def test_user_false_when_alternating(self):
-        c = _prepare("odd_even_syllables")
-        # If it happens to alternate, user verification fails
-        response = "cat tiger dog monkey"
-        assert c.verify_followed_user(response, direction="a") is False
-
-    def test_no_direction_b(self):
-        c = get_conflict("odd_even_syllables")
-        assert c.counterbalance_quality == "none"
-        with pytest.raises(ValueError):
-            c.build_system_prompt(direction="b")
-
-    def test_single_word(self):
-        c = _prepare("odd_even_syllables")
-        # Single word -> no pairs to compare -> vacuously True
-        response = "cat"
-        assert c.verify_followed_system(response, direction="a") is True
 
 
 # ===========================================================================

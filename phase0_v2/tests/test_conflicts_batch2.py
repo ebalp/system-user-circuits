@@ -6,11 +6,11 @@ from phase0_v2.conflicts.registry import get_conflict
 
 BATCH2_IDS = [
     "number_density",
-    "vocabulary_diversity", "response_length", "stairs_indent",
+    "vocabulary_diversity", "response_length",
     "each_word_new_line", "bullets_and_sub_bullets", "html_emphasis_tags",
 ]
 
-NON_INVERTIBLE = {"stairs_indent", "each_word_new_line"}
+NON_INVERTIBLE = set()
 PARTIAL = {"bullets_and_sub_bullets"}
 
 
@@ -55,22 +55,24 @@ class TestBatch2Contract:
 
 # ── Specific verify function tests ──
 
-class TestNonInvertible:
-    def test_stairs_indent_verify(self):
-        c = get_conflict("stairs_indent")
-        c.build_system_prompt(direction="a")
-        stair = "Line one\n  Line two\n    Line three"
-        flat = "Line one\nLine two\nLine three"
-        sys_r = c.verify_followed_system(stair, direction="a")
-        assert isinstance(sys_r, bool)
-
-    def test_each_word_new_line_verify(self):
+class TestEachWordNewLine:
+    def test_verify_direction_a(self):
         c = get_conflict("each_word_new_line")
         c.build_system_prompt(direction="a")
         one_per_line = "Hello\nworld\nhow\nare\nyou"
-        normal = "Hello world how are you"
         sys_r = c.verify_followed_system(one_per_line, direction="a")
         assert isinstance(sys_r, bool)
+
+    def test_verify_direction_b(self):
+        c = get_conflict("each_word_new_line")
+        c.build_system_prompt(direction="b")
+        # Need 22+ words for inverted threshold > 0.952
+        normal = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree"
+        sys_r = c.verify_followed_system(normal, direction="b")
+        assert sys_r is True
+        one_per_line = "Hello\nworld\nhow\nare\nyou"
+        usr_r = c.verify_followed_user(one_per_line, direction="b")
+        assert usr_r is True
 
 
 class TestParametrizedConflicts:

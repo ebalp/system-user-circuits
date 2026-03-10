@@ -4,6 +4,7 @@ from .conflict_base import Conflict
 
 # -- Batch 1: original Phase 0 conflicts --
 from .definitions.language_en_es import LanguageEnEsConflict
+from .definitions.language_en_zh import LanguageEnZhConflict
 from .definitions.format_json_markdown import FormatJsonMarkdownConflict
 from .definitions.format_json_yaml import FormatJsonYamlConflict
 from .definitions.starting_word_hello_greetings import StartingWordHelloGreetingsConflict
@@ -15,18 +16,15 @@ from .definitions.self_reference_ai_mention import SelfReferenceAiMentionConflic
 
 # -- Batch 1: dataset conflicts --
 from .definitions.forbidden_words import ForbiddenWordsConflict
-from .definitions.keyword_exact_count import KeywordExactCountConflict
 from .definitions.keyword_frequency import KeywordFrequencyConflict
 from .definitions.short_vs_long_sentences import ShortVsLongSentencesConflict
 from .definitions.json_only_vs_plain import JsonOnlyVsPlainConflict
-from .definitions.repeat_answer_twice import RepeatAnswerTwiceConflict
 from .definitions.spanish_loanwords import SpanishLoanwordsConflict
 
 # -- Batch 2 --
 from .definitions.number_density import NumberDensityConflict
 from .definitions.vocabulary_diversity import VocabularyDiversityConflict
 from .definitions.response_length import ResponseLengthConflict
-from .definitions.stairs_indent import StairsIndentConflict
 from .definitions.each_word_new_line import EachWordNewLineConflict
 from .definitions.bullets_and_sub_bullets import BulletsAndSubBulletsConflict
 from .definitions.html_emphasis_tags import HtmlEmphasisTagsConflict
@@ -36,7 +34,6 @@ from .definitions.alphabetical_sentences import AlphabeticalSentencesConflict
 from .definitions.keyword_in_early_sentence import KeywordInEarlySentenceConflict
 from .definitions.word_repetition_density import WordRepetitionDensityConflict
 from .definitions.alliteration_density import AlliterationDensityConflict
-from .definitions.odd_even_syllables import OddEvenSyllablesConflict
 from .definitions.paragraph_end_same_word import ParagraphEndSameWordConflict
 from .definitions.paragraph_start_same_word import ParagraphStartSameWordConflict
 from .definitions.parenthetical_asides import ParentheticalAsidesConflict
@@ -55,8 +52,10 @@ from .definitions.imperative_vs_declarative import ImperativeVsDeclarativeConfli
 from .definitions.address_reader_directly import AddressReaderDirectlyConflict
 from .definitions.direct_answer_vs_hedging import DirectAnswerVsHedgingConflict
 from .definitions.formal_vs_casual_tone import FormalVsCasualToneConflict
+from .definitions.leetspeak_encoding import LeetspeakEncodingConflict
 from .definitions.numbered_sections_vs_prose import NumberedSectionsVsProseConflict
 from .definitions.short_paragraphs_vs_single_block import ShortParagraphsVsSingleBlockConflict
+from .definitions.vowel_omission import VowelOmissionConflict
 
 # Alphabetically sorted by class name
 _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
@@ -77,31 +76,30 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     FormatJsonMarkdownConflict,
     HtmlEmphasisTagsConflict,
     JsonOnlyVsPlainConflict,
-    KeywordExactCountConflict,
     KeywordFrequencyConflict,
     KeywordInEarlySentenceConflict,
     LanguageEnEsConflict,
+    LanguageEnZhConflict,
+    LeetspeakEncodingConflict,
     ListBulletsVsNumberedConflict,
     ShortVsLongSentencesConflict,
     WordRepetitionDensityConflict,
     VocabularyDiversityConflict,
     AlliterationDensityConflict,
     NumberedSectionsVsProseConflict,
-    OddEvenSyllablesConflict,
     ParagraphStartSameWordConflict,
     ParentheticalAsidesConflict,
     PastVsPresentTenseConflict,
     PronounDensityConflict,
     QuestionsVsStatementsConflict,
-    RepeatAnswerTwiceConflict,
     SelfReferenceAiMentionConflict,
     SentenceConnectorDensityConflict,
     ShortParagraphsVsSingleBlockConflict,
-    StairsIndentConflict,
     StartingWordHelloGreetingsConflict,
     TemplateResponseConflict,
     LowercaseVsCapitalizedConflict,
     ResponseLengthConflict,
+    VowelOmissionConflict,
 ]
 
 _REGISTRY: dict[str, Conflict] = {}
