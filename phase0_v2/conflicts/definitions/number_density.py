@@ -62,7 +62,6 @@ def _verify_inverse_user(response: str, args: dict) -> float:
 
 class NumberDensityConflict(Conflict):
     conflict_id = "number_density"
-    verify_threshold = 0.812
 
     system_template = (
         "Include specific numbers, statistics, percentages, dates, and numerical "

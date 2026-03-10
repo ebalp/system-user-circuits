@@ -103,7 +103,8 @@ class TestSpanishLoanwords:
         assert c.conflict_id == "spanish_loanwords"
         assert c.counterbalance_quality == "full"
         assert c.arg_keys == []
-        assert c.verify_threshold == 0.3
+        from phase0_v2.config.thresholds import get_threshold
+        assert c.verify_threshold == get_threshold("spanish_loanwords")
 
 
 # ===========================================================================
@@ -244,7 +245,8 @@ class TestAlphabeticalSentences:
         assert c.conflict_id == "alphabetical_sentences"
         assert c.counterbalance_quality == "full"
         assert c.arg_keys == []
-        assert c.verify_threshold == 0.32
+        from phase0_v2.config.thresholds import get_threshold
+        assert c.verify_threshold == get_threshold("alphabetical_sentences")
 
 
 # (consonant_clusters removed — unrealistic constraint)

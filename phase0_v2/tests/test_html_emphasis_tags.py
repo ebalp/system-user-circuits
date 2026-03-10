@@ -141,8 +141,9 @@ class TestHtmlEmphasisTagsContract:
         assert sys_a != sys_b
 
     def test_threshold(self):
+        from phase0_v2.config.thresholds import get_threshold
         c = get_conflict("html_emphasis_tags")
-        assert c.verify_threshold == 0.5
+        assert c.verify_threshold == get_threshold("html_emphasis_tags")
 
     def test_float_scorer_type(self):
         c = _setup("html_emphasis_tags")

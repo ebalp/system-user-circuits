@@ -58,7 +58,6 @@ def _verify_inverse_user(response: str, args: dict) -> float:
 
 class KeywordFrequencyConflict(Conflict):
     conflict_id = "keyword_frequency"
-    verify_threshold = 0.211
 
     system_template = (
         "Use the word '{keyword}' frequently throughout your response "

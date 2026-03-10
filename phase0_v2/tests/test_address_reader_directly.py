@@ -49,7 +49,8 @@ class TestContract:
         assert "{" not in usr_a
 
     def test_threshold_set(self, conflict):
-        assert conflict.verify_threshold == 0.022
+        from phase0_v2.config.thresholds import get_threshold
+        assert conflict.verify_threshold == get_threshold(conflict.conflict_id)
 
     def test_verify_fns_are_float(self, conflict):
         result = conflict.score_system("Hello world", direction="a")
@@ -119,7 +120,7 @@ class TestScoreDirectAddress:
             "thrive. So, let's dive in and explore how it works."
         )
         score = score_direct_address(text)
-        assert score >= 0.022, f"Direct-address response should pass threshold, got {score}"
+        assert score >= 0.020, f"Direct-address response should pass threshold, got {score}"
 
     def test_model_response_impersonal(self):
         """Model response when asked for impersonal language (from smoke test)."""
@@ -131,7 +132,7 @@ class TestScoreDirectAddress:
             "identify patterns and relationships."
         )
         score = score_direct_address(text)
-        assert score < 0.022, f"Impersonal response should fail threshold, got {score}"
+        assert score < 0.020, f"Impersonal response should fail threshold, got {score}"
 
 
 # -- Edge cases --

@@ -53,7 +53,8 @@ class TestContract:
         assert "{" not in usr_a
 
     def test_threshold_set(self, conflict):
-        assert conflict.verify_threshold == 0.679
+        from phase0_v2.config.thresholds import get_threshold
+        assert conflict.verify_threshold == get_threshold(conflict.conflict_id)
 
     def test_verify_fns_are_float(self, conflict):
         """All verify functions should return float."""
@@ -163,7 +164,7 @@ class TestScorePastTense:
             "proposed by the scientist John Michell in 1783."
         )
         score = score_past_tense(text)
-        assert score >= 0.679, f"Past-tense response should pass threshold, got {score}"
+        assert score >= 0.698, f"Past-tense response should pass threshold, got {score}"
 
     def test_model_response_present_tense(self):
         """Model response when asked for present tense (from smoke test)."""
@@ -173,7 +174,7 @@ class TestScorePastTense:
             "are being monitored remotely through mobile apps."
         )
         score = score_past_tense(text)
-        assert score < 0.679, f"Present-tense response should fail threshold, got {score}"
+        assert score < 0.698, f"Present-tense response should fail threshold, got {score}"
 
 
 # ── Edge cases ──

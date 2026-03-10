@@ -36,7 +36,6 @@ score_verbosity.is_inverted = True  # type: ignore[attr-defined]
 
 class ResponseLengthConflict(Conflict):
     conflict_id = "response_length"
-    verify_threshold = 0.394  # midpoint of optimal range from calibration
 
     system_template = (
         "Respond in at most two short sentences. Never use lists, bullet points, "

@@ -1,0 +1,28 @@
+# Float conflict thresholds — single source of truth.
+# Thresholds are set to the midpoint of the optimal range from calibration analysis.
+# Boolean conflicts don't have thresholds and are not listed here.
+
+address_reader_directly: 0.020
+alliteration_density: 0.115
+alphabetical_sentences: 0.458
+direct_answer_vs_hedging: 0.768
+each_word_new_line: 0.042
+first_vs_third_person: 0.178
+formal_vs_casual_tone: 0.994
+html_emphasis_tags: 0.250
+imperative_vs_declarative: 0.454
+keyword_frequency: 0.201
+leetspeak_encoding: 0.153
+number_density: 0.750
+paragraph_end_same_word: 0.083
+paragraph_start_same_word: 0.750
+parenthetical_asides: 0.275
+past_vs_present_tense: 0.695
+pronoun_density: 0.032
+response_length: 0.334
+sentence_connector_density: 0.454
+short_vs_long_sentences: 0.432
+spanish_loanwords: 0.350
+vocabulary_diversity: 0.143
+vowel_omission: 0.696
+word_repetition_density: 0.338

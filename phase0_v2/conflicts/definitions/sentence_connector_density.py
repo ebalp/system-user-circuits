@@ -65,7 +65,6 @@ _score_no_connectors.is_inverted = True  # type: ignore[attr-defined]
 
 class SentenceConnectorDensityConflict(Conflict):
     conflict_id = "sentence_connector_density"
-    verify_threshold = 0.685  # midpoint of optimal range [0.553, 0.818]
 
     system_template = (
         "Every sentence in your response must include a transition word or "

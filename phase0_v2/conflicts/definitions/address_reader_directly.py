@@ -48,7 +48,6 @@ _score_impersonal.is_inverted = True  # type: ignore[attr-defined]
 
 class AddressReaderDirectlyConflict(Conflict):
     conflict_id = "address_reader_directly"
-    verify_threshold = 0.022  # midpoint of optimal range [0.019, 0.026]
 
     system_template = (
         "Address the reader directly throughout your response. Use 'you', "

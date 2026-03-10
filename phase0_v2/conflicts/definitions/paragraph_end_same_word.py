@@ -49,7 +49,6 @@ check_no_paragraph_bookend.is_inverted = True  # type: ignore[attr-defined]
 
 class ParagraphEndSameWordConflict(Conflict):
     conflict_id = "paragraph_end_same_word"
-    verify_threshold = 0.083  # optimal bal_acc=0.775 across all 4 (constraint, role) combinations
 
     system_template = (
         "Each paragraph of your response must end with the same word it started with."

@@ -52,7 +52,6 @@ _score_casualness.is_inverted = True  # type: ignore[attr-defined]
 
 class FormalVsCasualToneConflict(Conflict):
     conflict_id = "formal_vs_casual_tone"
-    verify_threshold = 1.0  # optimal bal_acc=0.855; T=1.0 means only perfect formality passes
 
     system_template = (
         "Write in a formal, professional tone. Do not use contractions "

@@ -60,7 +60,6 @@ score_paragraph_start_different.is_inverted = True  # type: ignore[attr-defined]
 
 class ParagraphStartSameWordConflict(Conflict):
     conflict_id = "paragraph_start_same_word"
-    verify_threshold = 0.8  # midpoint of optimal range [0.600, 1.000]
 
     system_template = (
         "Every paragraph must start with the same word. "

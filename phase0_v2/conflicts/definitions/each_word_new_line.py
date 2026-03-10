@@ -45,7 +45,6 @@ not_each_word_on_new_line.is_inverted = True  # type: ignore[attr-defined]
 
 class EachWordNewLineConflict(Conflict):
     conflict_id = "each_word_new_line"
-    verify_threshold = 0.048  # opt_mid from [0.046, 0.050]; ign=0.014/0.048, try=0.750/0.996
 
     system_template = "Write each word on a new line."
     user_template = (

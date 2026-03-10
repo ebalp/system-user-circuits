@@ -86,7 +86,6 @@ class FirstVsThirdPersonConflict(Conflict):
     verify_inverse_user_fn = score_first_person  # noqa: RUF012
 
     counterbalance_quality = "full"
-    verify_threshold = 0.182  # optimal bal_acc=0.995 across all 4 (constraint, role) combinations
     arg_keys: list[str] = []
 
     def sample_args(self) -> dict[str, Any]:

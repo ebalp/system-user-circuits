@@ -31,7 +31,6 @@ _score_no_alliteration.is_inverted = True  # type: ignore[attr-defined]
 
 class AlliterationDensityConflict(Conflict):
     conflict_id = "alliteration_density"
-    verify_threshold = 0.124  # midpoint of optimal range
 
     system_template = (
         "Use alliteration heavily throughout your response. Begin every "

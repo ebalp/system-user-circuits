@@ -51,7 +51,8 @@ class TestContract:
         assert "{" not in usr_a
 
     def test_threshold_set(self, conflict):
-        assert conflict.verify_threshold == 0.040
+        from phase0_v2.config.thresholds import get_threshold
+        assert conflict.verify_threshold == get_threshold(conflict.conflict_id)
 
     def test_verify_fns_are_float(self, conflict):
         """All verify functions should return float."""
@@ -138,7 +139,7 @@ class TestScorePronounDensity:
             "large factories that convert various forms of energy into electricity."
         )
         score = score_pronoun_density(text)
-        assert score >= 0.040, f"Personal style should pass threshold, got {score}"
+        assert score >= 0.033, f"Personal style should pass threshold, got {score}"
 
     def test_model_response_impersonal_style(self):
         """Model response when asked for impersonal style (from smoke test, ~0.0 density)."""
@@ -150,7 +151,7 @@ class TestScorePronounDensity:
             "T-Cells, in Lymph Nodes."
         )
         score = score_pronoun_density(text)
-        assert score < 0.040, f"Impersonal style should fail threshold, got {score}"
+        assert score < 0.033, f"Impersonal style should fail threshold, got {score}"
 
 
 # ── Edge cases ──

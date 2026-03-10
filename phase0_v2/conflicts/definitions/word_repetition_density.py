@@ -74,7 +74,6 @@ _score_diverse.is_inverted = True  # type: ignore[attr-defined]
 
 class WordRepetitionDensityConflict(Conflict):
     conflict_id = "word_repetition_density"
-    verify_threshold = 0.338  # opt_mid from calibration; BA=0.920
 
     system_template = (
         "Deliberately repeat the same key words many times in your response. "

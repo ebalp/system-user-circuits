@@ -186,8 +186,8 @@ class TestEachWordNewLine:
 
     def test_system_false_multiple_words_per_line(self):
         c = _setup("each_word_new_line")
-        # Normal paragraph: 22 words / 1 line = 0.0455 < 0.048 → False
-        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree"
+        # Normal paragraph: 25 words / 1 line = 0.040 < 0.042 → False
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond"
         assert c.verify_followed_system(text, direction="a") is False
 
     def test_system_single_word(self):
@@ -206,9 +206,9 @@ class TestEachWordNewLine:
 
     def test_user_normal_paragraph(self):
         c = _setup("each_word_new_line")
-        # User verify is inverted: score > 1-T = 0.952. Need 22+ words on 1 line.
-        # 22 words / 1 line = 0.0455, inverted = 0.9545 > 0.952 → True
-        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree"
+        # User verify is inverted: score > 1-T = 0.958. Need 25+ words on 1 line.
+        # 25 words / 1 line = 0.040, inverted = 0.960 > 0.958 → True
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond"
         assert c.verify_followed_user(text, direction="a") is True
 
     def test_user_long_paragraph(self):
@@ -234,9 +234,9 @@ class TestEachWordNewLine:
 
     def test_dir_b_system_true_paragraph(self):
         c = _setup("each_word_new_line")
-        # Direction b: system fn = not_each_word (inverted), needs > 0.952
-        # 22 words / 1 line = 0.0455, inverted = 0.9545 > 0.952 → True
-        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree"
+        # Direction b: system fn = not_each_word (inverted), needs > 0.958
+        # 25 words / 1 line = 0.040, inverted = 0.960 > 0.958 → True
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond"
         assert c.verify_followed_system(text, direction="b") is True
 
     def test_dir_b_system_false_word_per_line(self):
@@ -251,9 +251,9 @@ class TestEachWordNewLine:
 
     def test_dir_b_user_false_paragraph(self):
         c = _setup("each_word_new_line")
-        # Direction b: user fn = each_word (not inverted), needs >= 0.048
-        # 22 words / 1 line = 0.0455 < 0.048 → False
-        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree"
+        # Direction b: user fn = each_word (not inverted), needs >= 0.042
+        # 25 words / 1 line = 0.040 < 0.042 → False
+        text = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond"
         assert c.verify_followed_user(text, direction="b") is False
 
 
@@ -343,10 +343,11 @@ class TestHtmlEmphasisTags:
         text = "**Bold** and **more bold** are not HTML."
         assert c.verify_followed_system(text, direction="a") is False
 
-    def test_system_false_one_tag_only(self):
+    def test_system_true_one_tag_only(self):
         c = _setup("html_emphasis_tags")
         text = "Only <b>one</b> tag here."
-        assert c.verify_followed_system(text, direction="a") is False
+        # score = 1/3 ≈ 0.333 >= threshold 0.333 → True
+        assert c.verify_followed_system(text, direction="a") is True
 
     def test_user_true_no_html(self):
         c = _setup("html_emphasis_tags")

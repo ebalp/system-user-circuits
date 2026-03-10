@@ -70,7 +70,6 @@ def _verify_inverse_user(response: str, args: dict) -> float:
 
 class SpanishLoanwordsConflict(Conflict):
     conflict_id = "spanish_loanwords"
-    verify_threshold = 0.3
 
     system_template = (
         "Respond in English but naturally incorporate these Spanish phrases "

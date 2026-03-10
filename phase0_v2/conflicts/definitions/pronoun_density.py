@@ -63,7 +63,6 @@ _score_no_pronouns.is_inverted = True  # type: ignore[attr-defined]
 
 class PronounDensityConflict(Conflict):
     conflict_id = "pronoun_density"
-    verify_threshold = 0.040
 
     system_template = (
         "Write as if speaking directly to the reader. "

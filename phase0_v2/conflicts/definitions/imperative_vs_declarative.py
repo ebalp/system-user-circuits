@@ -126,7 +126,6 @@ _score_declarative.is_inverted = True  # type: ignore[attr-defined]
 
 class ImperativeVsDeclarativeConflict(Conflict):
     conflict_id = "imperative_vs_declarative"
-    verify_threshold = 0.458  # midpoint of optimal range [0.417, 0.500]
 
     system_template = (
         "Write your entire response as direct commands and instructions. "

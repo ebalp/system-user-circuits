@@ -151,7 +151,8 @@ class TestNumberDensityConflict:
         assert 0.0 < score < 1.0
 
     def test_threshold_value(self, conflict):
-        assert conflict.verify_threshold == 0.812
+        from phase0_v2.config.thresholds import get_threshold
+        assert conflict.verify_threshold == get_threshold(conflict.conflict_id)
 
     def test_asymmetric_thresholds_no_both(self, conflict):
         """No response should satisfy both system and user at the same threshold."""

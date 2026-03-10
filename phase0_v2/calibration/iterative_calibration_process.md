@@ -361,7 +361,7 @@ Multiple conflicts are diagnosed in parallel via subagents.
 | Category | Description | Typical action |
 |----------|-------------|----------------|
 | Verifier bug | Scorer has a code-level defect (regex mismatch, edge case, wrong check) | Fix verifier code, then `--reverify` |
-| Threshold issue | Current threshold is suboptimal for this model | Update `verify_threshold` in conflict definition |
+| Threshold issue | Current threshold is suboptimal for this model | Update threshold in `phase0_v2/config/thresholds.yaml` |
 | Model limitation | Model can't execute the constraint (too hard, too specific) | Accept as Tier 2/3 or exclude |
 | Non-discriminative | System/user verifiers don't form a true either/or | Exclude (like `max_word_repeat`) |
 | Scorer-model mismatch | Scorer checks one thing, model does something equivalent but different | Fix scorer to detect both patterns |
@@ -396,10 +396,10 @@ All float-scored conflicts use the **inverted pair** pattern: one score function
 
 ### Implementation steps
 
-1. **Create definition file**: `phase0_v2/conflicts/definitions/<conflict_id>.py` — conflict class with templates, verify functions, `verify_threshold` (initial guess), and a `<description>` block (with `explored: no`)
+1. **Create definition file**: `phase0_v2/conflicts/definitions/<conflict_id>.py` — conflict class with templates, verify functions, and a `<description>` block (with `explored: no`). Add initial threshold (0.5) to `phase0_v2/config/thresholds.yaml`.
 2. **Register**: Add import and class to `phase0_v2/conflicts/registry.py`
 3. **Run experiments**: `--conflicts <conflict_id>` to run only the new conflict
-4. **Calibrate**: Run `analyze.py --conflict <conflict_id>`, check optimal threshold, update `verify_threshold`
+4. **Calibrate**: Run `analyze.py --conflict <conflict_id>`, check optimal threshold, update `phase0_v2/config/thresholds.yaml`
 5. **Assess**: Check BA >= 0.80, baselines >= 0.80, no `followed_both`
 
 ### Testing checklist
@@ -426,7 +426,7 @@ models:
 
 ### Threshold management
 
-Thresholds are stored in conflict definition files as the `verify_threshold` class attribute. This is the single source of truth — set to the midpoint of the optimal range from calibration analysis. No per-model threshold overrides; the threshold should work across models.
+Thresholds are stored in `phase0_v2/config/thresholds.yaml` as a single YAML file mapping `conflict_id → threshold`. This is the single source of truth — set to the midpoint of the optimal range from calibration analysis. The `conflict_base.py` `__init_subclass__` hook auto-loads the threshold into each conflict class's `verify_threshold` attribute. No per-model threshold overrides; the threshold should work across models.
 
 CLI `--thresholds` override is available for one-off testing or analysis sweeps.
 

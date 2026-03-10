@@ -70,7 +70,6 @@ score_not_alphabetical_sentences.is_inverted = True  # type: ignore[attr-defined
 
 class AlphabeticalSentencesConflict(Conflict):
     conflict_id = "alphabetical_sentences"
-    verify_threshold = 0.32
 
     system_template = (
         "Start each sentence with the next letter of the alphabet. "

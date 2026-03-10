@@ -52,7 +52,8 @@ class TestContract:
         assert "{" not in usr_b
 
     def test_threshold_set(self, conflict):
-        assert conflict.verify_threshold == 0.211
+        from phase0_v2.config.thresholds import get_threshold
+        assert conflict.verify_threshold == get_threshold(conflict.conflict_id)
 
     def test_verify_fns_are_float(self, conflict):
         conflict.build_system_prompt(direction="a", keyword="important")
@@ -140,10 +141,10 @@ class TestEdgeCases:
         """System asks for frequent keyword; text with keyword passes."""
         c = KeywordFrequencyConflict()
         c.build_system_prompt(direction="a", keyword="important")
-        # 3 sentences with "important" in each -> score ~ 1.0 >> 0.211
+        # 3 sentences with "important" in each -> score ~ 1.0 >> 0.209
         text = "This is important. Very important indeed. The most important thing."
         assert c.verify_followed_system(text, direction="a")
-        # No keyword -> score 0.0 < 0.211
+        # No keyword -> score 0.0 < 0.209
         text_no = "The cat sat on the mat. It was a sunny day."
         assert not c.verify_followed_system(text_no, direction="a")
 
@@ -151,7 +152,7 @@ class TestEdgeCases:
         """Direction b: system asks to avoid keyword."""
         c = KeywordFrequencyConflict()
         c.build_system_prompt(direction="b", keyword="important")
-        # No keyword -> inverted score = 1.0 > 1-0.211 = 0.789
+        # No keyword -> inverted score = 1.0 > 1-0.209 = 0.791
         text_no = "The cat sat on the mat. It was a sunny day."
         assert c.verify_followed_system(text_no, direction="b")
         # Keyword present -> inverted score low, should fail
@@ -167,7 +168,7 @@ class TestEdgeCases:
             "Understanding voltage is also important for safety."
         )
         score = score_keyword_frequency(text, "important")
-        assert score >= 0.211, f"Frequent keyword should pass threshold, got {score}"
+        assert score >= 0.209, f"Frequent keyword should pass threshold, got {score}"
 
     def test_model_response_no_keyword(self):
         """Simulated model response avoiding 'important'."""
@@ -178,4 +179,4 @@ class TestEdgeCases:
             "Resistance determines how much current can flow."
         )
         score = score_keyword_frequency(text, "important")
-        assert score < 0.211, f"No keyword should fail threshold, got {score}"
+        assert score < 0.209, f"No keyword should fail threshold, got {score}"

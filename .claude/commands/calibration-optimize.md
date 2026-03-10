@@ -163,7 +163,7 @@ After presenting results, ask user if they want to proceed with the pipeline. Th
 
 2. **Analyze second** -- Computes metrics and finds optimal thresholds from the new score distributions. Must come after reverify.
 
-3. **Optimize thresholds** -- Update `verify_threshold` in each conflict definition file with the **midpoint** of each optimal threshold range. The midpoint maximizes margin from the range edges, which are more vulnerable to distribution shifts. For each float conflict: `new_threshold = (optimal_threshold_low + optimal_threshold_high) / 2`. The analyze output includes an `opt_mid` column with this value.
+3. **Optimize thresholds** -- Update thresholds in `phase0_v2/config/thresholds.yaml` with the **midpoint** of each optimal threshold range. The midpoint maximizes margin from the range edges, which are more vulnerable to distribution shifts. For each float conflict: `new_threshold = (optimal_threshold_low + optimal_threshold_high) / 2`. The analyze output includes an `opt_mid` column with this value.
 
 4. **Rescore last** -- Re-applies new thresholds to reverified scores. Lightweight pass, no verify re-runs.
 
@@ -180,7 +180,7 @@ uv run python -m phase0_v2.calibration.analyze \
   --config phase0_v2/config/experiment.yaml
 
 # 3. Check the float threshold table — for each conflict where current threshold
-#    differs from opt_mid, update the verify_threshold in the conflict definition file.
+#    differs from opt_mid, update the threshold in phase0_v2/config/thresholds.yaml.
 #    Read the CSV: optimal_threshold column has the midpoint.
 
 # 4. Rescore: apply new thresholds to reverified scores

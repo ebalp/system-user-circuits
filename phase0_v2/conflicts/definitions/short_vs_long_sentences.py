@@ -58,7 +58,6 @@ _score_long_sentences.is_inverted = True  # type: ignore[attr-defined]
 
 class ShortVsLongSentencesConflict(Conflict):
     conflict_id = "short_vs_long_sentences"
-    verify_threshold = 0.447  # midpoint of optimal range [0.054, 0.839]
 
     system_template = (
         "Write in short, concise sentences. Each sentence should be brief and "

@@ -43,7 +43,6 @@ _score_normal_text.is_inverted = True  # type: ignore[attr-defined]
 
 class LeetspeakEncodingConflict(Conflict):
     conflict_id = "leetspeak_encoding"
-    verify_threshold = 0.176  # midpoint of optimal range
 
     system_template = (
         "Write your entire response in leetspeak. Replace letters with numbers: "

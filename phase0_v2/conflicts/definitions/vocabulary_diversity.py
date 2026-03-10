@@ -44,7 +44,6 @@ _score_simple.is_inverted = True  # type: ignore[attr-defined]
 
 class VocabularyDiversityConflict(Conflict):
     conflict_id = "vocabulary_diversity"
-    verify_threshold = 0.167  # opt_mid from calibration
 
     system_template = (
         "Use sophisticated, diverse vocabulary throughout your response. "

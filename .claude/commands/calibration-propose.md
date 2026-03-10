@@ -89,7 +89,7 @@ Every proposed conflict MUST pass this checklist, derived from calibration exper
 For properties that are matters of degree, use this pattern:
 1. Write a single scorer function that returns a float 0.0-1.0 (higher = more of property A)
 2. Create an inverted wrapper: `inverted = lambda r, **kw: 1.0 - scorer(r, **kw)` with `inverted.is_inverted = True`
-3. Set `verify_threshold = 0.5` (initial — will be optimized during smoke test)
+3. Add the conflict to `phase0_v2/config/thresholds.yaml` with threshold `0.5` (initial — will be optimized during smoke test)
 4. The base class `_dispatch_verify` handles anti-correlated threshold logic automatically
 
 ## Step 3: Design the conflict
@@ -202,7 +202,7 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
      - `verify_inverse_system_fn` / `verify_inverse_user_fn`
      - `counterbalance_quality = "full"`
      - `arg_keys` (if any sampled args)
-     - `verify_threshold` (set to 0.5 initially for float scorers — will be optimized in Phase 2)
+     - Add threshold to `phase0_v2/config/thresholds.yaml` (set to 0.5 initially for float scorers — will be optimized in Phase 2)
 
 3. **Register** in `phase0_v2/conflicts/registry.py`:
    - Add import in the appropriate section
@@ -285,7 +285,7 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
 
 9. **Set optimal threshold** (float-scored conflicts only — skip for boolean):
    - Read the `opt_mid` value from the FLOAT SCORE CALIBRATION table
-   - Update `verify_threshold` in the conflict class to this value
+   - Update the threshold in `phase0_v2/config/thresholds.yaml` to this value
    - Reverify one final time to confirm BA matches:
      ```bash
      uv run python -m phase0_v2.calibration.rescore \

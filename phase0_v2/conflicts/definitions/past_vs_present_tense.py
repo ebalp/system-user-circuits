@@ -152,7 +152,6 @@ _score_present_tense.is_inverted = True  # type: ignore[attr-defined]
 
 class PastVsPresentTenseConflict(Conflict):
     conflict_id = "past_vs_present_tense"
-    verify_threshold = 0.679  # midpoint of optimal range [0.562, 0.796]
 
     system_template = (
         "Write your entire response in past tense. Every verb must be in past tense, "

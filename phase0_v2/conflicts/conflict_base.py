@@ -32,6 +32,17 @@ class Conflict:
     # Threshold for converting float scores to bool (overridable per-conflict)
     verify_threshold: float = 0.8
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Load threshold from centralized config if available
+        cid = getattr(cls, "conflict_id", "")
+        if cid and not cid.startswith("test_"):
+            from phase0_v2.config.thresholds import get_threshold
+
+            t = get_threshold(cid)
+            if t is not None:
+                cls.verify_threshold = t
+
     def __init__(self) -> None:
         self._instruction_args: dict[str, Any] | None = None
         self.conflict_id = getattr(self.__class__, "conflict_id", "")

@@ -388,12 +388,27 @@ def _find_conflict_optimal_threshold(
     if not rows:
         return 0.0, 0.0, 0.0
 
-    # Collect all unique scores as candidate thresholds
-    all_scores: set[float] = set()
+    # Collect all unique scores as candidate thresholds.
+    # Include 1-s for each score s: inverted rows use boundary 1-T,
+    # so T=1-s tests a boundary exactly at score s for inverted rows.
+    # Also include midpoints between consecutive values to cover gaps
+    # where the optimal threshold lies between two data points.
+    raw_scores: set[float] = set()
     for row in rows:
-        all_scores.update(row["_trying"])
-        all_scores.update(row["_ignoring"])
-    candidates = sorted(all_scores)
+        raw_scores.update(row["_trying"])
+        raw_scores.update(row["_ignoring"])
+    all_candidates: set[float] = set(raw_scores)
+    for s in raw_scores:
+        complement = 1.0 - s
+        if 0.0 <= complement <= 1.0:
+            all_candidates.add(complement)
+    sorted_vals = sorted(all_candidates)
+    # Add midpoints between consecutive candidates
+    midpoints: list[float] = []
+    for i in range(len(sorted_vals) - 1):
+        midpoints.append((sorted_vals[i] + sorted_vals[i + 1]) / 2)
+    all_candidates.update(midpoints)
+    candidates = sorted(all_candidates)
     if not candidates:
         return 0.0, 0.0, 0.0
 

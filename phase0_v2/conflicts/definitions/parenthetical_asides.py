@@ -72,7 +72,6 @@ class ParentheticalAsidesConflict(Conflict):
 
     counterbalance_quality = "full"
     arg_keys: list[str] = []
-    verify_threshold = 0.319  # midpoint of optimal range [0.111, 0.526]
 
     def sample_args(self) -> dict[str, Any]:
         return {}

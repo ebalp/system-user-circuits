@@ -66,7 +66,6 @@ def _verify_inverse_user(response: str, args: dict) -> float:
 
 class HtmlEmphasisTagsConflict(Conflict):
     conflict_id = "html_emphasis_tags"
-    verify_threshold = 0.5
 
     system_template = (
         "Format your response using raw HTML emphasis tags — not markdown. "

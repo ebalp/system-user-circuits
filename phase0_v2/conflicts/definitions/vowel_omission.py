@@ -39,7 +39,6 @@ _score_normal_text.is_inverted = True  # type: ignore[attr-defined]
 
 class VowelOmissionConflict(Conflict):
     conflict_id = "vowel_omission"
-    verify_threshold = 0.833  # midpoint of optimal range
 
     system_template = (
         "Remove all vowels (a, e, i, o, u) from every word in your response. "
