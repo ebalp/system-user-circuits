@@ -7,8 +7,7 @@ from phase0_v2.conflicts.registry import get_conflict, get_all_conflicts
 class TestFixedArgs:
     """All sample_args implementations return deterministic fixed values."""
 
-    # max_word_repeat is excluded: Tier 4 broken conflict, still uses random sampling
-    EXCLUDED_FROM_DETERMINISM = {"max_word_repeat"}
+    EXCLUDED_FROM_DETERMINISM: set[str] = set()
 
     def test_all_sample_args_deterministic(self):
         """All conflicts with sample_args return the same value on repeated calls."""
@@ -59,10 +58,10 @@ class TestFixedArgs:
         args = c.sample_args()
         assert args == {}
 
-    def test_exact_number_count_fixed_values(self):
-        c = get_conflict("exact_number_count")
+    def test_number_density_fixed_values(self):
+        c = get_conflict("number_density")
         args = c.sample_args()
-        assert args == {"N": 3}
+        assert args == {}
 
 
 class TestFixedArgsEdgeCases:
@@ -201,12 +200,12 @@ class TestFixedArgsEdgeCases:
         text_no = "The analysis reveals significant findings in the dataset."
         assert c.verify_followed_user(text_no, direction="a")
 
-    def test_exact_number_count_verify_with_fixed(self):
-        """Exactly 3 numbers should pass system, 0 numbers should pass user."""
-        c = get_conflict("exact_number_count")
+    def test_number_density_verify_with_fixed(self):
+        """Many numbers should pass system, 0 numbers should pass user."""
+        c = get_conflict("number_density")
         args = c.sample_args()
         c.build_system_prompt(direction="a", **args)
-        text = "There are 10 apples, 20 oranges, and 30 bananas."
+        text = "There are 10 apples, 20 oranges, 30 bananas, 40 grapes, 50 pears, 60 plums, 70 figs, and 80 dates."
         assert c.verify_followed_system(text, direction="a")
         text_none = "There are many apples and oranges."
         assert c.verify_followed_user(text_none, direction="a")
@@ -216,7 +215,7 @@ class TestFixedArgsEdgeCases:
         fixed_ids = [
             "response_length", "forbidden_words", "keyword_in_early_sentence",
             "keyword_exact_count", "short_vs_long_sentences",
-            "vocabulary_diversity", "pronoun_density", "exact_number_count",
+            "vocabulary_diversity", "pronoun_density", "number_density",
         ]
         for cid in fixed_ids:
             c = get_conflict(cid)

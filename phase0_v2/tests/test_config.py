@@ -133,13 +133,13 @@ class TestModelConfig:
         models = [
             {
                 "id": "model-a",
-                "exclude_conflicts": ["max_word_repeat"],
+                "exclude_conflicts": ["word_repetition_density"],
             }
         ]
         config_path = _make_test_config(models, str(tmp_path))
         config = load_config(config_path)
         assert config.models[0].id == "model-a"
-        assert config.models[0].exclude_conflicts == ["max_word_repeat"]
+        assert config.models[0].exclude_conflicts == ["word_repetition_density"]
 
     def test_dict_format_minimal(self, tmp_path):
         """Dict with only id, no excludes."""
@@ -183,14 +183,14 @@ class TestModelConfig:
         models = [
             {
                 "id": "my-model",
-                "exclude_conflicts": ["max_word_repeat"],
+                "exclude_conflicts": ["word_repetition_density"],
             }
         ]
         config_path = _make_test_config(models, str(tmp_path))
         config = load_config(config_path)
         mc = config.models[0]
         assert mc.id == "my-model"
-        assert "max_word_repeat" in mc.exclude_conflicts
+        assert "word_repetition_density" in mc.exclude_conflicts
 
     def test_plain_string_model_has_empty_defaults(self, tmp_path):
         """Models without explicit config should have empty defaults."""

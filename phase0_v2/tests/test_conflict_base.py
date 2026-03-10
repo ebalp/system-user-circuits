@@ -326,7 +326,7 @@ class TestPerModelExclusion:
         from phase0_v2.conflicts.registry import get_all_conflicts
 
         mc_full = ModelConfig(id="model-full")
-        mc_excl = ModelConfig(id="model-excl", exclude_conflicts=["max_word_repeat"])
+        mc_excl = ModelConfig(id="model-excl", exclude_conflicts=["word_repetition_density"])
 
         all_conflicts = get_all_conflicts()
         full_conflicts = [c for c in all_conflicts if c.conflict_id not in set(mc_full.exclude_conflicts)]
@@ -339,7 +339,7 @@ class TestPerModelExclusion:
         from phase0_v2.src.config import ModelConfig
         from phase0_v2.conflicts.registry import get_all_conflicts
 
-        excluded = ["max_word_repeat", "emoji_use_vs_avoid"]
+        excluded = ["word_repetition_density", "emoji_use_vs_avoid"]
         mc = ModelConfig(id="model-excl", exclude_conflicts=excluded)
 
         all_conflicts = get_all_conflicts()

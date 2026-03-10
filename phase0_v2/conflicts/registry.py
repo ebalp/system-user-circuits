@@ -23,19 +23,19 @@ from .definitions.repeat_answer_twice import RepeatAnswerTwiceConflict
 from .definitions.spanish_loanwords import SpanishLoanwordsConflict
 
 # -- Batch 2 --
-from .definitions.exact_number_count import ExactNumberCountConflict
+from .definitions.number_density import NumberDensityConflict
 from .definitions.vocabulary_diversity import VocabularyDiversityConflict
 from .definitions.response_length import ResponseLengthConflict
 from .definitions.stairs_indent import StairsIndentConflict
 from .definitions.each_word_new_line import EachWordNewLineConflict
 from .definitions.bullets_and_sub_bullets import BulletsAndSubBulletsConflict
-from .definitions.italics_thesis import ItalicsThesisConflict
+from .definitions.html_emphasis_tags import HtmlEmphasisTagsConflict
 
 # -- Batch 3 --
 from .definitions.alphabetical_sentences import AlphabeticalSentencesConflict
 from .definitions.keyword_in_early_sentence import KeywordInEarlySentenceConflict
-from .definitions.max_word_repeat import MaxWordRepeatConflict
-from .definitions.no_consecutive_first_letter import NoConsecutiveFirstLetterConflict
+from .definitions.word_repetition_density import WordRepetitionDensityConflict
+from .definitions.alliteration_density import AlliterationDensityConflict
 from .definitions.odd_even_syllables import OddEvenSyllablesConflict
 from .definitions.paragraph_end_same_word import ParagraphEndSameWordConflict
 from .definitions.paragraph_start_same_word import ParagraphStartSameWordConflict
@@ -70,12 +70,12 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     DisclaimerFirstVsNoneConflict,
     EachWordNewLineConflict,
     EmojiUseVsAvoidConflict,
-    ExactNumberCountConflict,
+    NumberDensityConflict,
     FirstVsThirdPersonConflict,
     ForbiddenWordsConflict,
     FormalVsCasualToneConflict,
     FormatJsonMarkdownConflict,
-    ItalicsThesisConflict,
+    HtmlEmphasisTagsConflict,
     JsonOnlyVsPlainConflict,
     KeywordExactCountConflict,
     KeywordFrequencyConflict,
@@ -83,9 +83,9 @@ _ALL_CONFLICT_CLASSES: list[type[Conflict]] = [
     LanguageEnEsConflict,
     ListBulletsVsNumberedConflict,
     ShortVsLongSentencesConflict,
-    MaxWordRepeatConflict,
+    WordRepetitionDensityConflict,
     VocabularyDiversityConflict,
-    NoConsecutiveFirstLetterConflict,
+    AlliterationDensityConflict,
     NumberedSectionsVsProseConflict,
     OddEvenSyllablesConflict,
     ParagraphStartSameWordConflict,

@@ -11,14 +11,14 @@ from collections import Counter
 
 BATCH3_IDS = [
     "keyword_in_early_sentence", "alphabetical_sentences",
-    "sentence_connector_density", "no_consecutive_first_letter", "odd_even_syllables",
+    "sentence_connector_density", "alliteration_density", "odd_even_syllables",
     "paragraph_start_same_word",
-    "max_word_repeat", "lowercase_vs_capitalized",
+    "word_repetition_density", "lowercase_vs_capitalized",
     "template_response",
 ]
 
 NON_INVERTIBLE_BATCH3 = {"odd_even_syllables"}
-PARTIAL_BATCH3 = {"no_consecutive_first_letter"}
+PARTIAL_BATCH3 = set()  # alliteration_density is "full", not "partial"
 
 
 @pytest.fixture(params=BATCH3_IDS)
@@ -67,8 +67,8 @@ class TestRegistryComplete:
 
     def test_counterbalance_distribution(self):
         counts = Counter(c.counterbalance_quality for c in get_all_conflicts())
-        assert counts["full"] == 37, f"Expected 37 full, got {counts['full']}"
-        assert counts["partial"] == 2, f"Expected 2 partial, got {counts['partial']}"
+        assert counts["full"] == 38, f"Expected 38 full, got {counts['full']}"
+        assert counts["partial"] == 1, f"Expected 1 partial, got {counts['partial']}"
         assert counts["none"] == 3, f"Expected 3 none, got {counts['none']}"
 
     def test_all_non_invertible_ids(self):
@@ -117,11 +117,11 @@ class TestLowercaseVsCapitalized:
         assert isinstance(c.verify_followed_user("This is Properly Capitalized.", direction="a"), bool)
 
 
-class TestMaxWordRepeat:
-    def test_parametrized(self):
-        c = get_conflict("max_word_repeat")
+class TestWordRepetitionDensity:
+    def test_no_args(self):
+        c = get_conflict("word_repetition_density")
         args = c.sample_args()
-        assert "small_N" in args and "min_repeat" in args
+        assert args == {}
         c.build_system_prompt(direction="a", **args)
         result = c.verify_followed_system("A unique sentence with no repeats.", direction="a")
         assert isinstance(result, bool)

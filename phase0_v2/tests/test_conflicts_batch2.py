@@ -5,9 +5,9 @@ from phase0_v2.conflicts.registry import get_conflict
 
 
 BATCH2_IDS = [
-    "exact_number_count",
+    "number_density",
     "vocabulary_diversity", "response_length", "stairs_indent",
-    "each_word_new_line", "bullets_and_sub_bullets", "italics_thesis",
+    "each_word_new_line", "bullets_and_sub_bullets", "html_emphasis_tags",
 ]
 
 NON_INVERTIBLE = {"stairs_indent", "each_word_new_line"}
@@ -81,13 +81,12 @@ class TestParametrizedConflicts:
         assert c is not None
         assert c.sample_args() == {}
 
-    def test_exact_number_count(self):
-        c = get_conflict("exact_number_count")
-        args = c.sample_args()
-        assert "N" in args
-        c.build_system_prompt(direction="a", **args)
-        result = c.verify_followed_system("There are 5 items and 10 more.", direction="a")
-        assert isinstance(result, bool)
+    def test_exact_number_count_replaced_by_number_density(self):
+        """exact_number_count was replaced by number_density."""
+        assert get_conflict("exact_number_count") is None
+        c = get_conflict("number_density")
+        assert c is not None
+        assert c.sample_args() == {}
 
     def test_min_pronoun_count_replaced_by_pronoun_density(self):
         """min_pronoun_count was replaced by pronoun_density."""

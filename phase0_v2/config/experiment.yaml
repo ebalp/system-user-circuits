@@ -3,11 +3,8 @@
 models:
   - id: meta-llama/Llama-3.1-8B-Instruct
     exclude_conflicts:
-      - max_word_repeat
       - repeat_answer_twice
-      - italics_thesis
-      - no_consecutive_first_letter
-      - exact_number_count
+      - word_repetition_density
       - keyword_exact_count
   # - google/gemma-3-27b-it
   - id: meta-llama/Llama-3.3-70B-Instruct
@@ -19,9 +16,7 @@ models:
   # - Qwen/Qwen2.5-7B-Instruct
   - id: openai/gpt-oss-20b
     exclude_conflicts:
-      - max_word_repeat
       - repeat_answer_twice
-      - italics_thesis
       - keyword_exact_count
 
 # System prompt wrapping templates (rhetorical framings).

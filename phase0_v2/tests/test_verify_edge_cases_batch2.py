@@ -26,55 +26,45 @@ def _setup(conflict_id, direction="a", **kwargs):
 
 
 # ===========================================================================
-# 1. exact_number_count
+# 1. number_density (replaced exact_number_count)
 # ===========================================================================
 
-class TestExactNumberCount:
-    """System: exactly N numbers. User: zero numbers."""
+class TestNumberDensity:
+    """System: include many numbers. User: no numbers. Float-scored."""
 
-    def test_system_exactly_3(self):
-        c = _setup("exact_number_count", N=3)
-        assert c.verify_followed_system("I have 10 apples, 20 oranges, and 5 bananas.", direction="a") is True
+    def test_system_many_numbers_passes(self):
+        c = _setup("number_density")
+        text = "There are 10 apples, 20 oranges, 30 bananas, 40 grapes, 50 pears, 60 plums, 70 figs, and 80 dates."
+        assert c.verify_followed_system(text, direction="a") is True
 
-    def test_system_too_few(self):
-        c = _setup("exact_number_count", N=3)
-        assert c.verify_followed_system("I have 10 apples and many oranges.", direction="a") is False
+    def test_system_no_numbers_fails(self):
+        c = _setup("number_density")
+        assert c.verify_followed_system("No numbers here at all.", direction="a") is False
 
-    def test_system_too_many(self):
-        c = _setup("exact_number_count", N=2)
-        assert c.verify_followed_system("Got 1, 2, and 3 items.", direction="a") is False
-
-    def test_system_zero_required(self):
-        c = _setup("exact_number_count", N=0)
-        assert c.verify_followed_system("No numbers here at all.", direction="a") is True
-
-    def test_system_decimal_counts_as_one(self):
-        c = _setup("exact_number_count", N=1)
-        assert c.verify_followed_system("Pi is approximately 3.14 and that is it.", direction="a") is True
-
-    def test_user_no_numbers(self):
-        c = _setup("exact_number_count", N=3)
+    def test_user_no_numbers_passes(self):
+        c = _setup("number_density")
         assert c.verify_followed_user("The quick brown fox jumps over the lazy dog.", direction="a") is True
 
-    def test_user_has_number(self):
-        c = _setup("exact_number_count", N=3)
-        assert c.verify_followed_user("There are 5 reasons why.", direction="a") is False
+    def test_user_many_numbers_fails(self):
+        c = _setup("number_density")
+        text = "There are 10 apples, 20 oranges, 30 bananas, 40 grapes, 50 pears, 60 plums, 70 figs, and 80 dates."
+        assert c.verify_followed_user(text, direction="a") is False
 
     def test_direction_b_system_no_numbers(self):
-        c = _setup("exact_number_count", direction="b", N=4)
+        c = _setup("number_density", direction="b")
         assert c.verify_followed_system("No numbers in this text whatsoever.", direction="b") is True
 
-    def test_direction_b_user_exactly_n(self):
-        c = _setup("exact_number_count", direction="b", N=2)
-        assert c.verify_followed_user("I saw 10 cats and 20 dogs.", direction="b") is True
+    def test_direction_b_user_many_numbers(self):
+        c = _setup("number_density", direction="b")
+        text = "I saw 10 cats, 20 dogs, 30 birds, 40 fish, 50 mice, 60 rats, 70 snakes, and 80 frogs."
+        assert c.verify_followed_user(text, direction="b") is True
 
-    def test_direction_b_user_wrong_count(self):
-        c = _setup("exact_number_count", direction="b", N=2)
-        assert c.verify_followed_user("I saw 10 cats.", direction="b") is False
-
-    def test_numbers_in_words_not_counted(self):
-        c = _setup("exact_number_count", N=0)
-        assert c.verify_followed_system("One two three items.", direction="a") is True
+    def test_float_scores_anti_correlated(self):
+        c = _setup("number_density")
+        text = "There are 10 items and 20 more."
+        score_sys = c.score_system(text, direction="a")
+        score_usr = c.score_user(text, direction="a")
+        assert abs(score_sys + score_usr - 1.0) < 1e-9
 
 
 # ===========================================================================
@@ -362,69 +352,52 @@ class TestBulletsAndSubBullets:
 
 
 # ===========================================================================
-# 8. italics_thesis
+# 8. html_emphasis_tags (replaced italics_thesis)
 # ===========================================================================
 
-class TestItalicsThesis:
-    """System: HTML italics thesis followed by text. User: no HTML tags."""
+class TestHtmlEmphasisTags:
+    """System: Use HTML emphasis tags. User: plain text only."""
 
-    def test_system_true_i_tag(self):
-        c = _setup("italics_thesis")
-        text = "<i>This is the thesis.</i> Here is the supporting text."
+    def test_system_true_three_tags(self):
+        c = _setup("html_emphasis_tags")
+        text = "The <b>key</b> concept is <i>important</i> and <em>vital</em>."
         assert c.verify_followed_system(text, direction="a") is True
 
-    def test_system_true_em_tag(self):
-        c = _setup("italics_thesis")
-        text = "<em>Central argument here.</em> And the explanation follows."
+    def test_system_true_strong_tags(self):
+        c = _setup("html_emphasis_tags")
+        text = "<strong>One</strong> and <strong>two</strong> and <strong>three</strong>."
         assert c.verify_followed_system(text, direction="a") is True
 
     def test_system_false_no_html(self):
-        c = _setup("italics_thesis")
+        c = _setup("html_emphasis_tags")
         assert c.verify_followed_system("Just plain text without any tags.", direction="a") is False
 
-    def test_system_false_empty_thesis(self):
-        c = _setup("italics_thesis")
-        text = "<i></i> Some text after."
+    def test_system_false_markdown_bold(self):
+        c = _setup("html_emphasis_tags")
+        text = "**Bold** and **more bold** are not HTML."
         assert c.verify_followed_system(text, direction="a") is False
 
-    def test_system_false_no_text_after(self):
-        c = _setup("italics_thesis")
-        text = "<i>Thesis statement here.</i>"
-        assert c.verify_followed_system(text, direction="a") is False
-
-    def test_system_false_only_whitespace_after(self):
-        c = _setup("italics_thesis")
-        text = "<i>Thesis statement here.</i>   "
-        assert c.verify_followed_system(text, direction="a") is False
-
-    def test_system_false_unclosed_tag(self):
-        c = _setup("italics_thesis")
-        text = "<i>Thesis without closing tag and some text."
+    def test_system_false_one_tag_only(self):
+        c = _setup("html_emphasis_tags")
+        text = "Only <b>one</b> tag here."
         assert c.verify_followed_system(text, direction="a") is False
 
     def test_user_true_no_html(self):
-        c = _setup("italics_thesis")
+        c = _setup("html_emphasis_tags")
         assert c.verify_followed_user("Clean plain text with no HTML.", direction="a") is True
 
-    def test_user_false_has_html_tag(self):
-        c = _setup("italics_thesis")
-        assert c.verify_followed_user("Text with <b>bold</b> formatting.", direction="a") is False
-
-    def test_user_false_has_i_tag(self):
-        c = _setup("italics_thesis")
-        assert c.verify_followed_user("<i>Italicized text</i> here.", direction="a") is False
-
-    def test_user_true_angle_bracket_not_tag(self):
-        c = _setup("italics_thesis")
-        assert c.verify_followed_user("The value 5 < 10 is true.", direction="a") is True
+    def test_user_false_has_html_tags(self):
+        c = _setup("html_emphasis_tags")
+        text = "Text with <b>bold</b>, <i>italic</i>, and <em>emphasis</em>."
+        assert c.verify_followed_user(text, direction="a") is False
 
     def test_direction_b_system_no_html(self):
-        c = _setup("italics_thesis", direction="b")
+        c = _setup("html_emphasis_tags", direction="b")
         assert c.verify_followed_system("Plain text only.", direction="b") is True
 
-    def test_direction_b_user_italics_thesis(self):
-        c = _setup("italics_thesis", direction="b")
-        text = "<i>Thesis here.</i> And supporting text follows."
+    def test_direction_b_user_html_tags(self):
+        c = _setup("html_emphasis_tags", direction="b")
+        text = "The <b>key</b> is <i>important</i> and <em>vital</em>."
         assert c.verify_followed_user(text, direction="b") is True
 
 

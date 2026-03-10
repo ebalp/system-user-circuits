@@ -228,25 +228,10 @@ class TestSeedIsolation:
 
         assert args_alone == args_after
 
+    @pytest.mark.skip(reason="No conflicts with randomized sample_args remain after max_word_repeat removal")
     def test_different_seed_different_args(self, config):
         """Different global seed produces different sampled args for parameterized conflicts."""
-        task = Task(id="test_task", prompt="Explain photosynthesis.")
-        # Use max_word_repeat which still has randomized sample_args
-        conflict = get_conflict("max_word_repeat")
-
-        gen1 = PromptGenerator(config)
-        prompts1 = gen1.generate_for_conflict(conflict, [task])
-        args1 = prompts1[0].instruction_args
-
-        # Modify seed
-        import copy
-        config2 = copy.deepcopy(config)
-        config2.seed = 999
-        gen2 = PromptGenerator(config2)
-        prompts2 = gen2.generate_for_conflict(conflict, [task])
-        args2 = prompts2[0].instruction_args
-
-        assert args1 != args2
+        pass
 
     def test_deterministic_seed_helper(self):
         """_deterministic_seed is pure: same inputs -> same output."""

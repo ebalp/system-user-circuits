@@ -278,7 +278,7 @@ class TestRequireInvertible:
         all_conflicts = get_all_conflicts()
         filtered = [c for c in all_conflicts if c.supports_counterbalancing()]
         filtered_ids = {c.conflict_id for c in filtered}
-        for cid in ("no_consecutive_first_letter", "bullets_and_sub_bullets"):
+        for cid in ("alliteration_density", "bullets_and_sub_bullets"):
             assert cid in filtered_ids
 
     def test_filtered_count(self):

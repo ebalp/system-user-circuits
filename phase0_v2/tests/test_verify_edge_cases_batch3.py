@@ -250,51 +250,40 @@ class TestAlphabeticalSentences:
 # (consonant_clusters removed — unrealistic constraint)
 
 # ===========================================================================
-# no_consecutive_first_letter
+# alliteration_density (replaces no_consecutive_first_letter)
 # ===========================================================================
 
-class TestNoConsecutiveFirstLetter:
-    """verify_system = no two consecutive words share first letter; verify_user = alliteration."""
+class TestAlliterationDensity:
+    """verify_system = high alliteration density; verify_user = low alliteration density."""
 
-    def test_system_true_positive(self):
-        c = _prepare("no_consecutive_first_letter")
-        response = "The big cat drank every fresh gallon."
+    def test_system_high_alliteration(self):
+        c = _prepare("alliteration_density")
+        response = "Beautiful blue butterflies bring bright blossoms to the garden."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_system_false_consecutive_same(self):
-        c = _prepare("no_consecutive_first_letter")
-        response = "The tall tree."
+    def test_system_low_alliteration(self):
+        c = _prepare("alliteration_density")
+        response = "The cat sat on a mat. A dog ran in the yard."
         assert c.verify_followed_system(response, direction="a") is False
 
-    def test_system_single_word(self):
-        c = _prepare("no_consecutive_first_letter")
-        response = "Hello"
-        assert c.verify_followed_system(response, direction="a") is True
-
-    def test_system_punctuation_stripped(self):
-        c = _prepare("no_consecutive_first_letter")
-        # "big" and "bold" share first letter, but only 1/3 pairs alliterate.
-        # no_consecutive = 1.0 - 0.333 = 0.667, above threshold → passes.
-        # Use a fully alliterative response to test failure:
-        response = "Big beautiful bright bold."
-        assert c.verify_followed_system(response, direction="a") is False
-
-    def test_user_alliteration(self):
-        c = _prepare("no_consecutive_first_letter")
-        response = "Peter piper picked peppers."
+    def test_user_low_alliteration(self):
+        c = _prepare("alliteration_density")
+        response = "The cat sat on a mat. A dog ran in the yard."
         assert c.verify_followed_user(response, direction="a") is True
 
-    def test_user_not_alliteration(self):
-        c = _prepare("no_consecutive_first_letter")
-        response = "Peter ate big peppers."
+    def test_user_high_alliteration(self):
+        c = _prepare("alliteration_density")
+        response = "Beautiful blue butterflies bring bright blossoms."
         assert c.verify_followed_user(response, direction="a") is False
 
     def test_direction_b(self):
-        c = _prepare("no_consecutive_first_letter", direction="b")
-        alliterative = "Big beautiful blue bright bold."
-        assert c.verify_followed_system(alliterative, direction="b") is True
-        no_consec = "The big cat drank every fresh gallon."
-        assert c.verify_followed_user(no_consec, direction="b") is True
+        c = _prepare("alliteration_density", direction="b")
+        # In direction b, system wants low alliteration
+        low_allit = "The cat sat on a mat. A dog ran in the yard."
+        assert c.verify_followed_system(low_allit, direction="b") is True
+        # In direction b, user wants high alliteration
+        high_allit = "Beautiful blue butterflies bring bright blossoms."
+        assert c.verify_followed_user(high_allit, direction="b") is True
 
 
 # ===========================================================================
@@ -425,63 +414,61 @@ class TestParagraphStartSameWord:
 # max_word_repeat
 # ===========================================================================
 
-class TestMaxWordRepeat:
-    """verify_system = no word > small_N times; verify_user = some word >= min_repeat."""
+class TestWordRepetitionDensity:
+    """verify_system = high content-word repetition density; verify_user = low density."""
 
     def test_system_true_positive(self):
-        c = _prepare("max_word_repeat", {"small_N": 2, "min_repeat": 5})
-        response = "The cat sat on a mat."
+        c = _prepare("word_repetition_density")
+        response = (
+            "Energy is important. Energy drives everything. Energy comes from "
+            "energy sources. Energy is energy."
+        )
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_system_false_too_many_repeats(self):
-        c = _prepare("max_word_repeat", {"small_N": 2, "min_repeat": 5})
-        response = "the the the cat sat"
-        assert c.verify_followed_system(response, direction="a") is False
-
-    def test_system_exactly_at_limit(self):
-        c = _prepare("max_word_repeat", {"small_N": 3, "min_repeat": 5})
-        response = "the cat the dog the bird"
-        # "the" appears 3 times, exactly at limit
-        assert c.verify_followed_system(response, direction="a") is True
-
-    def test_system_one_over_limit(self):
-        c = _prepare("max_word_repeat", {"small_N": 3, "min_repeat": 5})
-        response = "the cat the dog the bird the mouse"
-        # "the" appears 4 times, over limit of 3. Score = 4/5 unique words within limit = 0.8.
-        # With threshold 0.909, this fails (only 1 of 5 unique words exceeds limit).
+    def test_system_false_diverse_text(self):
+        c = _prepare("word_repetition_density")
+        response = (
+            "Vaccines operate by introducing minuscule pathogens into the body. "
+            "This enables immunological recognition and robust defensive responses."
+        )
         assert c.verify_followed_system(response, direction="a") is False
 
     def test_user_true_positive(self):
-        c = _prepare("max_word_repeat", {"small_N": 2, "min_repeat": 5})
-        response = "data data data data data is good"
+        c = _prepare("word_repetition_density")
+        response = (
+            "Vaccines operate by introducing minuscule pathogens into the body. "
+            "This enables immunological recognition and robust defensive responses."
+        )
         assert c.verify_followed_user(response, direction="a") is True
 
-    def test_user_false_not_enough_repeats(self):
-        c = _prepare("max_word_repeat", {"small_N": 2, "min_repeat": 5})
-        response = "data data cat dog bird fish"
+    def test_user_false_repetitive_text(self):
+        c = _prepare("word_repetition_density")
+        response = (
+            "Energy is important. Energy drives everything. Energy comes from "
+            "energy sources. Energy is energy."
+        )
         assert c.verify_followed_user(response, direction="a") is False
 
-    def test_case_insensitive(self):
-        c = _prepare("max_word_repeat", {"small_N": 2, "min_repeat": 4})
-        response = "The THE the tHe"
-        assert c.verify_followed_system(response, direction="a") is False
-        assert c.verify_followed_user(response, direction="a") is True
-
     def test_direction_b(self):
-        c = _prepare("max_word_repeat", {"small_N": 2, "min_repeat": 5}, direction="b")
-        # direction b: system wants min_repeat, user wants max_word_repeat
-        repeated = "data data data data data is good"
-        assert c.verify_followed_system(repeated, direction="b") is True
-        limited = "The cat sat on a mat."
-        assert c.verify_followed_user(limited, direction="b") is True
+        c = _prepare("word_repetition_density", direction="b")
+        # direction b: system = diverse, user = repetitive
+        diverse = (
+            "Vaccines operate by introducing minuscule pathogens into the body. "
+            "This enables immunological recognition and robust defensive responses."
+        )
+        assert c.verify_followed_system(diverse, direction="b") is True
+        repetitive = (
+            "Energy is important. Energy drives everything. Energy comes from "
+            "energy sources. Energy is energy."
+        )
+        assert c.verify_followed_user(repetitive, direction="b") is True
 
-    def test_empty_response_system(self):
-        c = _prepare("max_word_repeat", {"small_N": 2, "min_repeat": 5})
-        assert c.verify_followed_system("", direction="a") is True
-
-    def test_empty_response_user(self):
-        c = _prepare("max_word_repeat", {"small_N": 2, "min_repeat": 5})
-        assert c.verify_followed_user("", direction="a") is False
+    def test_empty_response(self):
+        c = _prepare("word_repetition_density")
+        # Empty = 0.0 density, below threshold -> not repetitive
+        assert c.verify_followed_system("", direction="a") is False
+        # Empty = 1.0 diverse score > 1-threshold -> diverse
+        assert c.verify_followed_user("", direction="a") is True
 
 
 # (one_vowel_type removed — unrealistic constraint)
@@ -598,12 +585,12 @@ class TestCrossCuttingEdgeCases:
         response = "The cat is wonderful.\n\nThe dog is great.\n\nThe bird sings beautifully."
         assert c.verify_followed_system(response, direction="a") is True
 
-    def test_max_word_repeat_with_punctuation_variants(self):
+    def test_word_repetition_density_with_punctuation_variants(self):
         """'word' and 'word,' should be counted as the same word."""
-        c = _prepare("max_word_repeat", {"small_N": 2, "min_repeat": 5})
+        c = _prepare("word_repetition_density")
         response = "go, go, go!"
-        # "go" appears 3 times after stripping -> over limit of 2
-        assert c.verify_followed_system(response, direction="a") is False
+        # "go" appears 3 times -> density = 1 - 1/3 = 0.667 -> repetitive
+        assert c.verify_followed_system(response, direction="a") is True
 
     def test_alphabetical_sentences_with_numbered_list(self):
         """Numbered list items: scorer strips leading numbers/punctuation."""
