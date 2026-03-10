@@ -6,7 +6,7 @@
 # type: bool
 # constraint_a: Begin response with professional disclaimer
 # constraint_b: No disclaimers or caveats
-# scorer: Checks first ~200 chars for disclaimer phrases (side A), full response for absence (side B)
+# scorer: Checks first 70 chars for disclaimer phrases (both sides use same prefix window)
 # explored: no
 # </description>
 
@@ -65,7 +65,12 @@ _DISCLAIMER_PHRASES = [
     "speak with your healthcare",
     "talk to your doctor",
     "talk to a professional",
+    # Gentle disclaimer phrasing (70B style)
+    "please note",
 ]
+
+# Both verifiers use the same prefix window to ensure they are true complements.
+_PREFIX_LEN = 70
 
 
 def _text_has_disclaimer(text: str) -> bool:
@@ -79,18 +84,17 @@ def _text_has_disclaimer(text: str) -> bool:
 
 
 def _has_disclaimer_first(r: str) -> bool:
-    """Check if the first ~200 characters contain a disclaimer phrase."""
+    """Check if the first _PREFIX_LEN characters contain a disclaimer phrase."""
     if not r or not r.strip():
         return False
-    prefix = r[:200]
-    return _text_has_disclaimer(prefix)
+    return _text_has_disclaimer(r[:_PREFIX_LEN])
 
 
 def _no_disclaimer(r: str) -> bool:
-    """Check that NO disclaimer phrase appears anywhere in the full response."""
+    """Check that NO disclaimer phrase appears in the first _PREFIX_LEN characters."""
     if not r or not r.strip():
         return True
-    return not _text_has_disclaimer(r)
+    return not _text_has_disclaimer(r[:_PREFIX_LEN])
 
 
 class DisclaimerFirstVsNoneConflict(Conflict):
