@@ -31,20 +31,24 @@ model_gpu_map:
   meta-llama/Llama-3.3-70B-Instruct:
     instance_type: gpu_8x_a100
     instance_preferences:
+      - gpu_8x_h100_sxm5
       - gpu_8x_a100
       - gpu_8x_a100_sxm4
+      - gpu_8x_a100_80gb_sxm4
       - gpu_8x_a10
     vllm_args: "--tensor-parallel-size 8 --max-model-len 4096"
   Qwen/Qwen2.5-7B-Instruct:
     instance_type: gpu_1x_a10
     vllm_args: "--max-model-len 4096"
   google/gemma-3-27b-it:
-    instance_type: gpu_1x_gh200
+    instance_type: gpu_8x_h100_sxm5
     instance_preferences:
-      - gpu_1x_gh200
-      - gpu_1x_h100_pcie
-      - gpu_1x_h100_sxm5
-    vllm_args: "--max-model-len 4096"
+      - gpu_8x_h100_sxm5
+      - gpu_8x_a100
+      - gpu_8x_a100_sxm4
+      - gpu_8x_a100_80gb_sxm4
+      - gpu_8x_a10
+    vllm_args: "--tensor-parallel-size 8 --max-model-len 4096"
   openai/gpt-oss-20b:
     instance_type: gpu_1x_a100
     vllm_args: "--max-model-len 4096"
