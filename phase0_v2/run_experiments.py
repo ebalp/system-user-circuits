@@ -368,7 +368,8 @@ def main():
                     ip = mgr.instance.ip
                     ssh = SSHConnection(ip=ip, key_file=lconfig.ssh_key_file)
                     logger.info("Waiting for SSH on %s...", ip)
-                    ssh.wait_for_ssh()
+                    if not ssh.wait_for_ssh(timeout=1800):
+                        raise RuntimeError(f"SSH not reachable on {ip} after 1800s")
 
                     ensure_vllm_running(
                         ssh, model_id=model_id, hf_token=lconfig.hf_token,
