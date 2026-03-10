@@ -7,6 +7,8 @@ models:
   # - google/gemma-3-27b-it
   - id: meta-llama/Llama-3.3-70B-Instruct
   - id: meta-llama/Llama-3.2-1B-Instruct
+    exclude_conflicts:
+      - word_repetition_density
   # - Qwen/Qwen2.5-7B-Instruct
   - id: openai/gpt-oss-20b
 
@@ -83,4 +85,4 @@ thresholds:
 api:
   timeout: 60
   max_retries: 3
-  concurrent_per_model: 64
+  concurrent_per_model: 128

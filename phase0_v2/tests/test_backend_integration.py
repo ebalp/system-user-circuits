@@ -368,7 +368,7 @@ class TestLambdaManagerIntegration:
         lconfig = LambdaConfig(
             api_key="k", ssh_key_name="s",
             model_id="meta-llama/Llama-3.1-8B-Instruct",
-            instance_type="gpu_1x_a10", region="us-east-1",
+            instance_type="gpu_1x_a10",
             hf_token="t",
         )
         mgr = LambdaCloudManager(lconfig)
@@ -395,7 +395,7 @@ class TestLambdaManagerIntegration:
         lconfig = LambdaConfig(
             api_key="k", ssh_key_name="s",
             model_id="meta-llama/Llama-3.1-8B-Instruct",
-            instance_type="gpu_1x_a10", region="us-east-1",
+            instance_type="gpu_1x_a10",
             hf_token="t",
         )
         mgr = LambdaCloudManager(lconfig)
@@ -411,7 +411,7 @@ class TestLambdaManagerIntegration:
         lconfig = LambdaConfig(
             api_key="k", ssh_key_name="s",
             model_id="meta-llama/Llama-3.1-8B-Instruct",
-            instance_type="gpu_1x_a10", region="us-east-1",
+            instance_type="gpu_1x_a10",
             hf_token="t", vllm_port=9000,
         )
         mgr = LambdaCloudManager(lconfig)
@@ -447,7 +447,6 @@ class TestLambdaManagerIntegration:
         import yaml
         data = yaml.safe_load(Path("lambda-cloud.yaml").read_text())
         defaults = data["defaults"]
-        assert "region" in defaults
         assert "vllm_port" in defaults
         assert "max_launch_retries" in defaults
 

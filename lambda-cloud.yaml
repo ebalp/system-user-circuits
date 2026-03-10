@@ -8,13 +8,11 @@ repo_dir: "/home/ubuntu/system-user-circuits"  # derived from repo_url if omitte
 # setup_script: "my-custom-setup.sh"  # optional extra setup after bootstrap
 
 defaults:
-  region: us-east-1
   vllm_port: 8000
   vllm_venv_path: /home/ubuntu/vllm-venv
   max_launch_retries: 5
   launch_retry_delay: 60
   readiness_timeout: 900  # 15 min for model download + load
-  concurrent_per_model: 10  # vLLM handles batching natively
 
 instance_preferences:
   - gpu_1x_a100
@@ -30,6 +28,10 @@ model_gpu_map:
     vllm_args: "--max-model-len 4096"
   meta-llama/Llama-3.3-70B-Instruct:
     instance_type: gpu_8x_a100
+    instance_preferences:
+      - gpu_8x_a100
+      - gpu_8x_a100_sxm4
+      - gpu_8x_a10
     vllm_args: "--tensor-parallel-size 8 --max-model-len 4096"
   Qwen/Qwen2.5-7B-Instruct:
     instance_type: gpu_1x_a10
@@ -44,7 +46,7 @@ model_gpu_map:
 # S3-compatible storage (Lambda Filesystem)
 # Credentials come from env vars: LAMBDA_ACCESS_KEY_ID, LAMBDA_SECRET_ACCESS_KEY
 storage:
-  bucket_name: ""           # set in .sync.env as BUCKET_NAME
+  bucket_name: fab66276-ba33-473e-aa1e-d03cab7d170d
   endpoint_url: https://files.us-east-2.lambda.ai
   region: us-east-2
   sync_dir: data            # default directory for lambda-gpu sync

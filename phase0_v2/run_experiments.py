@@ -324,7 +324,7 @@ def main():
 
         for model_id, model_items in by_model.items():
             lconfig = load_lambda_config(args.lambda_config, model_id)
-            lambda_concurrent = lconfig.concurrent_per_model
+            lambda_concurrent = config.api.concurrent_per_model
 
             if args.ip:
                 # ── Connect to existing instance ──
