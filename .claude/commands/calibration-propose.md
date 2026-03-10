@@ -250,12 +250,12 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
 
    Read the output carefully. The `opt_mid` column tells you the best threshold. The `bal_acc` column tells you the achievable BA.
 
-7. **Inspect failures**: If BA < 0.95, read the anomalies JSONL and actual model responses:
+7. **Inspect failures**: If BA < 1.000, read the anomalies JSONL and actual model responses:
    - Check `/tmp/{conflict_id}_calibration/anomalies.jsonl` for failure details
    - Read the smoke test JSONL directly for full response text on failures
    - Determine: is this a scorer bug, a template clarity issue, or genuine model inability?
 
-8. **Iterate on scorer/constraints**: If BA < 0.95 and the issue is fixable:
+8. **Iterate on scorer/constraints**: If BA < 1.000 and the issue is fixable:
    - Fix scorer logic in the definition file based on actual model output patterns
    - Adjust constraint templates if the model misunderstands them
    - **Reverify existing responses** (no vLLM re-query needed — much faster):
@@ -274,12 +274,14 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
        --smoke
      ```
    - Only re-run `smoke_test.py` (step 5) if constraint **templates** changed — because the model needs to generate new responses to different prompts.
-   - Repeat up to 3 times.
+   - Keep iterating as long as there is measurable progress (BA or min(BL) improving). There is no hard iteration limit — if each round improves metrics, continue.
+   - Stop iterating when: (a) BA=1.000 and min(BL)=1.000 (perfect), or (b) no further improvement after the last change, or (c) the remaining failures are clearly due to model inability rather than scorer/template issues.
 
-8b. **Minimum baseline gate**: After iteration, ALL four baseline rates must be ≥ 0.95:
+8b. **Quality targets**: The goal is min(BL) = 1.000 (all four baseline rates at 1.000). The minimum acceptable gate is min(BL) ≥ 0.95:
    - SBR(a) ≥ 0.95, UCR(a) ≥ 0.95, SBR(b) ≥ 0.95, UCR(b) ≥ 0.95
-   - If any rate is below 0.95 after 3 iterations, **stop and report the conflict as not viable**. Do not proceed to tests. Include the root cause (scorer bug, template clarity, or model inability) in the report.
+   - If any rate is below 0.95 and no further progress is possible, **stop and report the conflict as not viable**. Do not proceed to tests. Include the root cause (scorer bug, template clarity, or model inability) in the report.
    - BA alone is not sufficient — a conflict with BA=0.96 but SBR(b)=0.88 is not acceptable.
+   - Always aim for perfect scores (1.000). Accept ≥ 0.95 only when further iteration shows no improvement.
 
 9. **Set optimal threshold** (float-scored conflicts only — skip for boolean):
    - Read the `opt_mid` value from the FLOAT SCORE CALIBRATION table
@@ -322,6 +324,7 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
 - Same conflict_id for iterate mode — modify in place.
 - Validate early with the model — don't write tests for scorer logic you haven't verified against real responses.
 - When iterating on the scorer, focus on what the model actually produces, not what you expect it to produce.
+- Do NOT overfit. Every scorer change must make sense from a high-level explanation. If a change only helps on this specific smoke test data but wouldn't generalize, don't do it.
 - Always use the analyze script for threshold optimization — never hand-pick thresholds.
 ```
 
