@@ -1,28 +1,28 @@
 # Float conflict thresholds — single source of truth.
-# Cross-model intersection midpoints for: meta-llama_Llama-3.1-8B-Instruct, meta-llama_Llama-3.3-70B-Instruct, google_gemma-3-27b-it
-# Last updated: 2026-03-10
+# Cross-model intersection midpoints for: meta-llama_Llama-3.1-8B-Instruct, meta-llama_Llama-3.3-70B-Instruct, Qwen_Qwen2.5-7B-Instruct, google_gemma-3-27b-it
+# Last updated: 2026-03-11
 # Boolean conflicts don't have thresholds and are not listed here.
 
-address_reader_directly: 0.149
+address_reader_directly: 0.143
 alliteration_density: 0.115
-alphabetical_sentences: 0.436
-direct_answer_vs_hedging: 0.783
+alphabetical_sentences: 0.278
+direct_answer_vs_hedging: 0.798
 each_word_new_line: 0.027
-first_vs_third_person: 0.579
+first_vs_third_person: 0.417
 formal_vs_casual_tone: 0.988
 html_emphasis_tags: 0.167
-imperative_vs_declarative: 0.427
+imperative_vs_declarative: 0.405
 keyword_avoidance: 0.251
-keyword_frequency: 0.193
+keyword_frequency: 0.058
 leetspeak_encoding: 0.13
-number_density: 0.5
-parenthetical_asides: 0.208
-past_vs_present_tense: 0.692
-pronoun_density: 0.03
+number_density: 0.563
+parenthetical_asides: 0.345
+past_vs_present_tense: 0.633
+pronoun_density: 0.029
 response_length: 0.244
-sentence_connector_density: 0.449
+sentence_connector_density: 0.376
 short_vs_long_sentences: 0.418
-spanish_loanwords: 0.3
+spanish_loanwords: 0.201
 vocabulary_diversity: 0.143
 vowel_omission: 0.7
 word_repetition_density: 0.186

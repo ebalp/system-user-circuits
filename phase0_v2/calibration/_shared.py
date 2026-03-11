@@ -19,6 +19,37 @@ def load_records(path: str | Path) -> list[dict]:
     return records
 
 
+def load_records_filtered(
+    path: str | Path,
+    conflict_id: str,
+    *,
+    include_errors: bool = False,
+) -> tuple[str | None, list[dict]]:
+    """Stream a JSONL file and return only records matching conflict_id.
+
+    Reads line by line so only matching records are held in memory.
+    Also extracts the model name from the first record encountered.
+
+    Returns (model_id_or_None, filtered_records).
+    """
+    records = []
+    model_id = None
+    with open(path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            if model_id is None:
+                model_id = rec.get("model")
+            if rec.get("conflict_id") != conflict_id:
+                continue
+            if not include_errors and rec.get("error") is not None:
+                continue
+            records.append(rec)
+    return model_id, records
+
+
 @dataclass
 class SideInfo:
     is_inverted: bool
