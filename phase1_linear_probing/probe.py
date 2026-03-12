@@ -9,6 +9,7 @@ stratified and grouped cross-validation, always reports ``roc_auc`` and
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -16,7 +17,9 @@ from typing import Literal
 import joblib
 import numpy as np
 import pandas as pd
+import torch
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import balanced_accuracy_score, roc_auc_score
 from sklearn.model_selection import (
     GroupKFold,
     StratifiedKFold,
@@ -98,13 +101,13 @@ class ProbeResult:
 _SCORING = ["roc_auc", "balanced_accuracy"]
 
 
-def _make_pipeline(use_scaler: bool) -> Pipeline:
+def _make_pipeline(use_scaler: bool, C: float = 1.0) -> Pipeline:
     """Build a logistic regression pipeline with optional scaling."""
     steps = []
     if use_scaler:
         steps.append(("scaler", StandardScaler()))
     steps.append(
-        ("clf", LogisticRegression(max_iter=1000, C=0.005, solver="lbfgs"))
+        ("clf", LogisticRegression(max_iter=1000, C=C, solver="lbfgs"))
     )
     return Pipeline(steps)
 
@@ -121,6 +124,7 @@ def probe_and_fit(
     groups: np.ndarray | None = None,
     n_folds: int = 5,
     use_scaler: bool = False,
+    probe_C: float = 1.0,
     random_state: int = 42,
 ) -> dict[str, ProbeResult]:
     """Run linear probe at every layer: CV scoring + full-data fit.
@@ -177,22 +181,25 @@ def probe_and_fit(
         fold_weights_all = np.zeros((n_layers, n_folds, d_model))
         fold_scores_all = np.zeros((n_layers, n_folds))
 
+        n_cv_jobs = min(n_folds, os.cpu_count() or 1)
+
         for layer in tqdm(
             range(n_layers),
             desc=f"Probing {pos_name}",
             leave=False,
         ):
-            X_layer = X[:, layer, :]
+            # Contiguous copy avoids slow pickling of strided views
+            X_layer = np.ascontiguousarray(X[:, layer, :])
 
             # -- CV scoring --
-            pipe_cv = _make_pipeline(use_scaler)
+            pipe_cv = _make_pipeline(use_scaler, C=probe_C)
             cv_out = cross_validate(
                 pipe_cv,
                 X_layer,
                 y,
                 cv=cv,
                 scoring=_SCORING,
-                n_jobs=-1,
+                n_jobs=n_cv_jobs,
                 return_estimator=True,
                 **cv_kwargs,
             )
@@ -227,8 +234,11 @@ def probe_and_fit(
                     w_fold / norm_fold if norm_fold > 0 else w_fold
                 )
 
+            # Free fold estimators before full-data fit
+            del cv_out
+
             # -- Full-data fit --
-            pipe_fit = _make_pipeline(use_scaler)
+            pipe_fit = _make_pipeline(use_scaler, C=probe_C)
             pipe_fit.fit(X_layer, y)
 
             clf = pipe_fit.named_steps["clf"]
@@ -250,6 +260,292 @@ def probe_and_fit(
             weights_raw=weights_raw,
             biases=biases,
             scalers=scalers,
+            classifiers=classifiers,
+            pos_name=pos_name,
+            cv_mode=cv_mode,
+            use_scaler=use_scaler,
+            fold_weights=fold_weights_all,
+            fold_scores=fold_scores_all,
+            fold_group_names=fold_group_names,
+        )
+
+    return results
+
+
+# ── GPU Probing ──────────────────────────────────────────────────────────────
+
+
+def _lbfgs_logistic_batched(
+    X: torch.Tensor,
+    y: torch.Tensor,
+    C: float = 1.0,
+    max_iter: int = 200,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Batched L2-regularized logistic regression via LBFGS.
+
+    Solves all layers simultaneously using batched matrix operations.
+
+    Parameters
+    ----------
+    X : (n_layers, n_samples, d_model) float32 tensor
+    y : (n_samples,) float32 tensor (0/1)
+    C : inverse regularization strength (sklearn convention)
+    max_iter : LBFGS iterations
+
+    Returns
+    -------
+    W : (n_layers, d_model) weight matrix
+    b : (n_layers,) bias vector
+    """
+    n_layers, n_samples, d_model = X.shape
+    device = X.device
+
+    W = torch.zeros(n_layers, d_model, device=device, dtype=torch.float32)
+    b = torch.zeros(n_layers, device=device, dtype=torch.float32)
+    W.requires_grad_(True)
+    b.requires_grad_(True)
+
+    # y broadcast: (1, n_samples)
+    y_broad = y.unsqueeze(0)  # (1, n_samples)
+
+    optimizer = torch.optim.LBFGS(
+        [W, b],
+        max_iter=max_iter,
+        history_size=20,
+        line_search_fn="strong_wolfe",
+        tolerance_grad=1e-7,
+        tolerance_change=1e-9,
+    )
+
+    reg_coeff = 1.0 / (2.0 * C)
+
+    def closure():
+        optimizer.zero_grad()
+        # logits: (n_layers, n_samples)
+        logits = torch.einsum("lnd,ld->ln", X, W) + b.unsqueeze(1)
+        # BCE loss summed over samples, per layer then summed
+        loss = torch.nn.functional.binary_cross_entropy_with_logits(
+            logits, y_broad.expand_as(logits), reduction="sum"
+        )
+        # L2 penalty on W only (not bias), matching sklearn
+        loss = loss + reg_coeff * (W * W).sum()
+        loss.backward()
+        return loss
+
+    optimizer.step(closure)
+
+    return W.detach(), b.detach()
+
+
+def probe_and_fit_gpu(
+    activations: dict[str, np.ndarray],
+    y: np.ndarray,
+    token_positions: list[str],
+    *,
+    cv_mode: Literal["stratified", "grouped"] = "stratified",
+    groups: np.ndarray | None = None,
+    n_folds: int = 5,
+    use_scaler: bool = False,
+    probe_C: float = 1.0,
+    random_state: int = 42,
+    device: str | None = None,
+    max_lbfgs_iter: int = 200,
+    layer_chunk_size: int | None = None,
+) -> dict[str, ProbeResult]:
+    """GPU-accelerated linear probe: all layers fitted simultaneously per fold.
+
+    Functionally equivalent to :func:`probe_and_fit` but uses batched LBFGS
+    on GPU to fit all layers at once within each CV fold, dramatically
+    reducing wall time for large datasets.
+
+    Parameters
+    ----------
+    activations : dict mapping position name -> (n_samples, n_layers, d_model)
+    y : binary labels, shape (n_samples,)
+    token_positions : which positions to probe
+    cv_mode : "stratified" or "grouped"
+    groups : group labels for GroupKFold (required if cv_mode="grouped")
+    n_folds : number of CV folds
+    use_scaler : whether to standardize features
+    probe_C : inverse regularization strength
+    random_state : seed for StratifiedKFold
+    device : torch device string (auto-detected if None)
+    max_lbfgs_iter : max LBFGS iterations
+    layer_chunk_size : process layers in chunks to limit VRAM; None = all at once
+        with automatic OOM fallback to chunks of 8
+
+    Returns
+    -------
+    dict mapping position name -> ProbeResult
+    """
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    cv = make_cv_splitter(cv_mode, n_folds, random_state)
+    cv_kwargs_split: dict = {"groups": groups} if cv_mode == "grouped" else {}
+
+    results: dict[str, ProbeResult] = {}
+
+    for pos_name in token_positions:
+        X_np = activations[pos_name]  # (n_samples, n_layers, d_model)
+        n_samples, n_layers, d_model = X_np.shape
+
+        # Keep data on CPU; only move per-chunk slices to GPU to avoid OOM.
+        # Transpose to (n_layers, n_samples, d_model) as contiguous CPU tensor.
+        X_all_cpu = torch.from_numpy(
+            np.ascontiguousarray(X_np.transpose(1, 0, 2))
+        ).to(dtype=torch.float32)
+        y_cpu = torch.from_numpy(y.astype(np.float32))
+        y_device = y_cpu.to(device)
+
+        # Determine fold splits once (same for all layers)
+        X_dummy = np.zeros((len(y), 1))
+        fold_splits = list(cv.split(X_dummy, y, **cv_kwargs_split))
+        actual_n_folds = len(fold_splits)
+
+        # Fold group names
+        fold_group_names: list[str] | None = None
+        if cv_mode == "grouped" and groups is not None:
+            fold_group_names = [
+                str(groups[val_idx[0]]) for _, val_idx in fold_splits
+            ]
+
+        # Determine layer chunks — default to 16 layers per chunk
+        # (16 × 60k × 4096 × 4B ≈ 15GB per chunk, fits on 40GB A100)
+        effective_chunk_size = layer_chunk_size if layer_chunk_size is not None else 16
+        chunks = [
+            range(i, min(i + effective_chunk_size, n_layers))
+            for i in range(0, n_layers, effective_chunk_size)
+        ]
+
+        # Accumulators
+        fold_scores_all = np.zeros((n_layers, actual_n_folds))
+        fold_bacc_all = np.zeros((n_layers, actual_n_folds))
+        fold_weights_all = np.zeros((n_layers, actual_n_folds, d_model))
+        full_W = np.zeros((n_layers, d_model))
+        full_b = np.zeros(n_layers)
+
+        for layer_range in tqdm(
+            chunks,
+            desc=f"Probing {pos_name} (GPU, {len(chunks)} chunk(s))",
+            leave=False,
+        ):
+            layer_indices = list(layer_range)
+            # Move only this chunk to GPU
+            X_chunk = X_all_cpu[layer_indices].to(device)
+
+            # --- CV folds ---
+            for fi, (train_idx, val_idx) in enumerate(fold_splits):
+                X_train = X_chunk[:, train_idx, :]
+                X_val = X_chunk[:, val_idx, :]
+                y_train = y_device[train_idx]
+                y_val_np = y[val_idx]
+
+                # Optional scaling
+                if use_scaler:
+                    mean = X_train.mean(dim=1, keepdim=True)
+                    std = X_train.std(dim=1, keepdim=True).clamp(min=1e-10)
+                    X_train = (X_train - mean) / std
+                    X_val = (X_val - mean) / std
+
+                W_fold, b_fold = _lbfgs_logistic_batched(
+                    X_train, y_train, C=probe_C, max_iter=max_lbfgs_iter,
+                )
+
+                # Predictions on val set -> CPU for sklearn metrics
+                with torch.no_grad():
+                    logits_val = (
+                        torch.einsum("lnd,ld->ln", X_val, W_fold)
+                        + b_fold.unsqueeze(1)
+                    )
+                    probs_val = torch.sigmoid(logits_val).cpu().numpy()
+
+                for ci, li in enumerate(layer_indices):
+                    if len(np.unique(y_val_np)) < 2:
+                        fold_scores_all[li, fi] = np.nan
+                    else:
+                        fold_scores_all[li, fi] = roc_auc_score(
+                            y_val_np, probs_val[ci]
+                        )
+                    preds = (probs_val[ci] >= 0.5).astype(int)
+                    fold_bacc_all[li, fi] = balanced_accuracy_score(
+                        y_val_np, preds
+                    )
+
+                # Store unit-norm fold weights
+                W_fold_np = W_fold.cpu().numpy()
+                for ci, li in enumerate(layer_indices):
+                    w = W_fold_np[ci]
+                    norm = np.linalg.norm(w)
+                    fold_weights_all[li, fi] = w / norm if norm > 0 else w
+
+                del X_train, X_val, W_fold, b_fold, logits_val, probs_val
+
+            # --- Full-data fit ---
+            if use_scaler:
+                mean = X_chunk.mean(dim=1, keepdim=True)
+                std = X_chunk.std(dim=1, keepdim=True).clamp(min=1e-10)
+                X_fit = (X_chunk - mean) / std
+            else:
+                X_fit = X_chunk
+
+            W_full, b_full = _lbfgs_logistic_batched(
+                X_fit, y_device, C=probe_C, max_iter=max_lbfgs_iter,
+            )
+            W_full_np = W_full.cpu().numpy()
+            b_full_np = b_full.cpu().numpy()
+
+            for ci, li in enumerate(layer_indices):
+                full_W[li] = W_full_np[ci]
+                full_b[li] = b_full_np[ci]
+
+            del W_full, b_full, X_fit, X_chunk
+            if device != "cpu":
+                torch.cuda.empty_cache()
+
+        # Build unit-norm weights and raw weights
+        weights_raw = full_W.copy()
+        norms = np.linalg.norm(full_W, axis=1, keepdims=True)
+        norms = np.where(norms > 0, norms, 1.0)
+        weights = full_W / norms
+
+        # Build CV scores DataFrame (nanmean/nanstd to skip single-class folds)
+        rows = [
+            {
+                "layer": layer,
+                "roc_auc_mean": np.nanmean(fold_scores_all[layer]),
+                "roc_auc_std": np.nanstd(fold_scores_all[layer]),
+                "balanced_accuracy_mean": fold_bacc_all[layer].mean(),
+                "balanced_accuracy_std": fold_bacc_all[layer].std(),
+            }
+            for layer in range(n_layers)
+        ]
+
+        # Build sklearn-compatible classifier shells and scalers
+        classifiers = []
+        scalers_list: list = []
+        for layer in range(n_layers):
+            clf = LogisticRegression()
+            clf.classes_ = np.array([0, 1])
+            clf.coef_ = weights_raw[layer : layer + 1]
+            clf.intercept_ = np.array([full_b[layer]])
+            clf.n_features_in_ = d_model
+            classifiers.append(clf)
+
+            if use_scaler:
+                # Recompute full-data scaler for downstream compatibility
+                X_layer_np = X_np[:, layer, :]
+                scaler = StandardScaler().fit(X_layer_np)
+                scalers_list.append(scaler)
+            else:
+                scalers_list.append(None)
+
+        results[pos_name] = ProbeResult(
+            cv_scores=pd.DataFrame(rows),
+            weights=weights,
+            weights_raw=weights_raw,
+            biases=full_b,
+            scalers=scalers_list,
             classifiers=classifiers,
             pos_name=pos_name,
             cv_mode=cv_mode,
@@ -364,6 +660,7 @@ def probe_control(
     groups: np.ndarray | None = None,
     n_folds: int = 5,
     use_scaler: bool = True,
+    probe_C: float = 1.0,
     seed: int = 0,
 ) -> dict[str, pd.DataFrame]:
     """Probe with permuted labels to establish chance-level baseline.
@@ -390,24 +687,27 @@ def probe_control(
         auc_scores = np.zeros((n_permutations, n_layers))
         bacc_scores = np.zeros((n_permutations, n_layers))
 
+        n_cv_jobs = min(n_folds, os.cpu_count() or 1)
+
         for p in range(n_permutations):
             y_perm = rng.permutation(y)
             for layer in range(n_layers):
-                X_layer = X[:, layer, :]
-                pipe = _make_pipeline(use_scaler)
+                X_layer = np.ascontiguousarray(X[:, layer, :])
+                pipe = _make_pipeline(use_scaler, C=probe_C)
                 cv_out = cross_validate(
                     pipe,
                     X_layer,
                     y_perm,
                     cv=cv,
                     scoring=_SCORING,
-                    n_jobs=-1,
+                    n_jobs=n_cv_jobs,
                     **cv_kwargs,
                 )
                 auc_scores[p, layer] = cv_out["test_roc_auc"].mean()
                 bacc_scores[p, layer] = cv_out[
                     "test_balanced_accuracy"
                 ].mean()
+                del cv_out
 
         rows = [
             {

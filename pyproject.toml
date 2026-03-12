@@ -61,6 +61,8 @@ dependencies = [
 lambda-cloud-toolkit = { path = "../lambda-cloud-toolkit", editable = true }
 
 [tool.pytest.ini_options]
+addopts = "-m 'not gpu and not live'"
 markers = [
     "live: tests that require a running vLLM server (access via SSH tunnel)",
+    "gpu: tests that require a GPU and load real models (run with pytest -m gpu)",
 ]

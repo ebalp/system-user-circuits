@@ -77,6 +77,10 @@ class ProbeConfig:
     n_cv_folds: int = 5
     max_samples: int | None = None
     use_scaler: bool = False
+    conflict_ids: list[str] | None = None
+    batch_size: int = 1
+    probe_C: float = 1.0
+    data_dir: Path | None = None
     device: str = field(
         default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu"
     )
@@ -84,14 +88,14 @@ class ProbeConfig:
     run_id: str | None = None
 
     # Auto-derived in __post_init__
-    data_dir: Path = field(init=False)
     run_dir: Path = field(init=False)
     reports_dir: Path = field(init=False)
 
     def __post_init__(self) -> None:
-        self.data_dir = (
-            self.repo_root / "phase0_behavioral_analysis" / "data" / "results"
-        )
+        if self.data_dir is None:
+            self.data_dir = (
+                self.repo_root / "phase0_v2" / "data" / "results"
+            )
         if self.run_id is None:
             self.run_id = self._compute_run_id()
         self.run_dir = (
@@ -135,6 +139,7 @@ class ProbeConfig:
                 "folds": self.n_cv_folds,
                 "scaler": self.use_scaler,
                 "max_samples": self.max_samples,
+                "conflict_ids": sorted(self.conflict_ids) if self.conflict_ids else None,
                 "data": self._data_hash(),
             },
             sort_keys=True,
@@ -152,6 +157,8 @@ class ProbeConfig:
             "n_cv_folds": self.n_cv_folds,
             "max_samples": self.max_samples,
             "use_scaler": self.use_scaler,
+            "conflict_ids": self.conflict_ids,
+            "data_dir": str(self.data_dir),
             "device": self.device,
             "run_id": self.run_id,
         }
@@ -219,6 +226,7 @@ def prepare_condition_c(
     df_all: pd.DataFrame,
     label_mode: str = "binary",
     max_samples: int | None = None,
+    conflict_ids: list[str] | None = None,
 ) -> pd.DataFrame:
     """Filter to Condition C, assign labels, and optionally subsample.
 
@@ -231,6 +239,8 @@ def prepare_condition_c(
         ``"one_vs_rest"`` keeps all Condition C labels.
     max_samples : int or None
         Cap the number of samples (for fast debugging).
+    conflict_ids : list[str] or None
+        If provided, keep only these conflict IDs. None keeps all.
 
     Returns
     -------
@@ -238,6 +248,9 @@ def prepare_condition_c(
         Filtered dataframe with a ``y`` column (1 = followed_system).
     """
     df = df_all[df_all["condition"] == "C"].copy()
+    if conflict_ids is not None:
+        df = df[df["conflict_id"].isin(conflict_ids)].copy()
+        logger.info("Filtered to %d conflict IDs (%d samples)", len(conflict_ids), len(df))
     if label_mode == "binary":
         df = df[df["label"].isin(["followed_system", "followed_user"])].copy()
     df["y"] = (df["label"] == "followed_system").astype(int)
@@ -430,6 +443,29 @@ def filter_activations(
     return {pos: arr[indices] for pos, arr in activations.items()}
 
 
+# ── Batching Utilities ────────────────────────────────────────────────────────
+
+
+def _pad_right(
+    ids_batch: list[torch.Tensor], pad_token_id: int
+) -> tuple[torch.Tensor, list[int]]:
+    """Right-pad a list of ``(1, seq_len)`` tensors into a single batch tensor.
+
+    Returns
+    -------
+    batched : torch.Tensor
+        Shape ``(batch_size, max_seq_len)`` with right-padding.
+    lengths : list[int]
+        Original sequence length for each sample.
+    """
+    lengths = [ids.shape[1] for ids in ids_batch]
+    max_len = max(lengths)
+    padded = torch.full((len(ids_batch), max_len), pad_token_id, dtype=ids_batch[0].dtype)
+    for i, ids in enumerate(ids_batch):
+        padded[i, : lengths[i]] = ids[0]
+    return padded, lengths
+
+
 # ── Activation Extraction ─────────────────────────────────────────────────────
 
 
@@ -440,9 +476,13 @@ def extract_activations_tl(
 ) -> dict[str, np.ndarray]:
     """Extract residual-stream activations using TransformerLens.
 
-    Loads a :class:`HookedTransformer`, runs each sample through the model,
-    collects ``resid_post`` at every layer for each token position, saves
-    the result to ``cfg.run_dir``, and frees GPU memory.
+    Loads a :class:`HookedTransformer`, runs samples through the model
+    (optionally batched via ``cfg.batch_size``), collects ``resid_post``
+    at every layer for each token position, saves the result to
+    ``cfg.run_dir``, and frees GPU memory.
+
+    Right-padding is used for batching; causal attention ensures padding
+    tokens do not affect activations at real token positions.
 
     Parameters
     ----------
@@ -469,43 +509,71 @@ def extract_activations_tl(
 
     n_layers = model_tl.cfg.n_layers
     d_model = model_tl.cfg.d_model
-    print(f"Loaded via TL  |  layers={n_layers}  d_model={d_model}")
+    bs = cfg.batch_size
+    pad_id = model_tl.tokenizer.pad_token_id
+    if pad_id is None:
+        pad_id = model_tl.tokenizer.eos_token_id
+    print(f"Loaded via TL  |  layers={n_layers}  d_model={d_model}  batch_size={bs}")
 
     buffers: dict[str, list[list]] = {
         pos: [[] for _ in range(n_layers)] for pos in cfg.token_positions
     }
 
+    n_total = len(input_ids_list)
     t0 = time.time()
-    for ids, pm in tqdm(
-        zip(input_ids_list, position_maps),
-        total=len(input_ids_list),
-        desc="TL extract",
-    ):
-        ids_gpu = ids.to(cfg.device)
-        with torch.no_grad():
-            _, cache = model_tl.run_with_cache(
-                ids_gpu,
-                prepend_bos=False,
-                names_filter=lambda name: name.endswith("resid_post"),
-            )
-        for layer in range(n_layers):
-            act = cache["resid_post", layer]
-            for pos_name in cfg.token_positions:
-                buffers[pos_name][layer].append(
-                    slice_activation(act, pm[pos_name])
+    try:
+        for batch_start in tqdm(range(0, n_total, bs), desc="TL extract"):
+            batch_end = min(batch_start + bs, n_total)
+            batch_ids = input_ids_list[batch_start:batch_end]
+            batch_pms = position_maps[batch_start:batch_end]
+
+            if len(batch_ids) == 1:
+                ids_gpu = batch_ids[0].to(cfg.device)
+            else:
+                ids_gpu, _ = _pad_right(batch_ids, pad_id)
+                ids_gpu = ids_gpu.to(cfg.device)
+
+            with torch.no_grad():
+                _, cache = model_tl.run_with_cache(
+                    ids_gpu,
+                    prepend_bos=False,
+                    names_filter=lambda name: name.endswith("resid_post"),
                 )
-        del cache
+            for layer in range(n_layers):
+                act = cache["resid_post", layer]  # (batch, seq_len, d_model)
+                for sample_idx, pm in enumerate(batch_pms):
+                    for pos_name in cfg.token_positions:
+                        pos_val = pm[pos_name]
+                        if isinstance(pos_val, int):
+                            vec = act[sample_idx, pos_val, :].float().cpu().numpy()
+                        else:
+                            start, end = pos_val
+                            vec = act[sample_idx, start:end, :].float().mean(dim=0).cpu().numpy()
+                        buffers[pos_name][layer].append(vec)
+            del cache
+            if cfg.device == "cuda":
+                torch.cuda.empty_cache()
+
+    finally:
+        # Always clean up the model, even if extraction fails mid-way
+        del model_tl
+        gc.collect()
         if cfg.device == "cuda":
             torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            print(
+                f"VRAM after cleanup: "
+                f"{torch.cuda.memory_allocated() / 1e9:.2f} GB"
+            )
 
     elapsed = time.time() - t0
     print(
         f"TL extraction: {elapsed:.1f}s  "
-        f"({elapsed / len(input_ids_list):.2f}s/sample)"
+        f"({elapsed / n_total:.2f}s/sample)"
     )
 
     activations = build_activation_array(
-        buffers, len(input_ids_list), n_layers, cfg.token_positions
+        buffers, n_total, n_layers, cfg.token_positions
     )
     del buffers
 
@@ -513,18 +581,106 @@ def extract_activations_tl(
     save_path = cfg.run_dir / f"act_tl_{cfg.safe_model_name}.npz"
     save_activations(activations, save_path)
 
-    # Cleanup
-    del model_tl
+    return activations
+
+
+def _load_nn_model(cfg: ProbeConfig):
+    """Load an nnsight LanguageModel and return (model, n_layers)."""
+    from nnsight import LanguageModel
+
+    model_nn = LanguageModel(
+        cfg.model_name,
+        device_map="auto",
+        dispatch=True,
+        torch_dtype=torch.float16 if cfg.device == "cuda" else torch.float32,
+    )
+    n_layers = len(list(model_nn.model.layers))
+    print(f"Loaded via nnsight LanguageModel  |  layers={n_layers}  batch_size={cfg.batch_size}")
+    return model_nn, n_layers
+
+
+def _cleanup_nn_model(model_nn, device: str) -> None:
+    """Free GPU memory held by an nnsight model."""
+    from accelerate.hooks import remove_hook_from_submodules
+
+    remove_hook_from_submodules(model_nn._model)
+    del model_nn
     gc.collect()
-    if cfg.device == "cuda":
+    if device == "cuda":
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
-        print(
-            f"VRAM freed. Current usage: "
-            f"{torch.cuda.memory_allocated() / 1e9:.2f} GB"
-        )
+        print(f"VRAM after cleanup: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
 
-    return activations
+
+def _extract_nn_core(
+    input_ids_list: list[torch.Tensor],
+    position_maps: list[dict],
+    cfg: ProbeConfig,
+    model_nn,
+    n_layers: int,
+) -> dict[str, np.ndarray]:
+    """Core nnsight extraction loop (model already loaded).
+
+    Returns ``{pos_name: (n_samples, n_layers, d_model)}`` arrays.
+    """
+    bs = cfg.batch_size
+
+    buffers: dict[str, list[list]] = {
+        pos: [[] for _ in range(n_layers)] for pos in cfg.token_positions
+    }
+
+    n_total = len(input_ids_list)
+    for batch_start in tqdm(range(0, n_total, bs), desc="nnsight extract"):
+        batch_end = min(batch_start + bs, n_total)
+        batch_ids = input_ids_list[batch_start:batch_end]
+        batch_pms = position_maps[batch_start:batch_end]
+        cur_bs = len(batch_ids)
+
+        # nnsight batching: multiple invoke() calls within a single trace().
+        # nnsight internally left-pads variable-length inputs to the max
+        # length in the batch, so position indices must be shifted by the
+        # per-sample pad offset: pad_offset = max_len - original_len.
+        batch_lengths = [ids.shape[1] for ids in batch_ids]
+        max_len = max(batch_lengths)
+
+        saved = [[None] * n_layers for _ in range(cur_bs)]
+        with model_nn.trace() as tracer:
+            for si, ids in enumerate(batch_ids):
+                ids_dev = ids.to(cfg.device)
+                mask = torch.ones_like(ids_dev)
+                with tracer.invoke(input_ids=ids_dev, attention_mask=mask):
+                    for layer in range(n_layers):
+                        saved[si][layer] = (
+                            model_nn.model.layers[layer].output[0].save()
+                        )
+
+        for si, pm in enumerate(batch_pms):
+            pad_offset = max_len - batch_lengths[si]
+            for layer in range(n_layers):
+                hs = saved[si][layer]
+                if hs.dim() == 3:
+                    hs = hs[0]
+                for pos_name in cfg.token_positions:
+                    pos_val = pm[pos_name]
+                    if isinstance(pos_val, int):
+                        vec = hs[pos_val + pad_offset, :].detach().float().cpu().numpy()
+                    else:
+                        start, end = pos_val
+                        vec = (
+                            hs[start + pad_offset : end + pad_offset, :]
+                            .detach()
+                            .float()
+                            .mean(0)
+                            .cpu()
+                            .numpy()
+                        )
+                    buffers[pos_name][layer].append(vec)
+
+        del saved
+        if cfg.device == "cuda":
+            torch.cuda.empty_cache()
+
+    return build_activation_array(buffers, n_total, n_layers, cfg.token_positions)
 
 
 def extract_activations_nn(
@@ -535,8 +691,8 @@ def extract_activations_nn(
     """Extract residual-stream activations using nnsight.
 
     Uses ``nnsight.LanguageModel`` with the explicit ``tracer.invoke()``
-    pattern (see ``NNSIGHT_NOTES.md``).  Saves the result to
-    ``cfg.run_dir`` and frees GPU memory.
+    pattern.  Supports batched extraction via ``cfg.batch_size``.
+    Saves the result to ``cfg.run_dir`` and frees GPU memory.
 
     Parameters
     ----------
@@ -552,87 +708,129 @@ def extract_activations_nn(
     dict[str, np.ndarray]
         ``{pos_name: array of shape (n_samples, n_layers, d_model)}``.
     """
-    from nnsight import LanguageModel
-
-    model_nn = LanguageModel(
-        cfg.model_name,
-        device_map="auto",
-        dispatch=True,
-        torch_dtype=torch.float16 if cfg.device == "cuda" else torch.float32,
-    )
-
-    n_layers = len(list(model_nn.model.layers))
-    print(f"Loaded via nnsight LanguageModel  |  layers={n_layers}")
-
-    buffers: dict[str, list[list]] = {
-        pos: [[] for _ in range(n_layers)] for pos in cfg.token_positions
-    }
+    model_nn, n_layers = _load_nn_model(cfg)
 
     t0 = time.time()
-    for ids, pm in tqdm(
-        zip(input_ids_list, position_maps),
-        total=len(input_ids_list),
-        desc="nnsight extract",
-    ):
-        ids_gpu = ids.to(cfg.device)
-
-        saved = [None] * n_layers
-        with model_nn.trace() as tracer:
-            with tracer.invoke(input_ids=ids_gpu):
-                for layer in range(n_layers):
-                    saved[layer] = model_nn.model.layers[layer].output[0].save()
-
-        for layer in range(n_layers):
-            hs = saved[layer]  # (seq_len, d_model) — batch dim squeezed
-            if hs.dim() == 3:
-                hs = hs[0]
-            for pos_name in cfg.token_positions:
-                pos_val = pm[pos_name]
-                if isinstance(pos_val, int):
-                    vec = hs[pos_val, :].detach().float().cpu().numpy()
-                else:
-                    start, end = pos_val
-                    vec = (
-                        hs[start:end, :]
-                        .detach()
-                        .float()
-                        .mean(0)
-                        .cpu()
-                        .numpy()
-                    )
-                buffers[pos_name][layer].append(vec)
-
+    try:
+        activations = _extract_nn_core(
+            input_ids_list, position_maps, cfg, model_nn, n_layers
+        )
+    finally:
+        _cleanup_nn_model(model_nn, cfg.device)
+        del model_nn
+        gc.collect()
         if cfg.device == "cuda":
             torch.cuda.empty_cache()
 
     elapsed = time.time() - t0
+    n_total = len(input_ids_list)
     print(
         f"nnsight extraction: {elapsed:.1f}s  "
-        f"({elapsed / len(input_ids_list):.2f}s/sample)"
+        f"({elapsed / n_total:.2f}s/sample)"
     )
-
-    activations = build_activation_array(
-        buffers, len(input_ids_list), n_layers, cfg.token_positions
-    )
-    del buffers
 
     cfg.ensure_dirs()
     save_path = cfg.run_dir / f"act_nn_{cfg.safe_model_name}.npz"
     save_activations(activations, save_path)
 
-    # Cleanup
-    from accelerate.hooks import remove_hook_from_submodules
+    return activations
 
-    remove_hook_from_submodules(model_nn._model)
-    del model_nn
-    gc.collect()
-    if cfg.device == "cuda":
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
-        print(
-            f"VRAM after cleanup: "
-            f"{torch.cuda.memory_allocated() / 1e9:.2f} GB"
-        )
+
+def extract_activations_checkpointed(
+    df: pd.DataFrame,
+    tokenizer,
+    cfg: ProbeConfig,
+    backend: str = "nn",
+) -> dict[str, np.ndarray]:
+    """Extract activations per conflict with checkpointing.
+
+    Loads the model once, loops over each unique ``conflict_id`` in *df*,
+    extracts activations for that subset, and saves a per-conflict ``.npz``
+    checkpoint.  Already-completed checkpoints are skipped on resume, so a
+    crash mid-extraction doesn't lose prior work.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Condition C dataframe (must have ``conflict_id`` column).
+    tokenizer : PreTrainedTokenizer
+        Tokenizer for the model.
+    cfg : ProbeConfig
+        Experiment configuration.
+    backend : str
+        ``"nn"`` for nnsight or ``"tl"`` for TransformerLens.
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+        ``{pos_name: array of shape (n_total_samples, n_layers, d_model)}``.
+    """
+    cfg.ensure_dirs()
+    ckpt_dir = cfg.run_dir / "checkpoints"
+    ckpt_dir.mkdir(exist_ok=True)
+
+    conflict_ids = sorted(df["conflict_id"].unique())
+    # Check which conflicts still need extraction
+    pending = [cid for cid in conflict_ids
+               if not (ckpt_dir / f"act_{backend}_{cid}.npz").exists()]
+    print(f"Checkpointed extraction: {len(conflict_ids)} conflicts, "
+          f"{len(conflict_ids) - len(pending)} cached, {len(pending)} pending, "
+          f"backend={backend}")
+
+    if pending:
+        # Load model once for all pending conflicts
+        if backend == "nn":
+            model_nn, n_layers = _load_nn_model(cfg)
+        else:
+            raise NotImplementedError("TL checkpointed extraction not yet supported")
+
+        t0 = time.time()
+        try:
+            for i, cid in enumerate(conflict_ids):
+                ckpt_path = ckpt_dir / f"act_{backend}_{cid}.npz"
+                if ckpt_path.exists():
+                    continue
+
+                print(f"  [{i+1}/{len(conflict_ids)}] {cid}: extracting...")
+                df_sub = df[df["conflict_id"] == cid]
+                _, position_maps_sub, input_ids_sub = precompute_prompts(df_sub, tokenizer)
+
+                activations_sub = _extract_nn_core(
+                    input_ids_sub, position_maps_sub, cfg, model_nn, n_layers
+                )
+
+                np.savez(ckpt_path, **activations_sub)
+                print(f"    Saved checkpoint: {ckpt_path}")
+                del activations_sub
+                gc.collect()
+        finally:
+            _cleanup_nn_model(model_nn, cfg.device)
+            del model_nn
+            gc.collect()
+            if cfg.device == "cuda":
+                torch.cuda.empty_cache()
+
+        elapsed = time.time() - t0
+        print(f"Extraction of {len(pending)} conflicts: {elapsed:.1f}s")
+
+    # Concatenate checkpoints in sorted conflict_id order.
+    # Caller must sort df by conflict_id so that y/groups align.
+    print("Concatenating checkpoints...")
+    combined: dict[str, list[np.ndarray]] = {}
+    for cid in conflict_ids:
+        ckpt_path = ckpt_dir / f"act_{backend}_{cid}.npz"
+        act = load_activations(ckpt_path)
+        for pos, arr in act.items():
+            combined.setdefault(pos, []).append(arr)
+        del act
+
+    activations = {pos: np.concatenate(arrs, axis=0) for pos, arrs in combined.items()}
+    del combined
+
+    # Save combined file (uncompressed for speed; checkpoints are the durable copies)
+    save_path = cfg.run_dir / f"act_{backend}_{cfg.safe_model_name}.npz"
+    np.savez(save_path, **activations)
+    print(f"Saved: {save_path}")
 
     return activations
 

@@ -19,6 +19,7 @@ from phase1_linear_probing.probe import (
     load_results,
     make_cv_splitter,
     probe_and_fit,
+    probe_and_fit_gpu,
     probe_control,
     results_path,
     save_classifiers,
@@ -486,3 +487,214 @@ def test_compute_constraint_cmds_unit_norm(
     for vec in cmds.values():
         assert vec.shape == (16,)
         np.testing.assert_allclose(np.linalg.norm(vec), 1.0, atol=1e-6)
+
+
+# ── probe_and_fit_gpu ────────────────────────────────────────────────────────
+
+
+def test_probe_and_fit_gpu_returns_both_metrics(
+    synthetic_activations, synthetic_labels
+):
+    """GPU probe CV scores contain both roc_auc and balanced_accuracy columns."""
+    results = probe_and_fit_gpu(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        cv_mode="stratified",
+        n_folds=2,
+        device="cpu",
+    )
+    assert "last_prompt" in results
+    pr = results["last_prompt"]
+
+    expected_cols = {
+        "layer",
+        "roc_auc_mean",
+        "roc_auc_std",
+        "balanced_accuracy_mean",
+        "balanced_accuracy_std",
+    }
+    assert expected_cols == set(pr.cv_scores.columns)
+    assert len(pr.cv_scores) == 4
+
+
+def test_probe_and_fit_gpu_grouped_cv(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """GPU probe with grouped CV runs without error and returns expected shape."""
+    results = probe_and_fit_gpu(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        cv_mode="grouped",
+        groups=synthetic_groups,
+        n_folds=4,
+        device="cpu",
+    )
+    assert "last_prompt" in results
+    pr = results["last_prompt"]
+    assert len(pr.cv_scores) == 4
+    assert pr.cv_mode == "grouped"
+
+
+def test_probe_and_fit_gpu_weights_unit_norm(
+    synthetic_activations, synthetic_labels
+):
+    """GPU-fitted weights are unit-normalized."""
+    results = probe_and_fit_gpu(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        n_folds=2,
+        device="cpu",
+    )
+    pr = results["last_prompt"]
+    norms = np.linalg.norm(pr.weights, axis=1)
+    np.testing.assert_allclose(norms, 1.0, atol=1e-6)
+
+
+def test_probe_and_fit_gpu_fold_weights_shape(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """GPU fold_weights has shape (n_layers, n_folds, d_model)."""
+    results = probe_and_fit_gpu(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        cv_mode="grouped",
+        groups=synthetic_groups,
+        n_folds=4,
+        device="cpu",
+    )
+    pr = results["last_prompt"]
+    assert pr.fold_weights is not None
+    assert pr.fold_weights.shape == (4, 4, 16)
+
+
+def test_probe_and_fit_gpu_fold_scores_shape(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """GPU fold_scores has shape (n_layers, n_folds)."""
+    results = probe_and_fit_gpu(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        cv_mode="grouped",
+        groups=synthetic_groups,
+        n_folds=4,
+        device="cpu",
+    )
+    pr = results["last_prompt"]
+    assert pr.fold_scores is not None
+    assert pr.fold_scores.shape == (4, 4)
+
+
+def test_probe_and_fit_gpu_fold_group_names(
+    synthetic_activations, synthetic_labels, synthetic_groups
+):
+    """GPU fold_group_names has one entry per fold for grouped CV."""
+    results = probe_and_fit_gpu(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        cv_mode="grouped",
+        groups=synthetic_groups,
+        n_folds=4,
+        device="cpu",
+    )
+    pr = results["last_prompt"]
+    assert pr.fold_group_names is not None
+    assert len(pr.fold_group_names) == 4
+    unique_groups = set(synthetic_groups)
+    for name in pr.fold_group_names:
+        assert name in unique_groups
+
+
+def test_probe_and_fit_gpu_matches_sklearn(
+    synthetic_activations, synthetic_labels
+):
+    """GPU and sklearn probe produce similar results on synthetic data."""
+    kwargs = dict(
+        token_positions=["last_prompt"],
+        cv_mode="stratified",
+        n_folds=2,
+        use_scaler=False,
+        probe_C=1.0,
+        random_state=42,
+    )
+    results_sk = probe_and_fit(
+        synthetic_activations, synthetic_labels, **kwargs
+    )
+    results_gpu = probe_and_fit_gpu(
+        synthetic_activations, synthetic_labels, **kwargs, device="cpu"
+    )
+
+    pr_sk = results_sk["last_prompt"]
+    pr_gpu = results_gpu["last_prompt"]
+
+    # ROC AUC should be close
+    auc_sk = pr_sk.cv_scores["roc_auc_mean"].values
+    auc_gpu = pr_gpu.cv_scores["roc_auc_mean"].values
+    np.testing.assert_allclose(auc_sk, auc_gpu, atol=0.05)
+
+    # Weight directions should be similar (cosine similarity > 0.9)
+    for layer in range(pr_sk.weights.shape[0]):
+        cos_sim = np.dot(pr_sk.weights[layer], pr_gpu.weights[layer])
+        assert abs(cos_sim) > 0.9, (
+            f"Layer {layer}: cosine similarity {cos_sim:.3f} < 0.9"
+        )
+
+
+def test_probe_and_fit_gpu_with_scaler(
+    synthetic_activations, synthetic_labels
+):
+    """GPU probe with use_scaler=True populates scalers."""
+    results = probe_and_fit_gpu(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        n_folds=2,
+        use_scaler=True,
+        device="cpu",
+    )
+    pr = results["last_prompt"]
+    assert pr.use_scaler is True
+    for scaler in pr.scalers:
+        assert isinstance(scaler, StandardScaler)
+
+
+def test_probe_and_fit_gpu_classifiers_shape(
+    synthetic_activations, synthetic_labels
+):
+    """GPU probe creates sklearn-compatible classifier shells."""
+    results = probe_and_fit_gpu(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        n_folds=2,
+        device="cpu",
+    )
+    pr = results["last_prompt"]
+    assert len(pr.classifiers) == 4
+    for clf in pr.classifiers:
+        assert isinstance(clf, LogisticRegression)
+        assert hasattr(clf, "coef_")
+        assert hasattr(clf, "intercept_")
+        assert hasattr(clf, "classes_")
+
+
+def test_probe_and_fit_gpu_layer_chunking(
+    synthetic_activations, synthetic_labels
+):
+    """GPU probe with explicit layer_chunk_size produces same shape results."""
+    results = probe_and_fit_gpu(
+        synthetic_activations,
+        synthetic_labels,
+        token_positions=["last_prompt"],
+        n_folds=2,
+        device="cpu",
+        layer_chunk_size=2,
+    )
+    pr = results["last_prompt"]
+    assert pr.weights.shape == (4, 16)
+    assert len(pr.cv_scores) == 4
