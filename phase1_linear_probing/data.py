@@ -835,6 +835,21 @@ def extract_activations_checkpointed(
     return activations
 
 
+def link_checkpoints(
+    cfg: ProbeConfig, source_run_id: str, backend: str = "nn"
+) -> None:
+    """Symlink per-conflict checkpoints from another run's checkpoint dir."""
+    src_dir = cfg.run_dir.parent / source_run_id / "checkpoints"
+    dst_dir = cfg.run_dir / "checkpoints"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for cid in cfg.conflict_ids or []:
+        src = src_dir / f"act_{backend}_{cid}.npz"
+        dst = dst_dir / f"act_{backend}_{cid}.npz"
+        if src.exists() and not dst.exists():
+            dst.symlink_to(src)
+            logger.info("Linked checkpoint: %s", cid)
+
+
 def compare_backends(
     activations_tl: dict[str, np.ndarray],
     activations_nn: dict[str, np.ndarray],
