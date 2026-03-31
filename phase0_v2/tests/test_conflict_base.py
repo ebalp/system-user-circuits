@@ -232,9 +232,10 @@ class TestThresholdAndScoring:
         c = DummyFloatConflict()
         assert c.verify_threshold == 0.7
 
-    def test_default_threshold_is_0_8(self):
+    def test_no_default_threshold_for_bool(self):
+        """Bool conflicts (test_ prefix, no threshold in yaml) have no verify_threshold."""
         c = DummyConflict()
-        assert c.verify_threshold == 0.8
+        assert not hasattr(c, "verify_threshold")
 
 
 def _inverted_user_fn(response: str) -> float:

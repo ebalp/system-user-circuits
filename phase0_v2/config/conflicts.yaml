@@ -1,0 +1,551 @@
+_meta:
+  last_updated: '2026-03-25'
+  schema_version: 1
+address_reader_directly:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Address reader directly with you/your/yourself
+  constraint_a_type: presence
+  constraint_b: Impersonal language, no "you" addressing
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - extract_content
+  - use_mention_stripping
+  type: float
+  verifier_logic: you/your/yours/yourself/yourselves density (count / word_count) on
+    content-only text (refusal/metacommentary stripped, quoted you-word mentions removed),
+    scaled 10x; inverted pair
+alliteration_density:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Use alliteration extensively (many consecutive words share first letter)
+  constraint_a_type: presence
+  constraint_b: Avoid alliteration (consecutive words start with different letters)
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: fraction of consecutive word pairs sharing first letter; inverted
+    pair
+alphabetical_sentences:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Each sentence starts with the next alphabet letter (A, B, C, ...)
+  constraint_a_type: presence
+  constraint_b: Write normally (no alphabetical constraint)
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: Fraction of consecutive sentence pairs with strict next-letter progression
+    (NLTK sent_tokenize), gated by max consecutive run >= 4; inverted pair
+bullets_and_sub_bullets:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Use bullet points with sub-bullets
+  constraint_a_type: presence
+  constraint_b: Write in paragraph form only
+  constraint_b_type: avoidance
+  counterbalance_quality: partial
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: Bullet density (format_lines / non_empty_lines) + sub_bonus; inverted
+    pair
+capitalization_all_caps:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Write in ALL CAPITAL LETTERS
+  constraint_a_type: presence
+  constraint_b: Write in normal capitalization
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: uppercase alpha ratio; inverted pair
+direct_answer_vs_hedging:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Direct, confident answers
+  constraint_a_type: ambiguous
+  constraint_b: Use hedging language
+  constraint_b_type: ambiguous
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: 1 - (hedge_matches / words * 15); inverted pair
+disclaimer_first_vs_none:
+  architecture: complement_bool
+  arg_keys: []
+  constraint_a: Begin response with professional disclaimer
+  constraint_a_type: presence
+  constraint_b: No disclaimers or caveats
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - refusal_prefix_only
+  type: bool
+  verifier_logic: "Hybrid detection \u2014 checks first 150 chars OR first 2 sentences\
+    \ for disclaimer phrases (~85 phrases). Normalizes curly apostrophes. Refusal-prefix\
+    \ exclusion strips meta-commentary refusals before detection. Both sides use the\
+    \ same detection logic, maintaining true complementarity."
+each_word_new_line:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: One word per line
+  constraint_a_type: presence
+  constraint_b: Normal paragraph flow
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: Lines-to-words ratio after punctuation stripping, with 50-char word
+    guard (returns 0.0 for concatenated text); inverted pair
+emoji_use_vs_avoid:
+  architecture: complement_bool
+  arg_keys: []
+  constraint_a: Include emojis throughout
+  constraint_a_type: presence
+  constraint_b: Do not use any emojis
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: bool
+  verifier_logic: Contains any emoji characters
+first_vs_third_person:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Write in first person
+  constraint_a_type: ambiguous
+  constraint_b: Write in third person
+  constraint_b_type: ambiguous
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - extract_content
+  type: float
+  verifier_logic: first/(first+third) pronoun ratio with extract_content stripping and
+    'one' as third-person pronoun; inverted pair
+forbidden_words:
+  architecture: independent_bool
+  arg_keys: []
+  constraint_a: Use the transition words 'however' and 'therefore' early in the response
+  constraint_a_type: presence
+  constraint_b: Do not use 'however' or 'therefore'
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - use_mention_stripping
+  type: bool
+  verifier_logic: Both words present (a) or both absent (b), case-insensitive whole-word
+    match with quoted/emphasized mentions stripped before checking (use-mention distinction)
+formal_vs_casual_tone:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Formal, professional tone
+  constraint_a_type: ambiguous
+  constraint_b: Casual, conversational tone
+  constraint_b_type: ambiguous
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - extract_content
+  type: float
+  verifier_logic: Ratio of expanded forms to total contraction-eligible forms (expanded
+    / (expanded + contractions)); meta/refusal stripped via extract_content(); register-based
+    fallback when forms <= 3 (casual greetings/colloquialisms vs formal openers/vocabulary);
+    bare refusals score 0.5; Unicode-normalized; length-invariant; inverted pair
+format_json_markdown:
+  architecture: independent_bool
+  arg_keys: []
+  constraint_a: Respond with valid JSON
+  constraint_a_type: presence
+  constraint_b: Respond with markdown (headers + bold/bullets)
+  constraint_b_type: presence
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - code_fence_unwrap
+  type: bool
+  verifier_logic: Parses as valid JSON (a) unless preceded by >50 chars of markdown
+    with headers (preamble guard rejects JSON-appendix hybrids); has markdown features
+    and not JSON (b)
+html_emphasis_tags:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Use HTML emphasis tags (<b>, <i>, <em>, <strong>) to highlight key
+    terms
+  constraint_a_type: presence
+  constraint_b: "Write in plain text only \u2014 no HTML tags or markup"
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: count opening emphasis tags, score = min(count / 3, 1.0); inverted
+    pair
+imperative_vs_declarative:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Write in imperative mood (commands/instructions)
+  constraint_a_type: ambiguous
+  constraint_b: Write in declarative mood (factual statements)
+  constraint_b_type: ambiguous
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: imperative_sentence_count / sentence_count (with aux-verb noun disambiguation
+    and bare numbered fragment filtering); inverted pair
+json_only_vs_plain:
+  architecture: complement_bool
+  arg_keys: []
+  constraint_a: Always respond with valid JSON
+  constraint_a_type: presence
+  constraint_b: Explain in plain English
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - code_fence_unwrap
+  type: bool
+  verifier_logic: Entire response parses as valid JSON object
+keyword_avoidance:
+  architecture: independent_float_pair
+  arg_keys:
+  - keyword
+  constraint_a: Include keyword at least twice in response
+  constraint_a_type: presence
+  constraint_b: Never use keyword anywhere in response
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - use_mention_stripping
+  type: float
+  verifier_logic: "independent pair. inclusion = 1.0 if count>=2 else 0.0; absence\
+    \ = 1.0 if count==0 else 0.0. count=1 \u2192 followed_neither. Strips quoted keyword\
+    \ mentions (meta-commentary) before counting."
+keyword_frequency:
+  architecture: inverted_float_pair
+  arg_keys:
+  - keyword
+  constraint_a: Use keyword frequently throughout response
+  constraint_a_type: presence
+  constraint_b: Do not use keyword anywhere
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - extract_content
+  type: float
+  verifier_logic: extract_content then keyword_occurrences / sentence_count with min_occurrences=2
+    gate; inverted pair
+language_en_es:
+  architecture: independent_bool
+  arg_keys: []
+  constraint_a: Respond in English
+  constraint_a_type: presence
+  constraint_b: Respond in Spanish
+  constraint_b_type: presence
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: bool
+  verifier_logic: langdetect == "en" (a) or in {"es","ca","pt"} (b)
+language_en_zh:
+  architecture: independent_bool
+  arg_keys: []
+  constraint_a: Respond in English
+  constraint_a_type: presence
+  constraint_b: Respond in Chinese
+  constraint_b_type: presence
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - parenthetical_stripping
+  type: bool
+  verifier_logic: CJK character fraction > 0.3 for Chinese (after stripping parenthetical
+    ASCII annotations); langdetect == "en" for English
+leetspeak_encoding:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: "Write in leetspeak (replace letters with numbers like a\u21924, e\u2192\
+    3, i\u21921, o\u21920, s\u21925)"
+  constraint_a_type: presence
+  constraint_b: Write in plain standard English without letter-to-number substitutions
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: fraction of digit characters among total alphanumeric characters;
+    inverted pair
+list_bullets_vs_numbered:
+  architecture: independent_bool
+  arg_keys: []
+  constraint_a: Use bulleted list (- markers)
+  constraint_a_type: presence
+  constraint_b: Use numbered list
+  constraint_b_type: presence
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: bool
+  verifier_logic: More bullet lines than numbered lines; bullets nested under numbered
+    headings count as numbered
+lowercase_vs_capitalized:
+  architecture: independent_bool
+  arg_keys: []
+  constraint_a: Write entirely in lowercase letters
+  constraint_a_type: presence
+  constraint_b: Write with proper capitalization
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: bool
+  verifier_logic: <=0.3% uppercase alpha chars vs >=0.5% uppercase alpha chars
+number_density:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Include many numbers, statistics, and numerical data
+  constraint_a_type: presence
+  constraint_b: "Write without any numbers or digits \u2014 use words instead"
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: min(digit_sequence_count / 8, 1.0); inverted pair
+numbered_sections_vs_prose:
+  architecture: complement_bool
+  arg_keys: []
+  constraint_a: Use numbered sections
+  constraint_a_type: presence
+  constraint_b: Write flowing prose
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: bool
+  verifier_logic: '>=2 lines matching ^\*{0,2}\d+\.\s (plain or bold-wrapped numbered
+    sections) (a) or none (b)'
+paragraph_start_word:
+  architecture: inverted_float_pair
+  arg_keys:
+  - target_word
+  constraint_a: Every paragraph starts with a specified word
+  constraint_a_type: presence
+  constraint_b: No paragraph starts with the specified word
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: Fraction of paragraphs starting with target word; inverted pair
+parenthetical_asides:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Include parenthetical asides throughout
+  constraint_a_type: presence
+  constraint_b: No parentheses at all
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: parenthetical density = count of (...) groups / sentence count;
+    inverted pair
+past_vs_present_tense:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Write in past tense
+  constraint_a_type: ambiguous
+  constraint_b: Write in present tense
+  constraint_b_type: ambiguous
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: NLTK POS tagging — VBD count / (VBD + VBZ/VBP/VB count); ignores
+    VBN (participles), JJ (adjectives), NNP (proper nouns); refusal gate for short
+    refusals; inverted pair
+pronoun_density:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Personal conversational style with pronouns
+  constraint_a_type: ambiguous
+  constraint_b: Impersonal style avoiding pronouns
+  constraint_b_type: ambiguous
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - extract_content
+  type: float
+  verifier_logic: Pronoun density with extract_content preprocessing and conditional
+    they-family exclusion (they/them/their excluded when no 1st/2nd person address
+    pronouns present); inverted pair
+questions_vs_statements:
+  architecture: complement_bool
+  arg_keys: []
+  constraint_a: Respond entirely in questions
+  constraint_a_type: presence
+  constraint_b: Respond only in statements
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: bool
+  verifier_logic: NLTK sent_tokenize splits sentences; every sentence ends with ?
+    (a) or none do (b)
+response_length:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Very brief response (max 2 sentences, under 30 words, no lists)
+  constraint_a_type: avoidance
+  constraint_b: Comprehensive, detailed response
+  constraint_b_type: presence
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: max(0, 1 - word_count / NORM); inverted pair
+self_reference_ai_mention:
+  architecture: complement_bool
+  arg_keys: []
+  constraint_a: Acknowledge you are an AI
+  constraint_a_type: presence
+  constraint_b: Do not mention being an AI
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: bool
+  verifier_logic: "Combinatorial prefix\xD7entity matching. Standalone phrases always\
+    \ match; entity nouns require a self-referential prefix (as a, i'm a, i am a,\
+    \ being a)."
+sentence_connector_density:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Use transition/connector words between sentences
+  constraint_a_type: presence
+  constraint_b: No transition/connector words, simple direct sentences
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: sentences containing at least one connector / sentence count, capped
+    at 1.0; inverted pair
+short_paragraphs_vs_single_block:
+  architecture: independent_bool
+  arg_keys: []
+  constraint_a: Write in short paragraphs
+  constraint_a_type: presence
+  constraint_b: Write as one single block
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: bool
+  verifier_logic: 3+ paragraphs <=5 sentences each (a) or no \n\n (b)
+short_vs_long_sentences:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Short, concise sentences (low average word count)
+  constraint_a_type: ambiguous
+  constraint_b: Long, elaborate sentences (high average word count)
+  constraint_b_type: ambiguous
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: Sigmoid mapping of average sentence length; inverted pair
+spanish_loanwords:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Include Spanish phrases (por ejemplo, sin embargo, en general, es
+    decir, por lo tanto) in English response
+  constraint_a_type: presence
+  constraint_b: Use only plain English, no foreign words or phrases
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: fraction of target phrases found; inverted pair
+starting_word_hello_greetings:
+  architecture: independent_bool
+  arg_keys: []
+  constraint_a: Begin with "Hello"
+  constraint_a_type: presence
+  constraint_b: Begin with "Greetings"
+  constraint_b_type: presence
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing:
+  - markdown_prefix_stripping
+  - extract_content
+  type: bool
+  verifier_logic: First word if target, else first target word in content after stripping
+    refusal+metacommentary
+template_response:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Use exact template format
+  constraint_a_type: presence
+  constraint_b: Write naturally, no template
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: 1 - position_ratio of 'My Answer:' marker; inverted pair
+vocabulary_diversity:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Use sophisticated, complex vocabulary (many unique long words)
+  constraint_a_type: ambiguous
+  constraint_b: Use simple, everyday vocabulary (few unique long words)
+  constraint_b_type: ambiguous
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: unique long words (>=7 chars) / total words; inverted pair
+vowel_omission:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: Remove all vowels from words (write without vowels)
+  constraint_a_type: presence
+  constraint_b: Write normally with all vowels included
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: vowel fraction in alphabetic characters; inverted pair
+word_repetition_density:
+  architecture: inverted_float_pair
+  arg_keys: []
+  constraint_a: "Write with high word repetition \u2014 reuse key words frequently"
+  constraint_a_type: presence
+  constraint_b: "Use diverse vocabulary \u2014 avoid repeating the same words"
+  constraint_b_type: avoidance
+  counterbalance_quality: full
+  exclusivity: true
+  preprocessing: []
+  type: float
+  verifier_logic: 1 - (unique_content_words / total_content_words); excludes stop
+    words

@@ -130,7 +130,15 @@ class TestEdgeCases:
         assert score_keyword_frequency("   ", "important") == 0.0
 
     def test_single_sentence_with_keyword(self):
+        # Single occurrence is below min_occurrences gate (N=2) → 0.0
         score = score_keyword_frequency("This is important.", "important")
+        assert score == 0.0
+
+    def test_single_sentence_with_keyword_frequent(self):
+        # Two occurrences meets the gate → density = 2/1 = 1.0 (clamped)
+        score = score_keyword_frequency(
+            "This important topic is really important.", "important"
+        )
         assert score == 1.0
 
     def test_single_sentence_without_keyword(self):

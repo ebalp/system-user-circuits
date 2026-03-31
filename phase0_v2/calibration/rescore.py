@@ -121,7 +121,17 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Recompute experiment_hash for each record using current hash formula (includes prompt text)",
     )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Model ID for per-model threshold lookup. Activates model-specific thresholds before rescoring.",
+    )
     args = parser.parse_args(argv)
+
+    if args.model:
+        from ..config.thresholds import activate_model
+        activate_model(args.model)
+        print(f"Activated per-model thresholds for {args.model}")
 
     if args.reverify and (args.thresholds or args.global_threshold):
         print("Error: --reverify cannot be combined with --thresholds or --global-threshold", file=sys.stderr)

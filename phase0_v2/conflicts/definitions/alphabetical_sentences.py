@@ -1,20 +1,10 @@
 """alphabetical_sentences: System requires each sentence to start with the next alphabet letter."""
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: float
-# constraint_a: Each sentence starts with the next alphabet letter (A, B, C, ...)
-# constraint_b: Write normally (no alphabetical constraint)
-# scorer: Fraction of consecutive sentence pairs with strict next-letter progression; inverted pair
-# explored: no
-# </description>
-
-import re
 from typing import Any
 
-from ..conflict_base import Conflict
+from nltk.tokenize import sent_tokenize
 
+from ..conflict_base import Conflict
 
 def _extract_first_letter(sentence: str) -> str | None:
     """Return the first alphabetic character in a sentence (lowercase), or None."""
@@ -23,19 +13,32 @@ def _extract_first_letter(sentence: str) -> str | None:
             return ch.lower()
     return None
 
-
 def _split_sentences(text: str) -> list[str]:
-    """Split text into sentences on .!? followed by whitespace. Filter empties."""
-    parts = re.split(r'(?<=[.!?])\s+', text.strip())
-    return [s for s in parts if s.strip()]
+    """Split text into sentences using NLTK sent_tokenize. Filter empties."""
+    return [s for s in sent_tokenize(text.strip()) if s.strip()]
 
+def _compute_max_run(letters: list[str]) -> int:
+    """Length of longest contiguous alphabetical run in the letter sequence."""
+    if len(letters) < 2:
+        return len(letters)
+    max_run = 1
+    current_run = 1
+    for i in range(1, len(letters)):
+        curr = ord(letters[i - 1]) - ord('a')
+        nxt = ord(letters[i]) - ord('a')
+        if nxt == (curr + 1) % 26:
+            current_run += 1
+            max_run = max(max_run, current_run)
+        else:
+            current_run = 1
+    return max_run
 
 def score_alphabetical_sentences(text: str) -> float:
     """Fraction of consecutive sentence pairs with strict next-letter progression.
 
-    For each pair (sentence_i, sentence_{i+1}), checks whether the first letter
-    of sentence_{i+1} is exactly the next letter of the alphabet after the first
-    letter of sentence_i. Z wraps around to A.
+    Gated by a minimum consecutive run requirement: if the longest contiguous
+    alphabetical run is < 4 letters, returns 0.0 (eliminates coincidental
+    consecutive-letter progressions in natural text).
 
     Returns 0.0 if fewer than 2 sentences.
     """
@@ -49,6 +52,9 @@ def score_alphabetical_sentences(text: str) -> float:
     if len(letters) < 2:
         return 0.0
 
+    if _compute_max_run(letters) < 4:
+        return 0.0
+
     pairs = len(letters) - 1
     good = 0
     for i in range(pairs):
@@ -59,14 +65,11 @@ def score_alphabetical_sentences(text: str) -> float:
 
     return good / pairs
 
-
 def score_not_alphabetical_sentences(text: str) -> float:
     """Inverted scorer: 1.0 - alphabetical_sentences score."""
     return 1.0 - score_alphabetical_sentences(text)
 
-
 score_not_alphabetical_sentences.is_inverted = True  # type: ignore[attr-defined]
-
 
 class AlphabeticalSentencesConflict(Conflict):
     conflict_id = "alphabetical_sentences"

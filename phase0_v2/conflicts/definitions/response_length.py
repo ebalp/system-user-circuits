@@ -1,15 +1,5 @@
 """response_length: System enforces brief vs comprehensive response length."""
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: float
-# constraint_a: Very brief response (max 2 sentences, under 30 words, no lists)
-# constraint_b: Comprehensive, detailed response
-# scorer: max(0, 1 - word_count / NORM); inverted pair
-# explored: yes
-# </description>
-
 from typing import Any
 from ..conflict_base import Conflict
 from ..verify_utils import count_words
@@ -19,20 +9,16 @@ from ..verify_utils import count_words
 # while a brief response (under 30 words) scores >= 0.6.
 NORM = 80
 
-
 def score_brevity(text: str) -> float:
     """1.0 = empty/very short, 0.0 = long response (>= NORM words)."""
     wc = count_words(text)
     return max(0.0, min(1.0, 1.0 - wc / NORM))
 
-
 def score_verbosity(text: str) -> float:
     """1.0 = long response, 0.0 = empty/very short. Inverted pair of score_brevity."""
     return 1.0 - score_brevity(text)
 
-
 score_verbosity.is_inverted = True  # type: ignore[attr-defined]
-
 
 class ResponseLengthConflict(Conflict):
     conflict_id = "response_length"

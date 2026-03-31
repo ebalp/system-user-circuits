@@ -28,7 +28,6 @@ from phase0_v2.src.prompts import PromptGenerator, _deterministic_seed
 from phase0_v2.src.experiment import ExperimentRunner, _make_experiment_key, compute_experiment_hash
 from phase0_v2.src.api_client import HFClient, VLLMClient
 from phase0_v2.conflicts.registry import get_all_conflicts, get_conflict
-from phase0_v2.tasks.wildchat_tasks import load_wildchat_tasks, filter_compatible_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -150,32 +149,12 @@ def main():
     if args.n_tasks:
         synthetic_tasks = synthetic_tasks[: args.n_tasks]
 
-    # Optionally load WildChat tasks
-    wildchat_tasks = []
-    wc_config = config.task_sources.get("wildchat")
-    if wc_config and wc_config.file and wc_config.k_tasks_per_conflict:
-        wc_path = Path(args.config).parent.parent / wc_config.file
-        if wc_path.exists():
-            wildchat_tasks = load_wildchat_tasks(wc_path)
-            logger.info("Loaded %d WildChat tasks", len(wildchat_tasks))
-
     # Generate prompts
     generator = PromptGenerator(config)
     all_prompts = []
     for conflict in conflicts:
-        # Synthetic tasks (all compatible)
         prompts = generator.generate_for_conflict(conflict, synthetic_tasks)
         all_prompts.extend(prompts)
-
-        # WildChat tasks (filtered by compatibility)
-        if wildchat_tasks:
-            compatible = filter_compatible_tasks(wildchat_tasks, conflict.conflict_id)
-            k = wc_config.k_tasks_per_conflict if wc_config else None
-            if k and len(compatible) > k:
-                random.seed(_deterministic_seed(config.seed, conflict.conflict_id, "wildchat_selection"))
-                compatible = random.sample(compatible, k)
-            wc_prompts = generator.generate_for_conflict(conflict, compatible)
-            all_prompts.extend(wc_prompts)
 
     # Filter conditions if specified
     if args.conditions:
@@ -211,6 +190,12 @@ def main():
         if not model_configs:
             logger.error("Model '%s' not found in config", args.model)
             return
+
+    # If running a single model, activate model-specific thresholds
+    if len(model_configs) == 1:
+        from phase0_v2.config.thresholds import activate_model
+        activate_model(model_configs[0].id)
+        logger.info("Activated per-model thresholds for %s", model_configs[0].id)
 
     # Build work items: (model_id, prompt, conflict, threshold_overrides) tuples, skipping completed
     # Use a temporary runner (no client) just for loading completed hashes

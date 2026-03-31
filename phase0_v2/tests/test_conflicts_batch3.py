@@ -1,11 +1,7 @@
-"""Test conflicts batch 3: final 14 + registry completeness + compatibility matrix."""
+"""Test conflicts batch 3: final 14 + registry completeness."""
 
 import pytest
 from phase0_v2.conflicts.registry import get_conflict, get_all_conflicts, get_conflict_ids
-from phase0_v2.conflicts.compatibility import (
-    INCOMPATIBLE, EXPLICITLY_COMPATIBLE, TASK_CATEGORIES,
-    validate_matrix_coverage, is_compatible,
-)
 from collections import Counter
 
 
@@ -75,26 +71,6 @@ class TestRegistryComplete:
         non_inv = {c.conflict_id for c in get_all_conflicts() if c.counterbalance_quality == "none"}
         assert non_inv == set()
 
-
-# -- Compatibility matrix --
-
-class TestCompatibilityMatrix:
-    def test_all_conflicts_covered(self):
-        uncovered = validate_matrix_coverage(get_conflict_ids())
-        assert uncovered == [], f"Not in matrix: {uncovered}"
-
-    def test_no_overlap(self):
-        overlap = set(INCOMPATIBLE.keys()) & EXPLICITLY_COMPATIBLE
-        assert overlap == set(), f"In both INCOMPATIBLE and EXPLICITLY_COMPATIBLE: {overlap}"
-
-    def test_incompatible_categories_valid(self):
-        for cid, cats in INCOMPATIBLE.items():
-            invalid = cats - TASK_CATEGORIES
-            assert invalid == set(), f"{cid} has invalid categories: {invalid}"
-
-    def test_language_en_es_compatible_with_all(self):
-        for cat in TASK_CATEGORIES:
-            assert is_compatible("language_en_es", cat)
 
 
 # -- Specific conflict verify tests --

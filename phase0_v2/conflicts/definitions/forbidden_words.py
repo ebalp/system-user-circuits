@@ -1,30 +1,49 @@
 """forbidden_words: Require or forbid transition words 'however' and 'therefore'."""
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: bool
-# constraint_a: Use the transition words 'however' and 'therefore' early in the response
-# constraint_b: Do not use 'however' or 'therefore'
-# scorer: Both words present (a) or both absent (b), case-insensitive whole-word match
-# explored: no
-# </description>
-
+import re
 from typing import Any
 
 from ..conflict_base import Conflict
-from ..verify_utils import no_word_in_text, word_in_text, word_or_morphform_in_text
+from ..verify_utils import no_word_in_text, word_or_morphform_in_text
 
 _WORDS = ("however", "therefore")
 
+_WORD_ALT = "|".join(re.escape(w) for w in _WORDS)
+
+_STRIP_PATTERNS = [
+    re.compile(r"'(" + _WORD_ALT + r")[.,;:!?]?'[.,;:!?]?", re.IGNORECASE),
+    re.compile(r'"(' + _WORD_ALT + r')[.,;:!?]?"[.,;:!?]?', re.IGNORECASE),
+    re.compile(
+        r"[\u201c](" + _WORD_ALT + r")[.,;:!?]?[\u201d][.,;:!?]?", re.IGNORECASE
+    ),
+    re.compile(
+        r"[\u2018](" + _WORD_ALT + r")[.,;:!?]?[\u2019][.,;:!?]?", re.IGNORECASE
+    ),
+    re.compile(r"`(" + _WORD_ALT + r")[.,;:!?]?`[.,;:!?]?", re.IGNORECASE),
+    re.compile(
+        r"(?<!\*)\*(" + _WORD_ALT + r")[.,;:!?]?\*(?!\*)[.,;:!?]?", re.IGNORECASE
+    ),
+]
+
+def _strip_quoted_words(text: str) -> str:
+    """Remove quoted/emphasized mentions of target words from text.
+
+    Strips 'word', "word", \u201cword\u201d, \u2018word\u2019, `word`, *word*
+    (italic only, not **word** bold) with optional punctuation inside
+    or after the closing delimiter (e.g., "therefore," or "therefore",).
+    """
+    result = text
+    for pat in _STRIP_PATTERNS:
+        result = pat.sub("", result)
+    return result
 
 def _words_absent(r: str, a: dict) -> bool:
-    return all(no_word_in_text(w, r) for w in _WORDS)
-
+    cleaned = _strip_quoted_words(r)
+    return all(no_word_in_text(w, cleaned) for w in _WORDS)
 
 def _words_present(r: str, a: dict) -> bool:
-    return all(word_or_morphform_in_text(w, r) for w in _WORDS)
-
+    cleaned = _strip_quoted_words(r)
+    return all(word_or_morphform_in_text(w, cleaned) for w in _WORDS)
 
 class ForbiddenWordsConflict(Conflict):
     conflict_id = "forbidden_words"

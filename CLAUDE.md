@@ -36,7 +36,7 @@ Do not add `Co-Authored-By` trailers to commit messages.
 | Phase | Directory | What it does |
 |-------|-----------|-------------|
 | **Lambda Cloud** | `lambda-cloud-toolkit` (external package) | GPU instance lifecycle, SSH operations, vLLM deployment. Installed via `lambda-cloud-toolkit`. Config: `lambda-cloud.yaml`. |
-| **Phase 0 v2** | `phase0_v2/` | Class-based behavioral experiments: 33 conflicts, 4 conditions (A-D), 5 system/user styles, counterbalancing. Calibration system for verifier quality analysis and tier assignment. |
+| **Phase 0 v2** | `phase0_v2/` | Class-based behavioral experiments: 41 conflicts, 4 conditions (A-D), 5 system/user styles, counterbalancing. Calibration system for verifier quality analysis and threshold optimization. |
 | **Phase 0** | `phase0_behavioral_analysis/` | Original behavioral experiments (legacy). |
 | **Phase 1** | `phase1_linear_probing/` | Mechanistic analysis: trains per-layer linear probes on residual-stream activations to find directions separating "followed system" vs "followed user". Includes metadata baselines, grouped CV, and direction analysis. |
 
@@ -72,12 +72,12 @@ uv run pytest
 uv run pytest phase1_linear_probing/tests/ -v
 ```
 
-### Running Calibration Analysis
+### Running Calibration Audit
 
 ```bash
-uv run python -m phase0_v2.calibration.analyze \
+uv run python -m phase0_v2.calibration.audit_conflict \
   phase0_v2/data/results/meta-llama_Llama-3.1-8B-Instruct_results.jsonl \
-  --output-dir phase0_v2/calibration/output/
+  --conflict forbidden_words
 ```
 
 ### Lambda Cloud Scripts
@@ -111,7 +111,7 @@ uv run python generate_report.py --results-dir data/results --output reports/rep
 ## Key Concepts
 
 - **4 Conditions**: A (system baseline), B (user baseline), C (hierarchy conflict — main test), D (recency control)
-- **Constraint types**: 33 conflicts across language, format, starting_word, capitalization, emoji, disclaimer, list_format, self_reference, person, word count, etc.
+- **Constraint types**: 41 conflicts across language, format, starting_word, capitalization, emoji, disclaimer, list_format, self_reference, person, word count, etc.
 - **Counterbalancing**: both `a_to_b` and `b_to_a` directions for conditions C and D
 - **Grouped CV** (Phase 1): `GroupKFold` by `constraint_type` prevents leakage; `stratified` mode available for comparison
 - **Experiment hashing**: SHA-256 deduplication for resumable Phase 0 runs; Phase 1 `run_id` hashes config + data contents

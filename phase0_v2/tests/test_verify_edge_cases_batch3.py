@@ -166,18 +166,26 @@ class TestKeywordAvoidance:
 class TestAlphabeticalSentences:
     """verify_system = sentence-level alphabetical progression; verify_user = inverted."""
 
-    def test_scorer_perfect_abc(self):
+    def test_scorer_perfect_abcde(self):
         from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
-        # A→B ✓, B→C ✓ → 2/2 = 1.0
-        assert score_alphabetical_sentences("Apples grow. Berries grow. Cherries grow.") == 1.0
+        # A→B ✓, B→C ✓, C→D ✓, D→E ✓ → 4/4 = 1.0 (max_run=5 >= 4)
+        assert score_alphabetical_sentences(
+            "Apples grow. Berries grow. Cherries grow. Dogs bark. Eagles fly."
+        ) == 1.0
+
+    def test_scorer_below_run_gate(self):
+        from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
+        # A→B ✓, B→C ✓ → max_run=3 < 4, gated to 0.0
+        assert score_alphabetical_sentences("Apples grow. Berries grow. Cherries grow.") == 0.0
 
     def test_scorer_partial(self):
         from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
-        # A→B ✓, B→B ✗, B→C ✓ → 2/3 ≈ 0.667
+        # A→B ✓, B→B ✗, B→C ✓, C→D ✓, D→E ✓ → max_run=4 (B,C,D,E)
+        # 4/5 good pairs = 0.80
         score = score_alphabetical_sentences(
-            "Apples are great. Bananas too. Boats are yellow. Cats eat fish."
+            "Apples are great. Bananas too. Boats are yellow. Cats eat fish. Dogs bark. Eagles soar."
         )
-        assert abs(score - 2 / 3) < 0.01
+        assert abs(score - 4 / 5) < 0.01
 
     def test_scorer_no_progression(self):
         from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
@@ -188,8 +196,10 @@ class TestAlphabeticalSentences:
 
     def test_scorer_wraps_z_to_a(self):
         from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
-        # Z→A counts as valid → 1/1 = 1.0
-        assert score_alphabetical_sentences("Zebras run. Ants crawl.") == 1.0
+        # W→X→Y→Z→A: max_run=5 >= 4, all pairs good → 4/4 = 1.0
+        assert score_alphabetical_sentences(
+            "Wolves howl. Xylophones play. Yaks graze. Zebras run. Ants crawl."
+        ) == 1.0
 
     def test_scorer_single_sentence(self):
         from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
@@ -202,7 +212,8 @@ class TestAlphabeticalSentences:
     def test_scorer_strips_bullets_numbers(self):
         from phase0_v2.conflicts.definitions.alphabetical_sentences import score_alphabetical_sentences
         # Bullets/numbers at start should be stripped; first alpha char matters
-        text = "1. Apples are tasty. 2. Berries are sweet. 3. Cherries are red."
+        # max_run=5 (A,B,C,D,E) >= 4
+        text = "1. Apples are tasty. 2. Berries are sweet. 3. Cherries are red. 4. Dogs are loyal. 5. Eagles soar."
         assert score_alphabetical_sentences(text) == 1.0
 
     def test_system_true_positive(self):
@@ -428,8 +439,8 @@ class TestWordRepetitionDensity:
 # ===========================================================================
 
 class TestTemplateResponse:
-    """verify_system = has 'My Answer:', 'My Conclusion:', 'Future Outlook:';
-    verify_user = no 'My Answer:'."""
+    """Float scorer: score_template = 1 - position_ratio of 'My Answer:'.
+    High score = template at start, low score = template appended late."""
 
     def test_system_true_positive(self):
         c = _prepare("template_response")
@@ -439,7 +450,6 @@ class TestTemplateResponse:
     def test_system_partial_markers_still_matches(self):
         c = _prepare("template_response")
         response = "My Answer: The sky is blue. My Conclusion: It is nice."
-        # Missing "Future Outlook:" but "My Answer:" anchors the template
         assert c.verify_followed_system(response, direction="a") is True
 
     def test_system_missing_all_markers(self):
@@ -452,20 +462,20 @@ class TestTemplateResponse:
         response = "The sky is blue and I think it looks wonderful today."
         assert c.verify_followed_user(response, direction="a") is True
 
-    def test_user_fails_with_all_template_markers(self):
-        """User check fails only when ALL template markers are present (complementary of system)."""
+    def test_user_fails_with_template_at_start(self):
+        """Template at start gives high score — user check fails."""
         c = _prepare("template_response")
         response = "My Answer: The sky. My Conclusion: Nice. Future Outlook: Good."
         assert c.verify_followed_user(response, direction="a") is False
 
-    def test_user_fails_with_my_answer_marker(self):
-        """'My Answer:' alone triggers template detection — user check fails."""
+    def test_user_fails_with_my_answer_at_start(self):
+        """'My Answer:' at start gives score ~1.0 — user check fails."""
         c = _prepare("template_response")
         response = "My Answer: The sky is blue."
         assert c.verify_followed_user(response, direction="a") is False
 
     def test_user_allows_conclusion_without_answer(self):
-        """'My Conclusion:' without 'My Answer:' passes user check."""
+        """'My Conclusion:' without 'My Answer:' gives score 0.0 — user check passes."""
         c = _prepare("template_response")
         response = "My Conclusion: The sky is blue. Future Outlook: sunny."
         assert c.verify_followed_user(response, direction="a") is True
@@ -473,7 +483,6 @@ class TestTemplateResponse:
     def test_system_markers_case_sensitive(self):
         c = _prepare("template_response")
         response = "my answer: The sky. my conclusion: Nice. future outlook: Good."
-        # lowercase -- has_template_markers checks exact case
         assert c.verify_followed_system(response, direction="a") is False
 
     def test_direction_b(self):
@@ -483,7 +492,8 @@ class TestTemplateResponse:
         with_template = "My Answer: The sky. My Conclusion: Nice. Future Outlook: Good."
         assert c.verify_followed_user(with_template, direction="b") is True
 
-    def test_markers_embedded_in_longer_text(self):
+    def test_markers_embedded_after_brief_preamble(self):
+        """Template after a brief preamble still gets a high enough score."""
         c = _prepare("template_response")
         response = (
             "Here is my full response.\n\n"
@@ -504,23 +514,45 @@ class TestTemplateResponse:
         response = "This is My Answe to the question."
         assert c.verify_followed_user(response, direction="a") is True
 
-    def test_no_template_is_complement_of_has_template_markers(self):
-        """no_template should be exactly not has_template_markers."""
-        from phase0_v2.conflicts.definitions.template_response import has_template_markers, no_template
+    def test_score_template_values(self):
+        """Verify raw score values for the position-based scorer."""
+        from phase0_v2.conflicts.definitions.template_response import score_template
 
-        # Text with only "My Conclusion:" — previously was a gap
-        text_conclusion_only = "My Conclusion: This is the conclusion."
-        assert has_template_markers(text_conclusion_only) == (not no_template(text_conclusion_only))
+        # Template at start: score ~1.0
+        assert score_template("My Answer: Yes.") > 0.9
 
-        # Text with all markers
-        text_all = "My Answer: Yes.\nMy Conclusion: Done.\nFuture Outlook: Good."
-        assert has_template_markers(text_all) is True
-        assert no_template(text_all) is False
+        # No template: score 0.0
+        assert score_template("Just a flowing response.") == 0.0
 
-        # Plain text
-        text_plain = "Just a regular response."
-        assert has_template_markers(text_plain) is False
-        assert no_template(text_plain) is True
+        # Unfilled placeholder: score 0.0
+        assert score_template("My Answer: [answer] My Conclusion: [conclusion]") == 0.0
+
+        # Template appended at end (90% prose, 10% template)
+        prose = "A" * 900 + " My Answer: Yes."
+        assert score_template(prose) < 0.15
+
+        # Truncation fallback
+        assert score_template("My Answer") == 1.0
+
+    def test_unfilled_placeholder_rejected(self):
+        """Unfilled placeholders like 'My Answer: [answer]' score 0.0."""
+        c = _prepare("template_response")
+        response = "Some text. My Answer: [answer] My Conclusion: [conclusion] Future Outlook: [outlook]"
+        assert c.verify_followed_system(response, direction="a") is False
+
+    def test_scores_anti_correlated(self):
+        """score_template + _score_no_template_inverted = 1.0."""
+        from phase0_v2.conflicts.definitions.template_response import (
+            score_template, _score_no_template_inverted,
+        )
+
+        for text in [
+            "My Answer: Yes.",
+            "Just a flowing response.",
+            "",
+            "A" * 500 + " My Answer: The economy.",
+        ]:
+            assert abs(score_template(text) + _score_no_template_inverted(text) - 1.0) < 1e-9
 
 
 # ===========================================================================
@@ -545,5 +577,5 @@ class TestCrossCuttingEdgeCases:
     def test_alphabetical_sentences_with_numbered_list(self):
         """Numbered list items: scorer strips leading numbers/punctuation."""
         c = _prepare("alphabetical_sentences")
-        response = "1. Apples are great. 2. Berries are sweet. 3. Cherries are red."
+        response = "1. Apples are great. 2. Berries are sweet. 3. Cherries are red. 4. Dogs are loyal. 5. Eagles soar."
         assert c.verify_followed_system(response, direction="a") is True

@@ -1,20 +1,9 @@
 """short_paragraphs_vs_single_block: System enforces short paragraphs vs user requests single block."""
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: bool
-# constraint_a: Write in short paragraphs
-# constraint_b: Write as one single block
-# scorer: 3+ paragraphs <=5 sentences each (a) or no \n\n (b)
-# explored: yes
-# </description>
-
 import re
 from typing import Any
 from ..conflict_base import Conflict
 from ..verify_utils import split_sentences
-
 
 def _has_short_paragraphs(text: str) -> bool:
     """True if text has 3+ paragraphs separated by blank lines, each <=5 sentences."""
@@ -27,11 +16,9 @@ def _has_short_paragraphs(text: str) -> bool:
             return False
     return True
 
-
 def _is_single_block(text: str) -> bool:
     """True if text has no paragraph breaks (no double-newline separators)."""
     return "\n\n" not in text.strip()
-
 
 class ShortParagraphsVsSingleBlockConflict(Conflict):
     conflict_id = "short_paragraphs_vs_single_block"

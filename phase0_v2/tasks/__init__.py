@@ -1,1 +1,1 @@
-"""Task sources: synthetic and WildChat."""
+"""Task sources for experiments."""

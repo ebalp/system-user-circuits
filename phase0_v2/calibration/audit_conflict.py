@@ -27,16 +27,18 @@ from collections import defaultdict
 from pathlib import Path
 
 from ._shared import (
-    build_conflict_threshold_map,
+    compute_balanced_accuracy,
+    compute_baseline_rates,
+    find_anomalies,
     load_records_filtered,
 )
-from .analyze import (
-    _compute_all_balanced_accuracy,
-    _compute_baseline_rates,
-    _compute_float_calibration,
-    _find_anomalies,
-    _find_conflict_optimal_threshold,
+
+# Meta-commentary detection — canonical location is phase0_v2.conflicts.preprocessing
+from phase0_v2.conflicts.preprocessing import (
+    META_COMMENTARY_RE,
+    has_meta_commentary,
 )
+from .per_model_thresholds import compute_baseline_ranges
 from ..config.thresholds import get_threshold
 from ..conflicts.registry import get_conflict
 
@@ -186,13 +188,11 @@ def compute_summary(
         label_a, label_b = "?", "?"
         counterbalance = "unknown"
 
-    threshold_map = build_conflict_threshold_map()
-
     models = []
     for display_name, file_path, records in models_data:
         # Baselines
-        baselines = _compute_baseline_rates(records, conflict_id)
-        ba_map = _compute_all_balanced_accuracy(records, conflict_id)
+        baselines = compute_baseline_rates(records, conflict_id)
+        ba_map = compute_balanced_accuracy(records, conflict_id)
         baseline = baselines[0] if baselines else {}
         ba = ba_map.get(conflict_id)
 
@@ -205,20 +205,13 @@ def compute_summary(
         # Optimal threshold (float only)
         optimal = None
         if is_float:
-            cal_rows = _compute_float_calibration(records, threshold_map, conflict_id)
-            if cal_rows:
-                # cal_rows have _trying/_ignoring removed by _compute_float_calibration,
-                # but _find_conflict_optimal_threshold needs them. Recompute.
-                # Actually, _compute_float_calibration deletes them.
-                # We need to call the pipeline differently.
-                # Re-run without the deletion by calling the lower-level functions.
-                optimal = {
-                    "t_low": cal_rows[0].get("optimal_threshold_low"),
-                    "t_high": cal_rows[0].get("optimal_threshold_high"),
-                }
+            ranges = compute_baseline_ranges(records)
+            r = ranges.get(conflict_id)
+            if r:
+                optimal = {"t_low": r["opt_low"], "t_high": r["opt_high"]}
 
         # Anomalies
-        anomalies = _find_anomalies(records, conflict_id)
+        anomalies = find_anomalies(records, conflict_id)
 
         models.append({
             "name": display_name,
@@ -367,7 +360,7 @@ def sample_records(
     Returns list of record dicts.
     """
     if anomalies:
-        result = _find_anomalies(records, conflict_id)
+        result = find_anomalies(records, conflict_id)
         if len(result) > n:
             result = random.sample(result, n)
         return result
@@ -459,11 +452,12 @@ def query_records(
     condition: str | None = None,
     direction: str | None = None,
     response_contains: str | None = None,
+    meta_commentary: bool = False,
     score_range: tuple[float, float] | None = None,
     label: str | None = None,
     count: bool = False,
     n: int = 10,
-) -> list[dict] | int:
+) -> list[dict] | int | dict:
     """Filter records by criteria and return matches or count.
 
     Args:
@@ -472,12 +466,15 @@ def query_records(
         condition: Filter by condition (A, B, C, D).
         direction: Filter by direction (a_to_b, b_to_a).
         response_contains: Case-insensitive substring match on response.
+        meta_commentary: If True, filter to responses matching META_COMMENTARY_RE.
+            When combined with --count, returns per-direction breakdown.
         score_range: Filter by verify_system_score in [low, high].
         label: Filter by label.
         count: If True, return integer count instead of records.
         n: Max number of records to return (ignored if count=True).
 
-    Returns list of record dicts, or int if count=True.
+    Returns list of record dicts, int if count=True,
+    or dict with per-direction counts if meta_commentary + count.
     """
     pool = list(records)
 
@@ -490,6 +487,8 @@ def query_records(
     if response_contains:
         pattern_lower = response_contains.lower()
         pool = [r for r in pool if pattern_lower in r.get("response", "").lower()]
+    if meta_commentary:
+        pool = [r for r in pool if has_meta_commentary(r.get("response", ""), conflict_id)]
     if score_range:
         lo, hi = score_range
         pool = [
@@ -499,6 +498,13 @@ def query_records(
         ]
 
     if count:
+        if meta_commentary and not direction:
+            # Per-direction breakdown for meta-commentary counts
+            by_dir: dict[str, int] = defaultdict(int)
+            for r in pool:
+                d = r.get("direction", "unknown")
+                by_dir[d] += 1
+            return {"total": len(pool), **dict(sorted(by_dir.items()))}
         return len(pool)
 
     if len(pool) > n:
@@ -506,9 +512,14 @@ def query_records(
     return pool
 
 
-def print_query_results(results: list[dict] | int, conflict_id: str) -> None:
-    """Print query results (count or samples)."""
-    if isinstance(results, int):
+def print_query_results(results: list[dict] | int | dict, conflict_id: str) -> None:
+    """Print query results (count, per-direction dict, or samples)."""
+    if isinstance(results, dict):
+        total = results.pop("total", 0)
+        print(f"Meta-commentary responses: {total}")
+        for direction, cnt in sorted(results.items()):
+            print(f"  {direction}: {cnt}")
+    elif isinstance(results, int):
         print(f"Count: {results}")
     else:
         print_samples(results, conflict_id)
@@ -572,6 +583,9 @@ def main(argv: list[str] | None = None) -> None:
     query_parser.add_argument("--direction", help="Filter by direction (a_to_b, b_to_a)")
     query_parser.add_argument("--label", help="Filter by label")
     query_parser.add_argument("--response-contains", help="Case-insensitive substring match on response")
+    query_parser.add_argument("--meta-commentary", action="store_true",
+                              help="Filter to responses containing meta-commentary patterns. "
+                                   "With --count, shows per-direction breakdown.")
     query_parser.add_argument("--score-range", nargs=2, type=float, metavar=("LOW", "HIGH"),
                               help="Filter by verify_system_score in [LOW, HIGH]")
     query_parser.add_argument("--count", action="store_true", help="Return count instead of records")
@@ -624,6 +638,7 @@ def main(argv: list[str] | None = None) -> None:
             condition=args.condition,
             direction=args.direction,
             response_contains=args.response_contains,
+            meta_commentary=getattr(args, "meta_commentary", False),
             score_range=score_range,
             label=args.label,
             count=args.count,

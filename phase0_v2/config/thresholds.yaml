@@ -1,28 +1,946 @@
 # Float conflict thresholds — single source of truth.
-# Cross-model intersection midpoints for: meta-llama_Llama-3.1-8B-Instruct, meta-llama_Llama-3.3-70B-Instruct, Qwen_Qwen2.5-7B-Instruct, google_gemma-3-27b-it
-# Last updated: 2026-03-11
 # Boolean conflicts don't have thresholds and are not listed here.
 
-address_reader_directly: 0.143
-alliteration_density: 0.115
-alphabetical_sentences: 0.278
-direct_answer_vs_hedging: 0.798
-each_word_new_line: 0.027
-first_vs_third_person: 0.417
-formal_vs_casual_tone: 0.988
-html_emphasis_tags: 0.167
-imperative_vs_declarative: 0.405
-keyword_avoidance: 0.251
-keyword_frequency: 0.058
-leetspeak_encoding: 0.13
-number_density: 0.563
-parenthetical_asides: 0.345
-past_vs_present_tense: 0.633
-pronoun_density: 0.029
-response_length: 0.244
-sentence_connector_density: 0.376
-short_vs_long_sentences: 0.418
-spanish_loanwords: 0.201
-vocabulary_diversity: 0.143
-vowel_omission: 0.7
-word_repetition_density: 0.186
+_meta:
+  last_updated: '2026-03-28'
+default:
+  address_reader_directly: 0.143
+  template_response: 0.561
+  bullets_and_sub_bullets: 0.398
+  capitalization_all_caps: 0.526
+  alliteration_density: 0.115
+  alphabetical_sentences: 0.278
+  direct_answer_vs_hedging: 0.798
+  each_word_new_line: 0.027
+  first_vs_third_person: 0.417
+  formal_vs_casual_tone: 0.73
+  html_emphasis_tags: 0.167
+  imperative_vs_declarative: 0.405
+  keyword_avoidance: 0.5
+  keyword_frequency: 0.058
+  leetspeak_encoding: 0.13
+  number_density: 0.563
+  parenthetical_asides: 0.345
+  past_vs_present_tense: 0.633
+  pronoun_density: 0.029
+  response_length: 0.244
+  sentence_connector_density: 0.376
+  short_vs_long_sentences: 0.418
+  spanish_loanwords: 0.201
+  vocabulary_diversity: 0.143
+  vowel_omission: 0.7
+  paragraph_start_word: 0.343
+  word_repetition_density: 0.186
+meta-llama_Llama-3.3-70B-Instruct:
+  _meta:
+    last_updated: '2026-03-28'
+    pareto_caps:
+      max_d_norm: 0.05
+      max_c_norm: 0.05
+      min_ba: 0.9
+  address_reader_directly:
+    threshold: 0.314
+    d_norm: 1.0e-06
+    c_norm: 0.002337
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  alliteration_density:
+    threshold: 0.298
+    d_norm: 0.0
+    c_norm: 0.000485
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  alphabetical_sentences:
+    threshold: 0.376
+    d_norm: 0.00068
+    c_norm: 0.00114
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  bullets_and_sub_bullets:
+    threshold: 0.398
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  capitalization_all_caps:
+    threshold: 0.524
+    d_norm: 0.0
+    c_norm: 3.6e-05
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  direct_answer_vs_hedging:
+    threshold: 0.55
+    d_norm: 1.8e-05
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  each_word_new_line:
+    threshold: 0.391
+    d_norm: 0.00031
+    c_norm: 0.000168
+    ba: 0.93
+    distribution: bimodal
+    feasible: true
+  first_vs_third_person:
+    threshold: 0.536
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  formal_vs_casual_tone:
+    threshold: 0.522
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  html_emphasis_tags:
+    threshold: 0.529
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  imperative_vs_declarative:
+    threshold: 0.451
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  keyword_frequency:
+    threshold: 0.424
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  leetspeak_encoding:
+    threshold: 0.156
+    d_norm: 0.0
+    c_norm: 0.000324
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  number_density:
+    threshold: 0.39
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  parenthetical_asides:
+    threshold: 0.509
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  past_vs_present_tense:
+    threshold: 0.371
+    d_norm: 7.1e-05
+    c_norm: 0.000226
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  pronoun_density:
+    threshold: 0.051
+    d_norm: 1.3e-05
+    c_norm: 0.000733
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  response_length:
+    threshold: 0.237
+    d_norm: 0.0
+    c_norm: 0.001642
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  sentence_connector_density:
+    threshold: 0.534
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  short_vs_long_sentences:
+    threshold: 0.46
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  spanish_loanwords:
+    threshold: 0.5
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  template_response:
+    threshold: 0.657
+    d_norm: 0.0
+    c_norm: 0.003716
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  vocabulary_diversity:
+    threshold: 0.168
+    d_norm: 2.0e-06
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  vowel_omission:
+    threshold: 0.803
+    d_norm: 2.4e-05
+    c_norm: 2.8e-05
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  word_repetition_density:
+    threshold: 0.266
+    d_norm: 0.0
+    c_norm: 0.000714
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+meta-llama_Llama-3.1-8B-Instruct:
+  _meta:
+    last_updated: '2026-03-28'
+    pareto_caps:
+      max_d_norm: 0.05
+      max_c_norm: 0.05
+      min_ba: 0.9
+  address_reader_directly:
+    threshold: 0.187
+    d_norm: 0.0
+    c_norm: 0.007865
+    ba: 0.995
+    distribution: bimodal
+    feasible: true
+  alliteration_density:
+    threshold: 0.24
+    d_norm: 0.031426
+    c_norm: 0.020951
+    ba: 0.985
+    distribution: bimodal
+    feasible: true
+  alphabetical_sentences:
+    threshold: 0.333
+    d_norm: 0.0
+    c_norm: 0.002393
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  bullets_and_sub_bullets:
+    threshold: 0.37
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  capitalization_all_caps:
+    threshold: 0.477
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  direct_answer_vs_hedging:
+    threshold: 0.71
+    d_norm: 0.000348
+    c_norm: 0.036397
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  each_word_new_line:
+    threshold: 0.334
+    d_norm: 0.022026
+    c_norm: 0.012384
+    ba: 0.94
+    distribution: bimodal
+    feasible: true
+  first_vs_third_person:
+    threshold: 0.418
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  formal_vs_casual_tone:
+    threshold: 0.599
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  html_emphasis_tags:
+    threshold: 0.333
+    d_norm: 0.025144
+    c_norm: 0.018354
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  imperative_vs_declarative:
+    threshold: 0.429
+    d_norm: 1.0e-06
+    c_norm: 0.000189
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  keyword_frequency:
+    threshold: 0.251
+    d_norm: 1.0e-06
+    c_norm: 0.016522
+    ba: 0.995
+    distribution: bimodal
+    feasible: true
+  leetspeak_encoding:
+    threshold: 0.155
+    d_norm: 0.0
+    c_norm: 0.001028
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  number_density:
+    threshold: 0.375
+    d_norm: 0.004975
+    c_norm: 0.009978
+    ba: 0.98
+    distribution: bimodal
+    feasible: true
+  paragraph_start_word:
+    threshold: 0.343
+    d_norm: 0.0
+    c_norm: 0.001395
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  parenthetical_asides:
+    threshold: 0.478
+    d_norm: 0.000116
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  past_vs_present_tense:
+    threshold: 0.259
+    d_norm: 0.000677
+    c_norm: 0.011759
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  pronoun_density:
+    threshold: 0.032
+    d_norm: 0.029607
+    c_norm: 0.015638
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  response_length:
+    threshold: 0.188
+    d_norm: 0.001018
+    c_norm: 0.020467
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  sentence_connector_density:
+    threshold: 0.547
+    d_norm: 0.0
+    c_norm: 0.000104
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  short_vs_long_sentences:
+    threshold: 0.368
+    d_norm: 0.0
+    c_norm: 0.000139
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  spanish_loanwords:
+    threshold: 0.401
+    d_norm: 9.0e-05
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  template_response:
+    threshold: 0.389
+    d_norm: 0.001432
+    c_norm: 0.0008
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  vocabulary_diversity:
+    threshold: 0.143
+    d_norm: 0.008867
+    c_norm: 0.003465
+    ba: 0.99
+    distribution: bimodal
+    feasible: true
+  vowel_omission:
+    threshold: 0.755
+    d_norm: 0.002696
+    c_norm: 0.000442
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+openai_gpt-oss-20b:
+  _meta:
+    last_updated: '2026-03-28'
+    pareto_caps:
+      max_d_norm: 0.05
+      max_c_norm: 0.05
+      min_ba: 0.9
+  address_reader_directly:
+    threshold: 0.207
+    d_norm: 0.00236
+    c_norm: 0.02363
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  alliteration_density:
+    threshold: 0.261
+    d_norm: 0.001676
+    c_norm: 0.008574
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  alphabetical_sentences:
+    threshold: 0.334
+    d_norm: 0.005289
+    c_norm: 0.0049
+    ba: 0.9884
+    distribution: bimodal
+    feasible: true
+  bullets_and_sub_bullets:
+    threshold: 0.474
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  capitalization_all_caps:
+    threshold: 0.584
+    d_norm: 0.016365
+    c_norm: 0.001108
+    ba: 0.915
+    distribution: bimodal
+    feasible: true
+  direct_answer_vs_hedging:
+    threshold: 0.723
+    d_norm: 0.040053
+    c_norm: 0.0088
+    ba: 0.93
+    distribution: bimodal
+    feasible: true
+  each_word_new_line:
+    threshold: 0.542
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 0.9942
+    distribution: bimodal
+    feasible: true
+  first_vs_third_person:
+    threshold: 0.478
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 0.9949
+    distribution: bimodal
+    feasible: true
+  formal_vs_casual_tone:
+    threshold: 0.666
+    d_norm: 7.2e-05
+    c_norm: 0.000773
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  html_emphasis_tags:
+    threshold: 0.333
+    d_norm: 0.005356
+    c_norm: 0.009212
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  imperative_vs_declarative:
+    threshold: 0.396
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  keyword_frequency:
+    threshold: 0.265
+    d_norm: 0.000697
+    c_norm: 0.013093
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  leetspeak_encoding:
+    threshold: 0.177
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  number_density:
+    threshold: 0.375
+    d_norm: 0.031105
+    c_norm: 0.01306
+    ba: 0.9737
+    distribution: bimodal
+    feasible: true
+  paragraph_start_word:
+    threshold: 0.509
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  parenthetical_asides:
+    threshold: 0.356
+    d_norm: 0.0
+    c_norm: 0.001128
+    ba: 0.9904
+    distribution: bimodal
+    feasible: true
+  past_vs_present_tense:
+    threshold: 0.343
+    d_norm: 0.00015
+    c_norm: 0.001037
+    ba: 0.9833
+    distribution: bimodal
+    feasible: true
+  pronoun_density:
+    threshold: 0.028
+    ba: 1.0
+    distribution: bimodal
+    feasible: false
+    fallback: valley
+  response_length:
+    threshold: 0.387
+    d_norm: 0.0
+    c_norm: 8.3e-05
+    ba: 0.9875
+    distribution: bimodal
+    feasible: true
+  sentence_connector_density:
+    threshold: 0.429
+    d_norm: 0.00019
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  short_vs_long_sentences:
+    threshold: 0.391
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 0.9847
+    distribution: bimodal
+    feasible: true
+  spanish_loanwords:
+    threshold: 0.289
+    d_norm: 0.0
+    c_norm: 0.023502
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  template_response:
+    threshold: 0.492
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  vocabulary_diversity:
+    threshold: 0.215
+    d_norm: 0.0
+    c_norm: 0.000127
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  vowel_omission:
+    threshold: 0.842
+    d_norm: 1.0e-06
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  word_repetition_density:
+    threshold: 0.312
+    d_norm: 0.001257
+    c_norm: 0.006414
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+google_gemma-3-27b-it:
+  _meta:
+    last_updated: '2026-03-28'
+    pareto_caps:
+      max_d_norm: 0.05
+      max_c_norm: 0.05
+      min_ba: 0.9
+  address_reader_directly:
+    threshold: 0.239
+    d_norm: 0.0
+    c_norm: 8.6e-05
+    ba: 0.935
+    distribution: bimodal
+    feasible: true
+  alliteration_density:
+    threshold: 0.139
+    ba: 1.0
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint
+  alphabetical_sentences:
+    threshold: 0.19
+    d_norm: 0.0
+    c_norm: 0.009852
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  bullets_and_sub_bullets:
+    threshold: 0.346
+    d_norm: 0.0
+    c_norm: 0.002489
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  capitalization_all_caps:
+    threshold: 0.498
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  direct_answer_vs_hedging:
+    threshold: 0.71
+    d_norm: 0.020145
+    c_norm: 0.046917
+    ba: 0.985
+    distribution: bimodal
+    feasible: true
+  each_word_new_line:
+    threshold: 0.44
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  first_vs_third_person:
+    threshold: 0.442
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  formal_vs_casual_tone:
+    threshold: 0.7
+    d_norm: 0.000161
+    c_norm: 0.011459
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  html_emphasis_tags:
+    threshold: 0.667
+    d_norm: 0.012
+    c_norm: 0.0
+    ba: 0.99
+    distribution: unimodal
+    feasible: true
+  imperative_vs_declarative:
+    threshold: 0.315
+    d_norm: 0.048245
+    c_norm: 0.04942
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  keyword_frequency:
+    threshold: 0.294
+    d_norm: 1.0e-06
+    c_norm: 0.002794
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  leetspeak_encoding:
+    threshold: 0.25
+    d_norm: 6.2e-05
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  number_density:
+    threshold: 0.75
+    d_norm: 0.001172
+    c_norm: 0.02808
+    ba: 0.985
+    distribution: bimodal
+    feasible: true
+  paragraph_start_word:
+    threshold: 0.509
+    d_norm: 0.0
+    c_norm: 0.000149
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  parenthetical_asides:
+    threshold: 0.6
+    d_norm: 0.048391
+    c_norm: 0.0
+    ba: 0.935
+    distribution: bimodal
+    feasible: true
+  past_vs_present_tense:
+    threshold: 0.334
+    d_norm: 0.000367
+    c_norm: 0.004248
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  pronoun_density:
+    threshold: 0.018
+    ba: 1.0
+    distribution: bimodal
+    feasible: false
+    fallback: valley
+  response_length:
+    threshold: 0.151
+    d_norm: 0.001998
+    c_norm: 0.035966
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  sentence_connector_density:
+    threshold: 0.301
+    d_norm: 0.00371
+    c_norm: 0.043873
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  short_vs_long_sentences:
+    threshold: 0.5
+    d_norm: 0.000109
+    c_norm: 0.000803
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  spanish_loanwords:
+    threshold: 0.404
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  template_response:
+    threshold: 0.631
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  vocabulary_diversity:
+    threshold: 0.185
+    d_norm: 0.000147
+    c_norm: 0.003484
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  vowel_omission:
+    threshold: 0.826
+    d_norm: 0.0
+    c_norm: 3.8e-05
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  word_repetition_density:
+    threshold: 0.186
+    ba: 1.0
+    distribution: unimodal
+    feasible: false
+    fallback: baseline_midpoint
+Qwen_Qwen2.5-7B-Instruct:
+  _meta:
+    last_updated: '2026-03-28'
+    pareto_caps:
+      max_d_norm: 0.1
+      max_c_norm: 0.1
+      min_ba: 0.9
+  address_reader_directly:
+    threshold: 0.169
+    d_norm: 5.9e-05
+    c_norm: 0.048701
+    ba: 0.99
+    distribution: bimodal
+    feasible: true
+  alliteration_density:
+    threshold: 0.724
+    ba: 0.865
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint
+  alphabetical_sentences:
+    threshold: 0.181
+    d_norm: 0.0
+    c_norm: 0.035056
+    ba: 0.99
+    distribution: bimodal
+    feasible: true
+  bullets_and_sub_bullets:
+    threshold: 0.433
+    d_norm: 0.0
+    c_norm: 4.7e-05
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  capitalization_all_caps:
+    threshold: 0.478
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  direct_answer_vs_hedging:
+    threshold: 0.855
+    ba: 0.97
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint
+  each_word_new_line:
+    threshold: 0.556
+    d_norm: 0.0
+    c_norm: 1.5e-05
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  first_vs_third_person:
+    threshold: 0.334
+    d_norm: 0.003172
+    c_norm: 0.000507
+    ba: 0.945
+    distribution: bimodal
+    feasible: true
+  formal_vs_casual_tone:
+    threshold: 0.61
+    d_norm: 0.0
+    c_norm: 0.001236
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  html_emphasis_tags:
+    threshold: 0.333
+    d_norm: 0.040261
+    c_norm: 0.04736
+    ba: 0.995
+    distribution: bimodal
+    feasible: true
+  imperative_vs_declarative:
+    threshold: 0.572
+    d_norm: 0.020877
+    c_norm: 0.001296
+    ba: 0.995
+    distribution: bimodal
+    feasible: true
+  keyword_frequency:
+    threshold: 0.166
+    d_norm: 0.013898
+    c_norm: 0.07474
+    ba: 0.97
+    distribution: bimodal
+    feasible: true
+  leetspeak_encoding:
+    threshold: 0.139
+    d_norm: 0.000592
+    c_norm: 0.002374
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  number_density:
+    threshold: 0.563
+    ba: 0.95
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint
+  paragraph_start_word:
+    threshold: 0.616
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  parenthetical_asides:
+    threshold: 0.389
+    ba: 0.99
+    distribution: bimodal
+    feasible: false
+    fallback: valley
+  past_vs_present_tense:
+    threshold: 0.319
+    d_norm: 0.000224
+    c_norm: 0.002895
+    ba: 0.98
+    distribution: bimodal
+    feasible: true
+  pronoun_density:
+    threshold: 0.027
+    d_norm: 0.067697
+    c_norm: 0.036354
+    ba: 0.96
+    distribution: bimodal
+    feasible: true
+  response_length:
+    threshold: 0.319
+    ba: 1.0
+    distribution: unimodal
+    feasible: false
+    fallback: baseline_midpoint
+  sentence_connector_density:
+    threshold: 0.491
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  short_vs_long_sentences:
+    threshold: 0.552
+    d_norm: 0.00022
+    c_norm: 0.000354
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  spanish_loanwords:
+    threshold: 0.264
+    d_norm: 5.0e-06
+    c_norm: 0.030575
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  vocabulary_diversity:
+    threshold: 0.288
+    ba: 0.82
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint
+  vowel_omission:
+    threshold: 0.957
+    d_norm: 0.04459
+    c_norm: 0.096618
+    ba: 0.955
+    distribution: bimodal
+    feasible: true
+  word_repetition_density:
+    threshold: 0.091
+    ba: 0.89
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint

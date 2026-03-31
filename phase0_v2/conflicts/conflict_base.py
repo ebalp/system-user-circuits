@@ -29,19 +29,23 @@ class Conflict:
     counterbalance_quality: Literal["full", "partial", "none"] = "none"
     arg_keys: list[str] = []
 
-    # Threshold for converting float scores to bool (overridable per-conflict)
-    verify_threshold: float = 0.8
-
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        # Load threshold from centralized config if available
         cid = getattr(cls, "conflict_id", "")
-        if cid and not cid.startswith("test_"):
-            from phase0_v2.config.thresholds import get_threshold
+        if not cid or cid.startswith("test_"):
+            return
 
-            t = get_threshold(cid)
-            if t is not None:
-                cls.verify_threshold = t
+        from phase0_v2.config.conflict_config import get_threshold, get_type
+
+        # Load threshold from thresholds.yaml (existing behavior)
+        t = get_threshold(cid)
+        if t is not None:
+            cls.verify_threshold = t
+        elif get_type(cid) == "float":
+            raise ValueError(
+                f"Float conflict '{cid}' has no threshold in thresholds.yaml. "
+                f"All float conflicts MUST have an explicit threshold."
+            )
 
     def __init__(self) -> None:
         self._instruction_args: dict[str, Any] | None = None

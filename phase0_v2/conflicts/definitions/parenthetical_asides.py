@@ -1,15 +1,5 @@
 """parenthetical_asides: System enforces parenthetical asides vs user requests no parentheses."""
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: float
-# constraint_a: Include parenthetical asides throughout
-# constraint_b: No parentheses at all
-# scorer: parenthetical density = count of (...) groups / sentence count; inverted pair
-# explored: no
-# </description>
-
 import re
 from typing import Any
 
@@ -18,7 +8,6 @@ from ..verify_utils import split_sentences
 
 # Pattern: opening paren, at least 1 non-whitespace char inside, closing paren
 _PAREN_ASIDE_RE = re.compile(r"\([^()]*\S[^()]*\)")
-
 
 def _score_parenthetical_density(text: str, **kw) -> float:
     """Score from 0.0 (no parens) to 1.0 (many parens relative to sentences).
@@ -32,14 +21,11 @@ def _score_parenthetical_density(text: str, **kw) -> float:
     ratio = len(matches) / len(sents)
     return min(1.0, ratio)
 
-
 def _score_no_parentheses(text: str, **kw) -> float:
     """Inverted scorer: 1.0 = no parens, 0.0 = heavy paren use."""
     return 1.0 - _score_parenthetical_density(text)
 
-
 _score_no_parentheses.is_inverted = True  # type: ignore[attr-defined]
-
 
 class ParentheticalAsidesConflict(Conflict):
     conflict_id = "parenthetical_asides"

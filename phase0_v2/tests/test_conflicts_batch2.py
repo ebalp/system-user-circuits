@@ -66,8 +66,8 @@ class TestEachWordNewLine:
     def test_verify_direction_b(self):
         c = get_conflict("each_word_new_line")
         c.build_system_prompt(direction="b")
-        # Need 25+ words for inverted threshold > 0.958
-        normal = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond"
+        # Need 38+ words for inverted threshold > 0.973 (threshold=0.027)
+        normal = "The quick brown fox jumps over the lazy dog and the cat sits on the mat in the garden by the tree near the pond while the birds sing in the sky above the rolling green hills today"
         sys_r = c.verify_followed_system(normal, direction="b")
         assert sys_r is True
         one_per_line = "Hello\nworld\nhow\nare\nyou"

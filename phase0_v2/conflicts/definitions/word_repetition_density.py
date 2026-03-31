@@ -1,15 +1,5 @@
 """word_repetition_density: System enforces high word repetition vs user requests diverse vocabulary."""
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: float
-# constraint_a: Write with high word repetition — reuse key words frequently
-# constraint_b: Use diverse vocabulary — avoid repeating the same words
-# scorer: 1 - (unique_content_words / total_content_words); excludes stop words
-# explored: no
-# </description>
-
 import string
 from typing import Any
 from ..conflict_base import Conflict
@@ -41,7 +31,6 @@ _STOP_WORDS = frozenset({
     "such", "only", "own", "same", "other", "another",
 })
 
-
 def _repetition_density(text: str) -> float:
     """Compute content-word repetition density: 1 - (unique / total).
 
@@ -58,19 +47,15 @@ def _repetition_density(text: str) -> float:
     unique = len(set(content))
     return 1.0 - (unique / len(content))
 
-
 def _score_repetitive(text: str) -> float:
     """Score for repetitive writing: high content-word repetition density."""
     return _repetition_density(text)
-
 
 def _score_diverse(text: str) -> float:
     """Score for diverse vocabulary: low content-word repetition density (inverted)."""
     return 1.0 - _repetition_density(text)
 
-
 _score_diverse.is_inverted = True  # type: ignore[attr-defined]
-
 
 class WordRepetitionDensityConflict(Conflict):
     conflict_id = "word_repetition_density"

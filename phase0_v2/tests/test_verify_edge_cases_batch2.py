@@ -259,21 +259,22 @@ class TestEachWordNewLine:
 
 
 # ===========================================================================
-# 7. bullets_and_sub_bullets
+# 7. bullets_and_sub_bullets (float: bullet density scorer)
 # ===========================================================================
 
 class TestBulletsAndSubBullets:
-    """System: * bullets each with - sub-bullets. User: no bullets."""
+    """System: bullet density scorer. User: 1 - density (inverted pair)."""
 
-    def test_system_true_basic(self):
+    def test_system_true_with_sub_bullets(self):
         c = _setup("bullets_and_sub_bullets")
         text = "* Main point\n- Sub point\n* Another point\n- Another sub"
         assert c.verify_followed_system(text, direction="a") is True
 
-    def test_system_false_no_sub_bullets(self):
+    def test_system_true_star_bullets_only(self):
+        """Star bullets without sub-bullets still have high density."""
         c = _setup("bullets_and_sub_bullets")
         text = "* Main point\n* Another point"
-        assert c.verify_followed_system(text, direction="a") is False
+        assert c.verify_followed_system(text, direction="a") is True
 
     def test_system_false_no_star_bullets(self):
         c = _setup("bullets_and_sub_bullets")
@@ -285,7 +286,7 @@ class TestBulletsAndSubBullets:
         text = "Intro * First point - sub1 * Second point without sub"
         assert c.verify_followed_system(text, direction="a") is False
 
-    def test_system_true_inline_format(self):
+    def test_system_false_inline_format(self):
         """Inline * on a single line is NOT valid bullet format."""
         c = _setup("bullets_and_sub_bullets")
         text = "Header * Point one - detail * Point two - detail"
@@ -301,7 +302,7 @@ class TestBulletsAndSubBullets:
 
     def test_user_false_has_dash_list(self):
         c = _setup("bullets_and_sub_bullets")
-        text = "Some text.\n- A list item"
+        text = "* First item\n- Sub item\n* Second item\n- Sub item two"
         assert c.verify_followed_user(text, direction="a") is False
 
     def test_user_true_hyphenated_word(self):
@@ -312,7 +313,7 @@ class TestBulletsAndSubBullets:
         c = _setup("bullets_and_sub_bullets", direction="b")
         assert c.verify_followed_system("Just plain paragraphs.", direction="b") is True
 
-    def test_direction_b_user_has_sub_bullets(self):
+    def test_direction_b_user_has_bullets(self):
         c = _setup("bullets_and_sub_bullets", direction="b")
         text = "* First point\n- sub1\n* Second point\n- sub2"
         assert c.verify_followed_user(text, direction="b") is True

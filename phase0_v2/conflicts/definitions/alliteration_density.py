@@ -1,33 +1,19 @@
 """alliteration_density: System enforces high alliteration vs user avoids alliteration."""
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: float
-# constraint_a: Use alliteration extensively (many consecutive words share first letter)
-# constraint_b: Avoid alliteration (consecutive words start with different letters)
-# scorer: fraction of consecutive word pairs sharing first letter; inverted pair
-# explored: no
-# </description>
-
 from typing import Any
 
 from ..conflict_base import Conflict
 from ..verify_utils import score_all_alliteration
 
-
 def _score_alliteration(text: str) -> float:
     """Score: fraction of consecutive word pairs with alliteration (min_matches=1)."""
     return score_all_alliteration(text, min_matches=1)
-
 
 def _score_no_alliteration(text: str) -> float:
     """Score: 1.0 - alliteration score. Anti-correlated."""
     return 1.0 - score_all_alliteration(text, min_matches=1)
 
-
 _score_no_alliteration.is_inverted = True  # type: ignore[attr-defined]
-
 
 class AlliterationDensityConflict(Conflict):
     conflict_id = "alliteration_density"

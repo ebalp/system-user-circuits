@@ -64,7 +64,7 @@ seed: 42
 
 generation:
   temperature: 0.0
-  max_tokens: 512
+  max_tokens: 2048
   instances_per_cell: 1
 
 # Sampling
@@ -72,9 +72,6 @@ task_sources:
   synthetic:
     file: ../tasks/synthetic_tasks.yaml
     k_tasks_per_conflict: null  # null = use all synthetic tasks
-  wildchat:
-    file: ../tasks/wildchat_filtered.jsonl
-    k_tasks_per_conflict: 0  # set > 0 to re-enable WildChat tasks
 
 # Thresholds for go/no-go assessment
 thresholds:
@@ -85,4 +82,4 @@ thresholds:
 api:
   timeout: 60
   max_retries: 3
-  concurrent_per_model: 16
+  concurrent_per_model: 12

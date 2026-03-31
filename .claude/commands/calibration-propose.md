@@ -1,66 +1,47 @@
 ---
-description: "Design and implement new or redesigned conflict definitions for Phase 0 v2. Use when the user wants to create new conflicts, redesign weak ones, fill gaps in the constraint landscape, or expand the conflict set."
+description: "Design and implement new conflict definitions for Phase 0 v2. Use when the user wants to create new conflicts, fill gaps in the constraint landscape, or expand the conflict set. For fixing existing conflicts, use /calibration-optimize instead."
 ---
 
-# Conflict Proposal & Implementation
+# New Conflict Proposal & Implementation
 
-Design new conflicts or redesign existing weak ones. Handles the full lifecycle: propose, vet, implement, validate against vLLM, and clean up old data.
+Design and implement new conflicts. Handles the full lifecycle: brainstorm with the user, implement, smoke test against real models, iterate until quality targets are met.
+
+For fixing or improving **existing** conflicts, use `/calibration-optimize` instead.
 
 ## Inputs
 
-- `$ARGUMENTS`: conflict idea, conflict ID to redesign, or empty for gap analysis
+- `$ARGUMENTS`: conflict idea or description, or empty for gap analysis
 
-## Step 0: Determine mode
+## Step 1: Brainstorm with the user
 
-There are two axes of mode:
+### If the user provided an idea:
 
-### Creation mode (what are we building?)
+Evaluate the idea against the quality checklist (Step 2). Refine it collaboratively — propose concrete constraint A/B wording, scorer approach, and flag any checklist concerns.
 
-- If `$ARGUMENTS` matches an existing **registered** conflict_id → **redesign mode** (replace an old conflict with a new one)
-- If `$ARGUMENTS` is a description or idea → **new conflict mode**
-- If `$ARGUMENTS` is empty → **gap analysis mode** (proposes both new and redesigns)
+### If no idea provided (gap analysis):
 
-### Modification mode (is this a first attempt or an iteration?)
-
-- **First attempt**: Creating a conflict from scratch (new ID, new files, new registry entry). This is the default for new conflicts and redesigns.
-- **Iterate mode**: Improving a conflict that was recently created and already has smoke test data. The conflict definition file, registry entry, and test file already exist — we just need to fix the scorer/templates and re-validate.
-
-How to detect iterate mode: If `$ARGUMENTS` matches a registered conflict_id AND the conflict was recently created (has `explored: no` in its description block AND smoke test data exists at `/tmp/{conflict_id}_smoke_ab.jsonl`), this is **iterate mode**. The agent should modify the existing definition file in-place rather than creating new files.
-
-For redesign mode (first attempt), check if a diagnosis report exists for the OLD conflict:
-```bash
-ls phase0_v2/calibration/output/*/diagnosis/{conflict_id}*.md 2>/dev/null
-```
-Read the most recent diagnosis file — it contains root cause analysis, failure patterns, and redesign recommendations.
-
-## Step 1: Analyze the conflict landscape
-
-Review registered conflicts dynamically (no hard-coded categories):
+Review the current conflict landscape:
 
 ```bash
 uv run python -c "
-from phase0_v2.conflicts.registry import get_all_conflicts
-for c in get_all_conflicts():
-    print(f'{c.conflict_id}: cb={c.counterbalance_quality}, threshold={c.verify_threshold}, args={c.arg_keys}')
+import yaml
+with open('phase0_v2/config/conflicts.yaml') as f:
+    data = yaml.safe_load(f)
+for cid, meta in data.items():
+    print(f'{cid}: type={meta.get(\"type\")}, a={meta.get(\"constraint_a\")}, b={meta.get(\"constraint_b\")}')
 "
 ```
 
-Extract description blocks for type/constraint context:
-```bash
-awk '/# <description>/,/# <\/description>/{print FILENAME": "$0}' phase0_v2/conflicts/definitions/*.py
-```
+Group conflicts by `type` to identify underrepresented areas. Propose 3-5 new conflicts with:
 
-For **redesign mode**, also read:
-1. The old conflict's definition file: `phase0_v2/conflicts/definitions/{old_conflict_id}.py`
-2. Its diagnosis report (if available): `phase0_v2/calibration/output/*/diagnosis/{old_conflict_id}*.md`
-3. Its calibration data from the latest report output
+- **ID**: snake_case name following existing conventions
+- **Constraint A / B**: the two opposing instructions
+- **Scorer approach**: how verification would work
+- **Quality assessment**: checklist pass/fail for each criterion
 
-For **iterate mode**, read:
-1. The existing definition file: `phase0_v2/conflicts/definitions/{conflict_id}.py`
-2. The existing smoke test data: `/tmp/{conflict_id}_smoke_ab.jsonl`
-3. Previous analysis output (if any): `/tmp/{conflict_id}_calibration/`
+Present proposals and ask the user which to implement (if any).
 
-For **gap analysis mode**, group the description block output by `# type:` to identify underrepresented areas.
+$ARGUMENTS
 
 ## Step 2: Quality checklist
 
@@ -92,33 +73,28 @@ For properties that are matters of degree, use this pattern:
 3. Add the conflict to `phase0_v2/config/thresholds.yaml` with threshold `0.5` (initial — will be optimized during smoke test)
 4. The base class `_dispatch_verify` handles anti-correlated threshold logic automatically
 
-## Step 3: Design the conflict
+## Step 3: Confirm design with user
 
-### For redesign mode:
-Present the old conflict's weaknesses (from calibration data or proposals file) and explain how the redesign addresses them. The new conflict MUST have a **different conflict_id** from the old one.
+Present the final design for each conflict:
 
-### For iterate mode:
-Present the current conflict's issues (from smoke test analysis) and propose specific scorer/template changes. The conflict keeps its **same conflict_id**.
+```markdown
+| Field | Value |
+|-------|-------|
+| ID | {conflict_id} |
+| Constraint A (system) | {constraint_a} |
+| Constraint B (user) | {constraint_b} |
+| Type | {bool or float} |
+| Scorer approach | {description} |
+| Checklist | {all MUST criteria pass} |
+```
 
-### For new conflict mode:
-If the user provided an idea, evaluate it against the quality checklist and refine it.
+Ask the user to confirm before proceeding to implementation.
 
-### For gap analysis mode:
-Propose 3-5 conflicts (mix of new and redesigns) with:
+## Step 4: Detect inference server
 
-For each proposal, include:
-- **ID**: snake_case name following existing conventions
-- **Replaces** (if redesign): old conflict_id and why it's weak
-- **Constraint A / B**: the two opposing instructions
-- **Scorer approach**: how verification would work
-- **Quality assessment**: checklist pass/fail for each criterion
-- **Predicted BA**: expected balanced accuracy based on model capabilities
+The smoke test uses `VLLMClient` which speaks the OpenAI-compatible API — it works with vLLM, HF TGI, or any OpenAI-compatible endpoint.
 
-Present proposals and ask the user which to implement (if any).
-
-## Step 4: Detect vLLM server
-
-Before launching the implementation subagent, detect the vLLM server and extract the port and model ID:
+Check for a local server first:
 
 ```bash
 uv run python -c "
@@ -133,67 +109,49 @@ for port in (8000, 8001):
         sys.exit(0)
     except Exception:
         continue
-print('NO_VLLM_SERVER')
+print('NO_SERVER')
 sys.exit(1)
 "
 ```
 
-This outputs exactly `VLLM_URL=...` and `MODEL_ID=...` on success, or `NO_VLLM_SERVER` on failure. Use these values directly — do not guess or hardcode ports.
+If no local server is found, ask the user for an endpoint URL and model ID. They may provide an HF Inference Endpoint, a remote vLLM server, or another OpenAI-compatible API.
 
-If no server is found, warn the user that smoke testing won't be possible and ask if they want to proceed without it. The base model for conflict design is **meta-llama/Llama-3.1-8B-Instruct** (Llama 3.1 8B).
+If no server is available at all, warn the user that smoke testing won't be possible and ask if they want to proceed without it (implementation only, validation deferred).
 
 ## Step 5: Implement & validate (only with user approval)
 
-For each user-approved conflict, confirm before proceeding. Then launch one Agent per conflict (subagent_type=general-purpose, run_in_background=true).
+For each user-approved conflict, launch one Agent (subagent_type=general-purpose, model=opus, run_in_background=true).
 
-The subagent owns the full implement-validate-iterate loop. Pass it the vLLM connection info so it can smoke test immediately after implementation.
+The subagent owns the full implement-validate-iterate loop. Pass it the server connection info so it can smoke test immediately after implementation.
 
 **Agent prompt template:**
 
 ```
-You are implementing a conflict definition for the Phase 0 v2 experiment system.
+You are implementing a new conflict definition for the Phase 0 v2 experiment system.
 
 **Conflict spec:**
 - ID: {conflict_id}
-- Replaces: {old_conflict_id or "none (new conflict)"}
 - Constraint A (system): {constraint_a}
 - Constraint B (user): {constraint_b}
 - Type: {bool_or_float}
 - Scorer approach: {scorer_description}
-- Mode: {first_attempt or iterate}
 
-**vLLM server:** {vllm_url or "not available"}
-**Model:** {model_id or "meta-llama/Llama-3.1-8B-Instruct"}
+**Inference server:** {server_url or "not available"}
+**Model:** {model_id}
 
 **Your task — implement, validate, iterate:**
 
 ### Phase 1: Implement
 
-**If iterate mode:** Skip steps 1-4. The definition file, registry entry, and tests already exist. Go directly to Phase 2 — read the existing definition file, understand the current scorer, then modify the scorer/templates based on the user's feedback or previous analysis results. After modifying, run `rescore.py --reverify` on the existing smoke test data (step 6) instead of re-generating from vLLM.
-
-**If first attempt mode:**
-
 1. **Read reference files** to understand conventions:
    - `phase0_v2/conflicts/conflict_base.py` (base class, all fields)
    - `phase0_v2/conflicts/verify_utils.py` (shared scorer utilities — only 8 primitives, prefer self-contained scorers)
    - One existing similar conflict for structural reference
-   - If redesign: read the old conflict definition file
 
 2. **Create** `phase0_v2/conflicts/definitions/{conflict_id}.py`:
    - Module docstring: one-line summary
-   - Description block (after docstring, before imports):
-     ```python
-     # If you modify the scoring logic, update the description block below
-     # and set explored to 'no'.
-     # <description>
-     # type: {bool_or_float}
-     # constraint_a: {short phrase}
-     # constraint_b: {short phrase}
-     # scorer: {what verify measures}
-     # explored: no
-     # </description>
-     ```
    - Scorer function(s) — keep self-contained, only use verify_utils for the 8 shared primitives
+   - Create/update the entry in `phase0_v2/config/conflicts.yaml` with type, constraint_a, constraint_b, scorer description
    - Class inheriting from Conflict with:
      - `conflict_id`
      - `system_template` / `user_template` (with {{topic}} placeholder)
@@ -207,96 +165,77 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
 3. **Register** in `phase0_v2/conflicts/registry.py`:
    - Add import in the appropriate section
    - Add to `_ALL_CONFLICT_CLASSES` in alphabetical order by class name
-   - If redesign: **remove** the old conflict class from registry (remove its import and list entry)
 
-4. **If redesign — clean up old conflict:**
-   - Do NOT delete the old definition file (keep for reference)
-   - Do NOT add the old conflict_id to `exclude_conflicts` — since it's being removed from the registry, it won't be discovered by the experiment runner. Only conflicts that are registered but should be skipped need exclusion entries.
-   - Archive old data from results files:
-     ```bash
-     uv run python -m phase0_v2.calibration.archive_conflict {old_conflict_id} phase0_v2/data/results/
-     ```
+### Phase 2: Validate with smoke test (skip if no server)
 
-### Phase 2: Validate against vLLM (skip if no server)
-
-5. **Generate smoke test data** (conditions A,B with 50 tasks = 200 samples):
+4. **Generate smoke test data** (all 4 conditions):
    ```bash
    uv run python -m phase0_v2.calibration.smoke_test \
      --conflict {conflict_id} \
-     --vllm-url {vllm_url} \
+     --vllm-url {server_url} \
      --model {model_id} \
-     --conditions A,B \
      --n-tasks 50 \
-     --output /tmp/{conflict_id}_smoke_ab.jsonl
+     --output /tmp/{conflict_id}_smoke.jsonl
    ```
-   Conditions A and B are baselines (no conflict). Each task produces 2 prompts per condition (a_to_b + b_to_a), so 50 tasks = 100 samples per condition = 200 total.
+   Tests all 4 conditions. A,B validate the scorer on clean baselines. C,D are critical because model behavior under conflict is much stranger — refusals, metacommentary, partial compliance, hedging — and the scorer must handle these gracefully. A scorer that works on baselines can completely break under condition C.
 
-   **IMPORTANT: Only test conditions A and B.** Do NOT run conditions C or D during the propose workflow. C/D measure hierarchy behavior, which is the job of the full experiment — testing them here wastes server time and provides no scorer validation signal.
+   The smoke test prints a full report: baseline rates (SBR/UCR), baseline BA, per-condition accuracy, condition C label distribution, and condition C BA.
 
-   **If iterate mode with existing smoke data:** Skip this step. Go directly to step 6 to reverify existing data with the modified scorer.
+   **Read the output carefully:**
+   - Baseline BA: does the scorer reliably detect the constraint on clean responses? (target: 1.000)
+   - Condition C labels: check for excessive `followed_both` or `followed_neither` — these suggest the constraints aren't truly mutually exclusive or the scorer has gaps with conflicted responses.
+   - Condition C responses: read actual C responses to see if the scorer handles refusals, meta-commentary, and partial compliance correctly.
 
-6. **Analyze results** — run the calibration analyzer on the smoke test output:
-   ```bash
-   uv run python -m phase0_v2.calibration.analyze \
-     /tmp/{conflict_id}_smoke_ab.jsonl \
-     --conflict {conflict_id} \
-     --output-dir /tmp/{conflict_id}_calibration/ \
-     --smoke
-   ```
-   This prints:
-   - BASELINE RATES table with SBR/UCR and BA
-   - FLOAT SCORE CALIBRATION table (for float conflicts) with `opt_mid` (optimal threshold midpoint) and `bal_acc` (BA at that threshold)
-   - ANOMALIES summary
-
-   Read the output carefully. The `opt_mid` column tells you the best threshold. The `bal_acc` column tells you the achievable BA.
-
-7. **Inspect failures**: If BA < 1.000, read the anomalies JSONL and actual model responses:
-   - Check `/tmp/{conflict_id}_calibration/anomalies.jsonl` for failure details
+5. **Inspect failures**: If baseline BA < 1.000:
    - Read the smoke test JSONL directly for full response text on failures
    - Determine: is this a scorer bug, a template clarity issue, or genuine model inability?
 
-8. **Iterate on scorer/constraints**: If BA < 1.000 and the issue is fixable:
+6. **Iterate on scorer/constraints**: If baseline BA < 1.000 and the issue is fixable:
    - Fix scorer logic in the definition file based on actual model output patterns
    - Adjust constraint templates if the model misunderstands them
-   - **Reverify existing responses** (no vLLM re-query needed — much faster):
+   - **Reverify existing responses** (no re-query needed — much faster):
      ```bash
      uv run python -m phase0_v2.calibration.rescore \
-       /tmp/{conflict_id}_smoke_ab.jsonl \
-       /tmp/{conflict_id}_smoke_ab.jsonl \
+       /tmp/{conflict_id}_smoke.jsonl \
+       /tmp/{conflict_id}_smoke.jsonl \
        --reverify --conflicts {conflict_id}
      ```
-   - Re-analyze to check improvement:
+   - Re-run the smoke test report to check improvement:
      ```bash
-     uv run python -m phase0_v2.calibration.analyze \
-       /tmp/{conflict_id}_smoke_ab.jsonl \
-       --conflict {conflict_id} \
-       --output-dir /tmp/{conflict_id}_calibration/ \
-       --smoke
+     uv run python -m phase0_v2.calibration.audit_conflict \
+       /tmp/{conflict_id}_smoke.jsonl --conflict {conflict_id}
      ```
-   - Only re-run `smoke_test.py` (step 5) if constraint **templates** changed — because the model needs to generate new responses to different prompts.
-   - Keep iterating as long as there is measurable progress (BA or min(BL) improving). There is no hard iteration limit — if each round improves metrics, continue.
-   - Stop iterating when: (a) BA=1.000 and min(BL)=1.000 (perfect), or (b) no further improvement after the last change, or (c) the remaining failures are clearly due to model inability rather than scorer/template issues.
+   - Only re-run `smoke_test.py` (step 4) if constraint **templates** changed — because the model needs to generate new responses to different prompts.
+   - Keep iterating as long as there is measurable progress (baseline BA or min(BL) improving).
+   - Stop iterating when: (a) min(BL)=1.000 (perfect baselines), or (b) no further improvement after the last change, or (c) the remaining failures are clearly due to model inability rather than scorer/template issues.
 
-8b. **Quality targets**: The goal is min(BL) = 1.000 (all four baseline rates at 1.000). The minimum acceptable gate is min(BL) ≥ 0.95:
+7. **Quality targets**: The goal is min(BL) = 1.000 (all four baseline rates at 1.000). The minimum acceptable gate is min(BL) ≥ 0.95:
    - SBR(a) ≥ 0.95, UCR(a) ≥ 0.95, SBR(b) ≥ 0.95, UCR(b) ≥ 0.95
    - If any rate is below 0.95 and no further progress is possible, **stop and report the conflict as not viable**. Do not proceed to tests. Include the root cause (scorer bug, template clarity, or model inability) in the report.
    - BA alone is not sufficient — a conflict with BA=0.96 but SBR(b)=0.88 is not acceptable.
    - Always aim for perfect scores (1.000). Accept ≥ 0.95 only when further iteration shows no improvement.
 
-9. **Set optimal threshold** (float-scored conflicts only — skip for boolean):
-   - Read the `opt_mid` value from the FLOAT SCORE CALIBRATION table
-   - Update the threshold in `phase0_v2/config/thresholds.yaml` to this value
-   - Reverify one final time to confirm BA matches:
+8. **Set optimal threshold** (float-scored conflicts only — skip for boolean):
+   Compute the baseline-optimal threshold using the Pareto analysis:
+   ```python
+   from phase0_v2.calibration._shared import load_records
+   from phase0_v2.calibration.per_model_thresholds import compute_baseline_ranges
+   records = load_records("/tmp/{conflict_id}_smoke.jsonl")
+   ranges = compute_baseline_ranges(records)
+   r = ranges.get("{conflict_id}")
+   if r:
+       optimal_t = round((r["opt_low"] + r["opt_high"]) / 2, 3)
+       print(f"Optimal threshold: {optimal_t} (range [{r['opt_low']}, {r['opt_high']}], BA={r['ba']})")
+   ```
+   - Update the threshold in `phase0_v2/config/thresholds.yaml` to the midpoint value
+   - Reverify one final time to confirm:
      ```bash
      uv run python -m phase0_v2.calibration.rescore \
-       /tmp/{conflict_id}_smoke_ab.jsonl \
-       /tmp/{conflict_id}_smoke_ab.jsonl \
+       /tmp/{conflict_id}_smoke.jsonl \
+       /tmp/{conflict_id}_smoke.jsonl \
        --reverify --conflicts {conflict_id}
-     uv run python -m phase0_v2.calibration.analyze \
-       /tmp/{conflict_id}_smoke_ab.jsonl \
-       --conflict {conflict_id} \
-       --output-dir /tmp/{conflict_id}_calibration/ \
-       --smoke
+     uv run python -m phase0_v2.calibration.audit_conflict \
+       /tmp/{conflict_id}_smoke.jsonl --conflict {conflict_id}
      ```
 
 ### Phase 3: Tests (after validation)
@@ -306,7 +245,6 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
     - Contract tests: verify class attributes, template placeholders, counterbalancing support
     - Edge case tests: empty response, very short response, truncated response
     - Scorer tests: use examples from actual model responses seen during smoke testing — these are grounded in real behavior, not hypothetical inputs
-    - **If iterate mode**: update existing tests to reflect any scorer changes.
 
 11. **Run tests**:
     ```bash
@@ -314,18 +252,16 @@ You are implementing a conflict definition for the Phase 0 v2 experiment system.
     uv run pytest phase0_v2/tests/ -v --tb=short
     ```
 
-12. **Report**: what was created/modified, design decisions made, optimized threshold, baseline SBR/UCR/BA, iterations needed, test results
+12. **Report**: what was created, design decisions made, optimized threshold, baseline SBR/UCR/BA, iterations needed, test results
 
 **Rules:**
 - Follow the quality checklist strictly. If you can't satisfy a MUST criterion, stop and report why.
 - Keep scorer logic simple and deterministic.
 - Don't add unnecessary complexity or configuration.
-- New conflict_id for redesigns — never reuse the old ID.
-- Same conflict_id for iterate mode — modify in place.
 - Validate early with the model — don't write tests for scorer logic you haven't verified against real responses.
 - When iterating on the scorer, focus on what the model actually produces, not what you expect it to produce.
 - Do NOT overfit. Every scorer change must make sense from a high-level explanation. If a change only helps on this specific smoke test data but wouldn't generalize, don't do it.
-- Always use the analyze script for threshold optimization — never hand-pick thresholds.
+- Always use `compute_baseline_ranges()` for threshold optimization — never hand-pick thresholds.
 ```
 
 ## Step 6: Post-implementation
@@ -343,17 +279,14 @@ Present a summary:
 ```markdown
 ## Conflicts implemented
 
-| Conflict ID | Replaces | Type | SBR(a) | UCR(a) | SBR(b) | UCR(b) | BA | Threshold | Tests |
-|-------------|----------|------|--------|--------|--------|--------|----|-----------|-------|
+| Conflict ID | Type | SBR(a) | UCR(a) | SBR(b) | UCR(b) | BA | Threshold | Tests |
+|-------------|------|--------|--------|--------|--------|----|-----------|-------|
 ```
 
 Remind the user:
-- If baseline BA > 0.95 and threshold is optimized: conflict is ready — run full experiments to collect data (see CLAUDE.md)
+- If baseline BA ≥ 0.95 and threshold is optimized: conflict is ready — run full experiments to collect data (see CLAUDE.md)
 - If smoke test was skipped: verifier tuning will be needed after data collection via `/calibration-optimize`
-- After collecting full data, run `/calibration-report` to confirm and fine-tune threshold if needed
-- New conflicts start with `explored: no` — update to `explored: yes` after full calibration confirms BA > 0.95
-- If redesigns were done: old data was archived, old conflict_ids added to `exclude_conflicts`
-- To iterate on a conflict that needs improvement, run this command again with the conflict_id — it will detect iterate mode automatically
+- After collecting full data, run `/calibration-audit-cond-c` to confirm verifier quality
 
 ## Key references
 
@@ -362,15 +295,14 @@ Remind the user:
 - Existing definitions: `phase0_v2/conflicts/definitions/*.py`
 - Scorer utilities: `phase0_v2/conflicts/verify_utils.py` (8 shared primitives only)
 - Test examples: `phase0_v2/tests/test_conflicts_*.py`
-- Config: `phase0_v2/config/experiment.yaml`
-- Archive tool: `phase0_v2/calibration/archive_conflict.py`
+- Conflict metadata: `phase0_v2/config/conflicts.yaml`
 - Smoke test: `phase0_v2/calibration/smoke_test.py`
-- Analyze (with `--smoke` flag): `phase0_v2/calibration/analyze.py`
+- Audit tool: `phase0_v2/calibration/audit_conflict.py`
 - Rescore/reverify: `phase0_v2/calibration/rescore.py`
-- Diagnosis reports: `phase0_v2/calibration/output/*/diagnosis/{conflict_id}*.md`
+- Threshold optimization: `phase0_v2/calibration/per_model_thresholds.py` (`compute_baseline_ranges()`)
 
 ## Related commands
 
-- **`/calibration-report`** — Generate calibration report after collecting data for new conflicts
-- **`/calibration-diagnose`** — Diagnose issues with new conflicts after data collection
-- **`/calibration-optimize`** — Tune verifiers for new conflicts after data collection
+- **`/calibration-audit-cond-c`** — Audit condition C verifier classifications after collecting data
+- **`/calibration-optimize`** — Fix existing conflict verifiers
+- **`/calibration-per-model-thresholds`** — Per-model Pareto threshold optimization

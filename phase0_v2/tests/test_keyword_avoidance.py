@@ -65,9 +65,10 @@ class TestContract:
         result = conflict.score_user("Hello world", direction="a")
         assert isinstance(result, float)
 
-    def test_inverted_flag(self):
-        assert getattr(_score_keyword_absence, "is_inverted", False) is True
-        assert getattr(_verify_user, "is_inverted", False) is True
+    def test_absence_not_inverted(self):
+        """Independent pair: absence scorer is NOT inverted."""
+        assert getattr(_score_keyword_absence, "is_inverted", False) is False
+        assert getattr(_verify_user, "is_inverted", False) is False
 
     def test_direct_scorer_no_inverted_flag(self):
         assert getattr(score_keyword_inclusion, "is_inverted", False) is False
@@ -91,7 +92,7 @@ class TestScoreKeywordInclusion:
     def test_keyword_below_target(self):
         text = "This is crucial to understand."
         score = score_keyword_inclusion(text, "crucial")
-        assert score == 0.5  # 1 occurrence / 2 target
+        assert score == 0.0  # 1 occurrence < 2 target → binary 0
 
     def test_keyword_absent(self):
         text = "The cat sat on the mat. It was a sunny day."
@@ -120,11 +121,11 @@ class TestScoreKeywordInclusion:
         score = score_keyword_inclusion(text, "crucial")
         assert score == 1.0  # 1 base + 1 variant = 2
 
-    def test_inverted_complement(self):
+    def test_independent_pair_gap(self):
+        """With 1 occurrence, both inclusion and absence are 0 → followed_neither."""
         text = "This is crucial. The cat sat on the mat."
-        direct = score_keyword_inclusion(text, "crucial")
-        inverted = _score_keyword_absence(text, "crucial")
-        assert abs(direct + inverted - 1.0) < 1e-9
+        assert score_keyword_inclusion(text, "crucial") == 0.0
+        assert _score_keyword_absence(text, "crucial") == 0.0
 
     def test_clamped_to_unit(self):
         for text in ["", "hello", "crucial crucial crucial", "The cat sat"]:
@@ -158,14 +159,15 @@ class TestCountKeyword:
 class TestEdgeCases:
     def test_empty_response(self):
         assert score_keyword_inclusion("", "crucial") == 0.0
-        assert _score_keyword_absence("", "crucial") == 1.0
+        assert _score_keyword_absence("", "crucial") == 1.0  # empty → 0 occurrences → absence satisfied
 
     def test_whitespace_only(self):
         assert score_keyword_inclusion("   ", "crucial") == 0.0
 
     def test_single_occurrence(self):
-        score = score_keyword_inclusion("This is crucial.", "crucial")
-        assert score == 0.5
+        """Single occurrence: inclusion=0 (need 2), absence=0 (need 0)."""
+        assert score_keyword_inclusion("This is crucial.", "crucial") == 0.0
+        assert _score_keyword_absence("This is crucial.", "crucial") == 0.0
 
     def test_no_keyword(self):
         score = score_keyword_inclusion("The sky is blue.", "crucial")

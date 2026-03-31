@@ -3,9 +3,6 @@ short_paragraphs_vs_single_block, imperative_vs_declarative, direct_answer_vs_he
 
 import pytest
 from phase0_v2.conflicts.registry import get_conflict, get_conflict_ids
-from phase0_v2.conflicts.compatibility import (
-    INCOMPATIBLE, EXPLICITLY_COMPATIBLE, validate_matrix_coverage,
-)
 
 # Import the underlying scoring/detection functions for direct testing
 from phase0_v2.conflicts.definitions.formal_vs_casual_tone import (
@@ -93,9 +90,6 @@ class TestBatch5Contract:
     def test_registered_in_registry(self, conflict):
         assert conflict.conflict_id in get_conflict_ids()
 
-    def test_in_compatibility_matrix(self, conflict):
-        uncovered = validate_matrix_coverage([conflict.conflict_id])
-        assert uncovered == [], f"{conflict.conflict_id} not in compatibility matrix"
 
 
 # ── Formal vs Casual Tone ──
@@ -117,7 +111,7 @@ class TestFormalVsCasualTone:
             "love it. Don't worry, it won't take long. I can't wait!"
         )
         score = _score_formality(text)
-        assert score < 0.7, f"Expected low formality for casual text, got {score}"
+        assert score < 0.3, f"Expected low formality for casual text, got {score}"
 
     def test_scores_are_complementary(self):
         text = "I don't think it's a good idea but we can't stop now."
@@ -125,12 +119,31 @@ class TestFormalVsCasualTone:
         c = _score_casualness(text)
         assert abs(f + c - 1.0) < 1e-9, "Scores must sum to 1.0"
 
-    def test_empty_text_is_formal(self):
-        assert _score_formality("") == 1.0
-        assert _score_casualness("") == 0.0
+    def test_empty_text_returns_neutral(self):
+        # Empty text treated as bare refusal (no content) → neutral 0.5
+        assert _score_formality("") == 0.5
+        assert _score_casualness("") == 0.5
 
     def test_casualness_is_inverted(self):
         assert getattr(_score_casualness, "is_inverted", False) is True
+
+    def test_unicode_apostrophe_detected(self):
+        text = "I\u2019m going to tell you what\u2019s up."
+        assert _score_formality(text) < 0.5
+
+    def test_mixed_forms_intermediate_score(self):
+        """Mixed forms with >3 total should produce intermediate score."""
+        # 4 expanded + 1 contraction = 5 forms → bypasses register heuristic
+        text = "It is important and we do not accept this. She has noted it is a concern. However, it's complicated."
+        score = _score_formality(text)
+        # 4 expanded ("it is" x2, "do not", "she has") + 1 contraction ("it's") = 4/5 = 0.8
+        assert 0.5 < score < 0.9, f"Expected intermediate formality, got {score}"
+
+    def test_length_invariant(self):
+        """Score should depend on form ratio, not response length."""
+        short = "I don't know."
+        long = "I don't know. " * 50
+        assert _score_formality(short) == _score_formality(long)
 
     def test_verify_mutual_exclusion_direction_a(self):
         """With default threshold, formal and casual should not both pass on same text."""

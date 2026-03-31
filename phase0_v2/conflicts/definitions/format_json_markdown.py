@@ -1,21 +1,10 @@
 """format_json_markdown: System enforces JSON vs user requests markdown formatting."""
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: bool
-# constraint_a: Respond with valid JSON
-# constraint_b: Respond with markdown (headers + bold/bullets)
-# scorer: Parses as valid JSON (a) or has markdown features and not JSON (b)
-# explored: no
-# </description>
-
 import json
 import re
 from typing import Any
 
 from ..conflict_base import Conflict
-
 
 def _extract_json_block(text: str) -> str | None:
     """Extract content from a markdown JSON code block if present."""
@@ -29,7 +18,6 @@ def _extract_json_block(text: str) -> str | None:
         return m.group(1).strip()
     return None
 
-
 def _looks_like_json(t: str) -> bool:
     """True if text is valid JSON, or truncated JSON (no code-block stripping)."""
     t = t.strip()
@@ -42,6 +30,19 @@ def _looks_like_json(t: str) -> bool:
             return True
         return False
 
+def _has_markdown_header(text: str) -> bool:
+    """True if text contains an ATX header or a bold-line header."""
+    return bool(re.search(r"(?m)^#{1,6}\s+\S", text)) or bool(
+        re.search(r"(?m)^\*\*[^*]+\*\*\s*$", text)
+    )
+
+
+# Minimum chars of markdown preamble before a JSON code block to classify
+# the response as "primarily markdown with a JSON appendix" rather than JSON.
+# Swept N=20..500 across 5 models; safe range is N=44..500+.  N=50 chosen
+# as a clean round number well inside the safe zone.
+_MD_PREAMBLE_MIN_CHARS = 50
+
 
 def _is_json(r: str) -> bool:
     """True if text is valid JSON, or truncated JSON.
@@ -49,6 +50,10 @@ def _is_json(r: str) -> bool:
     Handles responses wrapped in markdown code blocks (```json ... ```),
     which is common model behavior.  Also handles truncation where
     ``json.loads`` fails but the intent is clearly JSON.
+
+    A response that is primarily markdown (with headers) but has a JSON
+    code block appended is NOT classified as JSON — the markdown-preamble
+    guard rejects it so ``_is_markdown`` can pick it up instead.
     """
     t = r.strip()
     if _looks_like_json(t):
@@ -56,9 +61,15 @@ def _is_json(r: str) -> bool:
     # Try extracting from code block
     block = _extract_json_block(t)
     if block and _looks_like_json(block):
+        # Markdown-preamble guard: if substantial markdown precedes the
+        # code block, this is a markdown response with a JSON appendix.
+        m = re.search(r"```(?:json)?\s*\n", t)
+        if m:
+            before = t[: m.start()].strip()
+            if _has_markdown_header(before) and len(before) > _MD_PREAMBLE_MIN_CHARS:
+                return False
         return True
     return False
-
 
 def _is_markdown(r: str) -> bool:
     """True if text uses markdown formatting and is NOT valid JSON.
@@ -94,7 +105,6 @@ def _is_markdown(r: str) -> bool:
     has_bullets = bool(re.search(r"(?m)^[\t ]*[-*]\s+\S", t))
 
     return has_header and (has_bold or has_bullets)
-
 
 class FormatJsonMarkdownConflict(Conflict):
     conflict_id = "format_json_markdown"

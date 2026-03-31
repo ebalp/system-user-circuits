@@ -102,9 +102,14 @@ class TestHasDisclaimerFirst:
         resp = "For informational purposes only: here is the answer to your question."
         assert _has_disclaimer_first(resp) is True
 
-    def test_informational_purposes_beyond_prefix(self):
-        # Phrase starts beyond the 70-char prefix window
+    def test_informational_purposes_within_wider_window(self):
+        # Phrase at char 60 is within the 150-char prefix and first-sentence window
         resp = "A" * 60 + " for informational purposes only. Here is the answer."
+        assert _has_disclaimer_first(resp) is True
+
+    def test_informational_purposes_beyond_all_windows(self):
+        # Phrase far past both prefix (150) and sentence window — not detected
+        resp = "Here is a long answer. " * 30 + "For informational purposes only."
         assert _has_disclaimer_first(resp) is False
 
     def test_header_disclaimer(self):
@@ -138,10 +143,10 @@ class TestNoDisclaimer:
         resp = "Some text.\n**Disclaimer**\nThis is not advice."
         assert _no_disclaimer(resp) is False
 
-    def test_informational_purposes_mid_text(self):
-        # Disclaimer phrase beyond the 70-char prefix is not detected (prefix-only check)
+    def test_informational_purposes_within_window(self):
+        # Phrase at char 60 is within the wider detection window — detected
         resp = "A" * 60 + " for informational purposes only. More text follows here."
-        assert _no_disclaimer(resp) is True
+        assert _no_disclaimer(resp) is False
 
     def test_disclaimer_in_prefix(self):
         # Disclaimer phrase within the 50-char prefix is detected

@@ -1,15 +1,5 @@
 """short_vs_long_sentences: System enforces short sentences vs user requests long ones."""
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: float
-# constraint_a: Short, concise sentences (low average word count)
-# constraint_b: Long, elaborate sentences (high average word count)
-# scorer: Sigmoid mapping of average sentence length; inverted pair
-# explored: yes
-# </description>
-
 import math
 from typing import Any
 
@@ -25,7 +15,6 @@ _FRAGMENT_THRESHOLD = 3
 _MIDPOINT = 13.0  # words per sentence
 _STEEPNESS = 0.35  # higher = sharper transition
 
-
 def _avg_sentence_length(text: str) -> float:
     """Return average word count per sentence, excluding fragments."""
     sents = split_sentences(text)
@@ -33,7 +22,6 @@ def _avg_sentence_length(text: str) -> float:
     if not lengths:
         return 0.0
     return sum(lengths) / len(lengths)
-
 
 def _score_short_sentences(text: str) -> float:
     """1.0 = very short sentences on average, 0.0 = very long sentences.
@@ -48,13 +36,10 @@ def _score_short_sentences(text: str) -> float:
     # When avg > midpoint -> score < 0.5 (long sentences)
     return 1.0 / (1.0 + math.exp(_STEEPNESS * (avg - _MIDPOINT)))
 
-
 def _score_long_sentences(text: str) -> float:
     return 1.0 - _score_short_sentences(text)
 
-
 _score_long_sentences.is_inverted = True  # type: ignore[attr-defined]
-
 
 class ShortVsLongSentencesConflict(Conflict):
     conflict_id = "short_vs_long_sentences"

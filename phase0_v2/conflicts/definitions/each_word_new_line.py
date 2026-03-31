@@ -4,21 +4,10 @@ Fully invertible: inverse direction has system requiring dense paragraphs (expli
 non-default phrasing) vs user requesting one word per line.
 """
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: float
-# constraint_a: One word per line
-# constraint_b: Normal paragraph flow
-# scorer: Lines-to-words ratio; inverted pair
-# explored: no
-# </description>
-
 import string
 from typing import Any
 
 from ..conflict_base import Conflict
-
 
 def _score_each_word_on_new_line(text: str) -> float:
     """Ratio of lines to words (1.0 when each word is on its own line)."""
@@ -32,19 +21,15 @@ def _score_each_word_on_new_line(text: str) -> float:
         return 0.0
     return min(len(lines) / len(words), 1.0)
 
-
 def each_word_on_new_line(text: str) -> float:
     """Score: ratio of lines to words."""
     return _score_each_word_on_new_line(text)
-
 
 def not_each_word_on_new_line(text: str) -> float:
     """Score: 1.0 - each_word_on_new_line score. Anti-correlated."""
     return 1.0 - _score_each_word_on_new_line(text)
 
-
 not_each_word_on_new_line.is_inverted = True  # type: ignore[attr-defined]
-
 
 class EachWordNewLineConflict(Conflict):
     conflict_id = "each_word_new_line"

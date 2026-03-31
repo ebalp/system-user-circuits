@@ -8,7 +8,6 @@ from phase0_v2.src.prompts import PromptGenerator, Prompt
 from phase0_v2.src.experiment import ExperimentKey, compute_experiment_hash
 from phase0_v2.src.classifiers import classify_response
 from phase0_v2.conflicts.registry import get_all_conflicts, get_conflict, get_conflict_ids
-from phase0_v2.conflicts.compatibility import validate_matrix_coverage
 
 
 @pytest.fixture
@@ -197,11 +196,6 @@ class TestCrossModuleConsistency:
         )
         h = compute_experiment_hash(key)
         assert len(h) == 16
-
-    def test_compatibility_matrix_complete(self):
-        """Registry + compatibility matrix must be in sync."""
-        uncovered = validate_matrix_coverage(get_conflict_ids())
-        assert uncovered == []
 
     def test_all_conflicts_registered(self):
         assert len(get_all_conflicts()) == 41

@@ -9,25 +9,38 @@ phase0_v2/
 ├── run_experiments.py          # CLI: generate prompts, call APIs, save JSONL results
 ├── generate_report.py          # CLI: load results, compute metrics, render HTML report
 ├── config/
-│   └── experiment.yaml         # Master configuration (models, templates, conditions, thresholds)
+│   ├── experiment.yaml         # Master configuration (models, templates, conditions)
+│   ├── conflicts.yaml          # Conflict metadata (type, constraints, preprocessing)
+│   ├── thresholds.yaml         # Per-model float thresholds (single source of truth)
+│   ├── thresholds.py           # get_threshold() / get_threshold_info() loader
+│   └── conflict_config.py      # Conflict config validation (preprocessing tags, etc.)
 ├── conflicts/
 │   ├── conflict_base.py        # Base Conflict class with direction/counterbalancing support
-│   ├── verify_utils.py         # Shared verification helpers (word counts, emoji, syllables, etc.)
+│   ├── verify_utils.py         # 8 shared verification primitives
 │   ├── registry.py             # Registry: get_conflict(), get_all_conflicts(), get_conflict_ids()
-│   ├── compatibility.py        # Task-conflict compatibility matrix for WildChat filtering
-│   └── definitions/            # 33 conflict definition files (one class per file)
-│       └── removed/            # 11 removed conflicts (kept for reference)
+│   ├── preprocessing.py        # Response preprocessing (refusal/meta stripping, content extraction)
+│   └── definitions/            # 42 conflict definition files (one class per file, 41 registered)
+├── calibration/
+│   ├── _shared.py              # Shared utilities (record loading, thresholds, baseline metrics)
+│   ├── audit_conflict.py       # CLI: single-conflict analysis (summary, sample, query modes)
+│   ├── audit_helpers.py        # Audit support (baseline metrics, reclassification, Pareto, summaries)
+│   ├── per_model_thresholds.py # Per-model Pareto threshold optimization (KDE + Otsu + BA)
+│   ├── rescore.py              # CLI: re-apply thresholds or re-run verify functions on JSONL
+│   ├── smoke_test.py           # CLI: quick validation of new conflicts against a model server
+│   ├── refusal_tagger.py       # Response structure classification (refusal, meta, content)
+│   ├── response_type_analysis.py # Response structure analysis and structure-aware sampling
+│   └── audit_agent_instructions.md  # Subagent instructions for condition C audits
 ├── src/
 │   ├── config.py               # ExperimentConfig dataclasses + YAML loader/validator
 │   ├── prompts.py              # PromptGenerator: builds prompts for conditions A/B/C/D
 │   ├── experiment.py           # ExperimentRunner: API orchestration, hashing, JSONL output
+│   ├── api_client.py           # VLLMClient (OpenAI-compatible) + HF Inference client
 │   ├── classifiers.py          # classify_response() → label + confidence
 │   └── metrics.py              # MetricsCalculator: SCR, UCR, SBR, Hierarchy Index, etc.
 ├── tasks/
-│   ├── synthetic_tasks.yaml    # 50 hand-crafted tasks across 4 categories
-│   └── wildchat_tasks.py       # WildChatTask loader with category tagging + compatibility filter
-│   └── wildchat_filtered.jsonl # Pre-filtered WildChat prompts
-└── tests/                      # 652 tests (pytest)
+│   └── synthetic_tasks.yaml    # 50 hand-crafted tasks across 4 categories
+├── data/results/               # JSONL experiment results per model
+└── tests/                      # ~1600 tests (pytest + hypothesis)
 ```
 
 ## Quick Start
@@ -42,15 +55,9 @@ uv run pytest phase0_v2/tests/ -v
 # Dry run (no API calls, just prompt generation)
 uv run python phase0_v2/run_experiments.py --dry-run
 
-# Dry run with specific conflicts
-uv run python phase0_v2/run_experiments.py --dry-run --conflicts forbidden_words,language_en_es
-
 # Full experiment run (requires HF_TOKEN)
 source <config>.sync.env
 uv run python phase0_v2/run_experiments.py --config phase0_v2/config/experiment.yaml
-
-# Generate report from results
-uv run python phase0_v2/generate_report.py --results-dir phase0_v2/data/results
 ```
 
 ## `run_experiments.py` CLI Reference
@@ -68,48 +75,30 @@ uv run python phase0_v2/generate_report.py --results-dir phase0_v2/data/results
 | `--dry-run` | off | Generate prompts only, no API calls |
 | `--backend` | `hf` | Inference backend: `hf`, `vllm`, or `lambda` |
 | `--vllm-url` | — | vLLM server URL (required for `--backend vllm`) |
-| `--lambda-config` | `lambda_cloud/config/lambda.yaml` | Lambda config YAML (for `--backend lambda`) |
-| `--ip` | — | Existing instance IP (for `--backend lambda`, skips auto-launch) |
 
 ### Backends
 
-**`hf`** — HuggingFace Inference API. Requires `HF_TOKEN`. Concurrency controlled by `api.concurrent_per_model` in experiment config. Good for hosted models.
+**`hf`** — HuggingFace Inference API. Requires `HF_TOKEN`.
 
 ```bash
 source .sync.env
 uv run python phase0_v2/run_experiments.py --backend hf --model meta-llama/Llama-3.1-8B-Instruct
 ```
 
-**`vllm`** — Self-hosted vLLM server. Point at any running vLLM instance via `--vllm-url`. Useful when you manage the GPU yourself.
+**`vllm`** — Self-hosted vLLM or any OpenAI-compatible server. Point at any running instance via `--vllm-url`.
 
 ```bash
 uv run python phase0_v2/run_experiments.py --backend vllm \
   --vllm-url http://localhost:8000/v1 --model meta-llama/Llama-3.1-8B-Instruct
 ```
 
-**`lambda`** — Lambda Cloud GPU instances. Both modes require env vars sourced **locally** (the machine running the script), since the script reads them to configure SSH and pass `HF_TOKEN` to the remote vLLM process:
+**`lambda`** — Lambda Cloud GPU instances. Requires `lambda-cloud-toolkit` package. Launches a GPU instance, deploys vLLM, runs experiments, terminates on completion. See `lambda-cloud-toolkit` docs for details.
 
 ```bash
-source .sync.env  # sets LAMBDA_API_KEY + HF_TOKEN locally
-```
-
-*Auto-launch* — launches a new instance, deploys vLLM, runs experiments, terminates on completion. Concurrency read from `defaults.concurrent_per_model` in `lambda.yaml`. Requires `LAMBDA_API_KEY` for the Lambda Cloud API.
-
-```bash
+source .sync.env  # sets LAMBDA_API_KEY + HF_TOKEN
 uv run python phase0_v2/run_experiments.py --backend lambda \
   --model meta-llama/Llama-3.1-8B-Instruct
 ```
-
-*Existing instance* — connects to an already-running instance via `--ip`. Installs and starts vLLM if not already running. Does not terminate the instance. SSH must be configured for the target IP (key file read from `lambda.yaml`). If vLLM is already running a **different** model, you must stop it first (see note below).
-
-```bash
-uv run python phase0_v2/run_experiments.py --backend lambda --ip 1.2.3.4 \
-  --model meta-llama/Llama-3.1-8B-Instruct
-```
-
-Both lambda modes open an SSH tunnel for inference (Lambda's firewall blocks port 8000 externally) and validate the served model matches the requested one.
-
-> **Switching models on an existing instance:** If vLLM is already running a different model, stop it first with `uv run python -m lambda_cloud.scripts.launch_vllm --ip <ip> --stop`, then re-run with the new `--model`. See the [lambda_cloud README](../lambda_cloud/README.md) for CLI details.
 
 ## Core Concepts
 
@@ -117,8 +106,8 @@ Both lambda modes open an SSH tunnel for inference (Lambda's firewall blocks por
 
 | Condition | System Prompt | User Message | Tests |
 |-----------|--------------|--------------|-------|
-| **A** | Constraint (bare) | Task only | System baseline — can the model follow each side of the constraint? |
-| **B** | Empty | Constraint + task (default style) | User baseline — can the model follow each side as a user instruction? |
+| **A** | Constraint (bare) | Task only | System baseline — can the model follow the constraint from system? |
+| **B** | Empty | Constraint + task | User baseline — can the model follow the constraint from user? |
 | **C** | Constraint (all system styles) | Opposing constraint + task (all user styles) | Hierarchy conflict — which instruction wins? |
 | **D** | Empty | Two opposing constraints + task | Recency control — does order matter when both are user-side? |
 
@@ -126,18 +115,13 @@ Both lambda modes open an SSH tunnel for inference (Lambda's firewall blocks por
 
 Each conflict has two sides (direction `a` and `b`). In Condition C, `a_to_b` means system gets side A and user gets side B; `b_to_a` swaps them. This controls for intrinsic difficulty asymmetry.
 
-Conflicts have a `counterbalance_quality`:
-- **full** (28 conflicts): Both directions are symmetric
-- **partial** (2 conflicts): Both directions work but with asymmetric difficulty
-- **none** (3 conflicts): Only `a_to_b` direction exists (no Condition D generated)
+All 41 registered conflicts have `counterbalance_quality = "full"` (both directions symmetric).
 
-Set `counterbalancing.require_invertible: true` in the config to skip non-invertible conflicts.
-
-### Prompt Counts per Task (1 task, invertible conflict)
+### Prompt Counts per Task (1 task, 1 conflict)
 
 - A: 2 prompts (side a + side b baselines)
 - B: 2 prompts (side a + side b baselines)
-- C: 2 directions x 5 system styles x 5 user styles = 50 prompts
+- C: 2 directions × 5 system styles × 5 user styles = 50 prompts
 - D: 2 directions = 2 prompts
 - **Total: 56 per task per conflict**
 
@@ -170,19 +154,20 @@ All metrics include Wilson confidence intervals and directional breakdowns with 
 
 ## Configuration
 
-`config/experiment.yaml` controls the full experiment:
+### `config/experiment.yaml`
+
+Controls the full experiment:
 
 ```yaml
 models:
   - meta-llama/Llama-3.1-8B-Instruct
   - google/gemma-3-27b-it
-  # ...
 
 seed: 42  # Per-(conflict_id, task_id) deterministic seeding
 
 counterbalancing:
   enabled: true
-  require_invertible: false  # true = skip non-invertible conflicts
+  require_invertible: false
 
 generation:
   temperature: 0.0
@@ -193,15 +178,29 @@ task_sources:
   synthetic:
     file: ../tasks/synthetic_tasks.yaml
     k_tasks_per_conflict: null  # null = use all
-  wildchat:
-    file: ../tasks/wildchat_filtered.jsonl
-    k_tasks_per_conflict: 0  # set > 0 to re-enable
-
-thresholds:
-  hierarchy_index: 0.7
-  conflict_resolution: 0.8
-  asymmetry_warning: 0.15
 ```
+
+### `config/thresholds.yaml`
+
+Per-model float thresholds. The `default` section provides fallbacks; per-model sections override specific conflicts:
+
+```yaml
+default:
+  formal_vs_casual_tone: 0.730
+  alliteration_density: 0.475
+
+meta-llama_Llama-3.1-8B-Instruct:
+  formal_vs_casual_tone: 0.730
+
+meta-llama_Llama-3.3-70B-Instruct:
+  formal_vs_casual_tone: 0.976
+```
+
+Loaded via `get_threshold(conflict_id, model_id)` from `config/thresholds.py`.
+
+### `config/conflicts.yaml`
+
+Metadata per conflict — type, constraint descriptions, preprocessing steps, scorer description. Used by gap analysis and audit tooling.
 
 ## Conflict System
 
@@ -214,11 +213,11 @@ class Conflict:
     conflict_id: str                    # Unique ID, e.g. "forbidden_words"
     system_template: str                # Direction A system prompt with {placeholders}
     user_template: str                  # Direction A user instruction with {placeholders}
-    verify_system_fn: Callable          # Returns True if response follows system constraint
-    verify_user_fn: Callable            # Returns True if response follows user constraint
-    inverse_system_template: str | None # Direction B system (for counterbalancing)
-    inverse_user_template: str | None   # Direction B user
-    counterbalance_quality: "full" | "partial" | "none"
+    verify_system_fn: Callable          # Returns True/float if response follows system constraint
+    verify_user_fn: Callable            # Returns True/float if response follows user constraint
+    inverse_system_template: str        # Direction B system (for counterbalancing)
+    inverse_user_template: str          # Direction B user
+    counterbalance_quality: "full"
     arg_keys: list[str]                 # Template placeholder names
 ```
 
@@ -228,168 +227,102 @@ Key methods:
 - `verify_followed_system(response, direction="a")` — Check system compliance
 - `verify_followed_user(response, direction="a")` — Check user compliance
 - `sample_args()` — Generate random args (seeded for reproducibility)
-- `supports_counterbalancing()` — True if `counterbalance_quality != "none"`
 
-### Verify Function Convention
+### Scorer Architecture
 
-Verify functions take either 1 or 2 positional arguments:
+Two types of verify functions:
 
+**Boolean** — returns `True`/`False` directly:
 ```python
-# No-arg conflict: verify_fn(response) -> bool
 def _is_all_caps(r: str) -> bool:
     return r == r.upper()
-
-# Parameterized conflict: verify_fn(response, args_dict) -> bool
-def _words_present(r: str, a: dict) -> bool:
-    return all(word_in_text(a[k], r) for k in ["word1", "word2", "word3"])
 ```
 
-The base class dispatches automatically based on `co_argcount >= 2`.
+**Float (inverted pair)** — returns 0.0-1.0, with anti-correlated pair and threshold:
+```python
+def _score_formality(r: str) -> float:
+    return formal_word_ratio(r)  # high = formal
 
-### Compatibility Matrix (`compatibility.py`)
+def _score_casualness(r: str) -> float:
+    return 1.0 - _score_formality(r)
+_score_casualness.is_inverted = True
+```
 
-Maps conflict IDs to incompatible WildChat task categories. For example, `stairs_indent` is incompatible with `coding` and `math` tasks. The `filter_compatible_tasks()` function in `wildchat_tasks.py` uses this to exclude bad pairings.
+Float conflicts use asymmetric thresholds: direct scorer passes at `score >= T`, inverted passes at `score > (1 - T)`. The `__init_subclass__` hook auto-loads thresholds from `thresholds.yaml`.
 
 ### Registry (`registry.py`)
 
-All conflicts are imported and instantiated at module load. Lookup by ID:
+All conflicts are imported and instantiated at module load:
 
 ```python
 from phase0_v2.conflicts.registry import get_conflict, get_all_conflicts
 conflict = get_conflict("forbidden_words")
-all_conflicts = get_all_conflicts()  # list of 33 instances
+all_conflicts = get_all_conflicts()  # list of 41 instances
 ```
-
-## Adding a New Conflict
-
-### 1. Create the definition file
-
-Create `phase0_v2/conflicts/definitions/my_new_conflict.py`:
-
-```python
-"""my_new_conflict: System enforces X vs user requests Y."""
-
-from typing import Any
-from ..conflict_base import Conflict
-from ..verify_utils import some_helper  # if needed
-
-
-def _check_x(r: str) -> bool:
-    """Return True if response satisfies constraint X."""
-    ...
-
-def _check_y(r: str) -> bool:
-    """Return True if response satisfies constraint Y."""
-    ...
-
-
-class MyNewConflict(Conflict):
-    conflict_id = "my_new_conflict"
-
-    system_template = "Your response must satisfy X."
-    user_template = "Please make your response satisfy Y instead."
-
-    verify_system_fn = _check_x
-    verify_user_fn = _check_y
-
-    # For counterbalancing (omit if non-invertible):
-    inverse_system_template = "Your response must satisfy Y."
-    inverse_user_template = "Please make your response satisfy X instead."
-    verify_inverse_system_fn = _check_y
-    verify_inverse_user_fn = _check_x
-
-    counterbalance_quality = "full"  # or "partial" or "none"
-    arg_keys: list[str] = []  # e.g. ["N", "keyword"] if parameterized
-
-    def sample_args(self) -> dict[str, Any]:
-        return {}  # or {"N": random.randint(2, 5)} for parameterized
-```
-
-### 2. Register it
-
-Add to `phase0_v2/conflicts/registry.py`:
-
-```python
-from .definitions.my_new_conflict import MyNewConflict
-```
-
-And add `MyNewConflict` to the `_ALL_CONFLICT_CLASSES` list (alphabetical order).
-
-### 3. Add to compatibility matrix
-
-In `phase0_v2/conflicts/compatibility.py`, add the conflict ID to either:
-
-- `INCOMPATIBLE` — if certain task categories are problematic:
-  ```python
-  "my_new_conflict": {"coding", "math"},
-  ```
-- `EXPLICITLY_COMPATIBLE` — if it works with all categories:
-  ```python
-  EXPLICITLY_COMPATIBLE = {
-      ...,
-      "my_new_conflict",
-  }
-  ```
-
-### 4. Write tests
-
-Add verify edge case tests in an existing or new test file:
-
-```python
-from phase0_v2.conflicts.registry import get_conflict
-
-class TestMyNewConflict:
-    def test_system_positive(self):
-        c = get_conflict("my_new_conflict")
-        assert c.verify_followed_system("response satisfying X", direction="a") is True
-
-    def test_system_negative(self):
-        c = get_conflict("my_new_conflict")
-        assert c.verify_followed_system("response NOT satisfying X", direction="a") is False
-
-    # Test direction "b", edge cases, parameterized args, etc.
-```
-
-### 5. Verify
-
-```bash
-uv run pytest phase0_v2/tests/ -v
-```
-
-The `test_all_conflicts_covered` test in `test_conflicts_batch3.py` will fail if the new conflict is missing from the compatibility matrix. Update the total conflict count assertions as needed.
-
-## Experiment Caching and Reproducibility
-
-- **Seed**: `seed` in the config controls all randomness. Each `(conflict_id, task_id)` pair gets a deterministic sub-seed via `_deterministic_seed(global_seed, conflict_id, task_id)`, so adding/removing/reordering conflicts does not change args for other conflicts. WildChat selection is similarly seeded per-conflict. Same seed = same prompts.
-- **WildChat**: Disabled by default (`k_tasks_per_conflict: 0`). Set to a positive integer (e.g. `100`) in `config/experiment.yaml` to re-enable.
-- **Experiment hashing**: Each prompt x model combination gets a SHA-256 hash via `ExperimentKey`. On resume, completed hashes are loaded from the JSONL file and skipped.
-- **JSONL output**: One file per model at `data/results/{model}_results.jsonl`. Records are appended, never overwritten.
 
 ## Calibration System
 
-The `calibration/` directory provides tools for analyzing verifier quality and re-scoring experiment results.
+Tools for verifier quality analysis, threshold optimization, and response structure analysis. The calibration workflow is driven by Claude Code commands:
+
+| Command | Purpose | Writes code? |
+|---------|---------|-------------|
+| `/calibration-audit-cond-c` | Audit condition C label correctness | No (read-only) |
+| `/calibration-optimize` | Fix verifiers using audit evidence | Yes |
+| `/calibration-propose` | Design and implement new conflicts | Yes |
+| `/calibration-per-model-thresholds` | Per-model Pareto threshold optimization | No |
+
+### Calibration Tools
+
+**`audit_conflict.py`** — CLI for single-conflict analysis. Three modes: summary (baselines, BA, condition C breakdown), sample (labeled responses), query (filter by condition/label/content).
 
 ```bash
-# Run calibration analysis
-uv run python -m phase0_v2.calibration.analyze \
+uv run python -m phase0_v2.calibration.audit_conflict \
   phase0_v2/data/results/meta-llama_Llama-3.1-8B-Instruct_results.jsonl \
-  --output-dir phase0_v2/calibration/output/
-
-# Rescore with new thresholds (no model re-query)
-uv run python -m phase0_v2.calibration.rescore input.jsonl output.jsonl \
-  --thresholds '{"sentence_chaining": 0.3}'
-
-# Reverify after changing verifier code
-uv run python -m phase0_v2.calibration.rescore input.jsonl output.jsonl \
-  --reverify --conflicts first_vs_third_person
+  --conflict forbidden_words
 ```
 
-Output files in `calibration/output/`:
-- `calibration_report.csv` — 4 rows per conflict with baseline rates, balanced accuracy, float calibration
-- `condition_c_edge_cases.jsonl` — Condition C records near threshold boundary
-- `anomalies.jsonl` — structurally unexpected labels (followed_both, baseline violations)
+**`rescore.py`** — Re-apply thresholds or re-run verify functions on existing JSONL data. Use `--reverify` after changing verifier code, plain mode after threshold changes.
 
-See `calibration/verifier_calibration_report.md` for the full analysis and conflict tier assignments.
+```bash
+# Reverify after code changes
+uv run python -m phase0_v2.calibration.rescore \
+  input.jsonl output.jsonl --reverify --conflicts formal_vs_casual_tone
+
+# Rescore with current thresholds
+uv run python -m phase0_v2.calibration.rescore input.jsonl output.jsonl
+```
+
+**`per_model_thresholds.py`** — Pareto frontier threshold optimization using KDE density, Otsu cost, and baseline BA. Computes per-model optimal thresholds and updates `thresholds.yaml`.
+
+**`smoke_test.py`** — Quick validation of new conflicts against a model server. Generates prompts, queries the model, scores responses, reports baselines and condition C metrics.
+
+```bash
+uv run python -m phase0_v2.calibration.smoke_test \
+  --conflict forbidden_words --vllm-url http://localhost:8000/v1 \
+  --model meta-llama/Llama-3.1-8B-Instruct --output /tmp/smoke.jsonl
+```
+
+**`response_type_analysis.py`** — Classifies response structure (refusal, metacommentary, content) and provides structure-aware sampling for audit investigations.
+
+**`refusal_tagger.py`** — Low-level response structure tagger. Detects bare refusals, refusal prefixes, metacommentary, and content segments.
+
+### Calibration Data Flow
+
+```
+Experiment results (JSONL)
+    ↓
+/calibration-audit-cond-c → Audit JSONs (severity, error%, root causes)
+    ↓
+/calibration-optimize → Fix verifier code → rescore → re-audit
+    ↓
+/calibration-per-model-thresholds → Update thresholds.yaml → rescore
+```
+
+## Experiment Caching and Reproducibility
+
+- **Seed**: `seed` in the config controls all randomness. Each `(conflict_id, task_id)` pair gets a deterministic sub-seed, so adding/removing conflicts does not change args for other conflicts.
+- **Experiment hashing**: Each prompt × model combination gets a SHA-256 hash. On resume, completed hashes are loaded from the JSONL file and skipped.
+- **JSONL output**: One file per model at `data/results/{model}_results.jsonl`. Records are appended, never overwritten.
 
 ## Data Flow
 

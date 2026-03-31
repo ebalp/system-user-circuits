@@ -1,15 +1,5 @@
 """sentence_connector_density: System enforces transition/connector words vs user forbids them."""
 
-# If you modify the scoring logic, update the description block below
-# and set explored to 'no'.
-# <description>
-# type: float
-# constraint_a: Use transition/connector words between sentences
-# constraint_b: No transition/connector words, simple direct sentences
-# scorer: connector count / sentence count, capped at 1.0; inverted pair
-# explored: no
-# </description>
-
 import re
 from typing import Any
 
@@ -41,7 +31,6 @@ _CONNECTOR_RE = re.compile(
     re.IGNORECASE,
 )
 
-
 def _score_connector_density(text: str) -> float:
     """Fraction of sentences that contain at least one connector word.
 
@@ -54,14 +43,11 @@ def _score_connector_density(text: str) -> float:
     with_connector = sum(1 for s in sents if _CONNECTOR_RE.search(s))
     return min(1.0, with_connector / len(sents))
 
-
 def _score_no_connectors(text: str) -> float:
     """Inverted scorer: 1.0 = no connectors, 0.0 = many connectors."""
     return 1.0 - _score_connector_density(text)
 
-
 _score_no_connectors.is_inverted = True  # type: ignore[attr-defined]
-
 
 class SentenceConnectorDensityConflict(Conflict):
     conflict_id = "sentence_connector_density"
