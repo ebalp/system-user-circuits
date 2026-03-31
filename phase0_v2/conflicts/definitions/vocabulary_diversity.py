@@ -4,17 +4,99 @@ import string
 from typing import Any
 from ..conflict_base import Conflict
 
-def _unique_long_ratio(text: str) -> float:
-    """Count of unique words with 7+ characters / total word count.
+# Common long words (>=7 chars) that do NOT signal vocabulary sophistication.
+# Curated consensus: included by at least 2 of 3 independent audit agents,
+# minus words judged genuinely sophisticated (blitzkrieg, prioritize,
+# urbanization, species). 435 words.
+COMMON_LONG_WORDS = frozenset({
+    "account", "actually", "address", "against", "allowed", "already",
+    "although", "amazing", "animals", "another", "answers", "applied",
+    "audience", "balance", "bandage", "bastille", "battery", "because",
+    "becomes", "bedroom", "believe", "benefits", "between", "billion",
+    "borders", "breaths", "brother", "brought", "building", "burning",
+    "cabinet", "calling", "careful", "century", "certain", "changed",
+    "changes", "cheaper", "checked", "chicken", "children", "choices",
+    "classical", "clearly", "climate", "closely", "closing", "clothes",
+    "collect", "college", "columns", "combine", "commute", "company",
+    "compass", "complex", "computer", "computers", "condition", "connect",
+    "connects", "consider", "contain", "continue", "control", "cooking",
+    "correct", "country", "covered", "created", "creates", "culture",
+    "current", "curtain", "customer", "damaged", "dancing", "database",
+    "decision", "decisions", "degrees", "deliver", "delivery", "depends",
+    "designs", "desktop", "details", "develop", "devices", "different",
+    "digital", "direction", "directly", "disease", "display",
+    "distractions", "document", "drawbacks", "drawing", "driving",
+    "earlier", "earthquakes", "economic", "education", "effects",
+    "efforts", "election", "electric", "electricity", "elements",
+    "employee", "english", "entered", "entirely", "evening", "everyday",
+    "everyone", "evidence", "exactly", "example", "examples", "exchange",
+    "exercise", "expected", "expenses", "experience", "express",
+    "factories", "factory", "factors", "feature", "features", "feedback",
+    "feeling", "figures", "finally", "finding", "fishing", "fitness",
+    "flashcards", "flights", "focused", "follows", "forward", "friends",
+    "function", "further", "general", "germany", "getting", "glasses",
+    "gravity", "greatly", "growing", "happens", "hardware", "healthy",
+    "helpful", "helping", "herself", "highway", "himself", "history",
+    "holding", "honestly", "hospital", "however", "hunting", "husband",
+    "illness", "imagine", "impacts", "important", "improve", "include",
+    "industry", "injured", "install", "instead", "internet", "involve",
+    "involved", "involves", "joining", "justice", "keeping", "kingdom",
+    "kitchen", "language", "largely", "lasting", "leaders", "leading",
+    "learned", "learning", "leaving", "lending", "lessons", "library",
+    "lighter", "limited", "location", "looking", "machine", "machines",
+    "magazine", "maintenance", "majority", "managed", "manager",
+    "markets", "material", "measured", "medicine", "meeting", "members",
+    "mention", "methods", "mileage", "million", "mineral", "minutes",
+    "missing", "monitor", "morning", "movement", "muscles", "napoleon",
+    "national", "natural", "nearest", "negative", "neighbor", "network",
+    "nothing", "notebook", "noticed", "nuclear", "numbers", "offered",
+    "officer", "opening", "options", "organic", "organize", "original",
+    "outside", "overall", "package", "parents", "parking", "passing",
+    "password", "pattern", "patterns", "perfect", "perhaps", "periods",
+    "personal", "physical", "picture", "planning", "plastic", "platform",
+    "playing", "pointed", "politics", "popular", "portion", "possible",
+    "powerful", "practice", "prepare", "present", "pressure", "prevent",
+    "printer", "privacy", "private", "probably", "problem", "problems",
+    "process", "produce", "product", "program", "programmed", "project",
+    "promise", "properly", "property", "protect", "provide", "provides",
+    "pulling", "purchase", "purpose", "pushing", "putting", "quality",
+    "quarter", "question", "questions", "quickly", "quieter", "quietly",
+    "rapidly", "reached", "reading", "reasons", "receive", "recently",
+    "records", "reduces", "register", "regular", "related", "relation",
+    "release", "reliability", "remains", "remember", "removed",
+    "renewable", "replace", "reports", "request", "requested", "require",
+    "required", "resource", "respond", "response", "results", "returns",
+    "roughly", "routine", "running", "schedule", "schools", "science",
+    "section", "security", "selected", "selling", "sending", "service",
+    "serving", "setting", "settled", "several", "sharing", "shelter",
+    "shopping", "shorter", "shortly", "showing", "similar", "singing",
+    "sitting", "smaller", "software", "solution", "someone", "special",
+    "spending", "stalingrad", "standard", "started", "station", "staying",
+    "stomach", "stopped", "storage", "stories", "strands", "strange",
+    "student", "students", "subject", "success", "suddenly", "suggest",
+    "sunlight", "support", "suppose", "surface", "surrender", "systems",
+    "talking", "teacher", "teachers", "telling", "tensions", "testing",
+    "therapy", "thought", "through", "together", "tonight", "towards",
+    "trading", "traffic", "training", "trigger", "trouble", "trusted",
+    "turning", "typical", "universe", "updates", "usually", "vaccines",
+    "variety", "various", "vehicle", "version", "vietnam", "village",
+    "vocabulary", "volumes", "waiting", "walking", "warranty", "weather",
+    "website", "weekend", "whatever", "whether", "windows", "without",
+    "workers", "working", "writing",
+})
 
-    Rewards vocabulary diversity: many *different* long words score higher
-    than repeating the same long words. Returns 0.0 for empty text.
+def _unique_long_ratio(text: str) -> float:
+    """Ratio of unique sophisticated long words to total word count.
+
+    Words >= 7 chars that appear in COMMON_LONG_WORDS are excluded from
+    the numerator (they count toward total words but not as sophisticated).
+    Returns 0.0 for empty text.
     """
     words = [w.strip(string.punctuation).lower() for w in text.split()
              if w.strip(string.punctuation)]
     if not words:
         return 0.0
-    unique_long = len({w for w in words if len(w) >= 7})
+    unique_long = len({w for w in words if len(w) >= 7 and w not in COMMON_LONG_WORDS})
     return unique_long / len(words)
 
 def _score_complex(text: str) -> float:

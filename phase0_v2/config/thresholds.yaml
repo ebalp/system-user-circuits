@@ -2,7 +2,7 @@
 # Boolean conflicts don't have thresholds and are not listed here.
 
 _meta:
-  last_updated: '2026-03-28'
+  last_updated: '2026-03-31'
 default:
   address_reader_directly: 0.143
   template_response: 0.561
@@ -33,7 +33,7 @@ default:
   word_repetition_density: 0.186
 meta-llama_Llama-3.3-70B-Instruct:
   _meta:
-    last_updated: '2026-03-28'
+    last_updated: '2026-03-31'
     pareto_caps:
       max_d_norm: 0.05
       max_c_norm: 0.05
@@ -193,8 +193,8 @@ meta-llama_Llama-3.3-70B-Instruct:
     distribution: bimodal
     feasible: true
   vocabulary_diversity:
-    threshold: 0.168
-    d_norm: 2.0e-06
+    threshold: 0.138
+    d_norm: 1.0e-06
     c_norm: 0.0
     ba: 1.0
     distribution: bimodal
@@ -215,7 +215,7 @@ meta-llama_Llama-3.3-70B-Instruct:
     feasible: true
 meta-llama_Llama-3.1-8B-Instruct:
   _meta:
-    last_updated: '2026-03-28'
+    last_updated: '2026-03-31'
     pareto_caps:
       max_d_norm: 0.05
       max_c_norm: 0.05
@@ -382,10 +382,10 @@ meta-llama_Llama-3.1-8B-Instruct:
     distribution: bimodal
     feasible: true
   vocabulary_diversity:
-    threshold: 0.143
-    d_norm: 0.008867
-    c_norm: 0.003465
-    ba: 0.99
+    threshold: 0.121
+    d_norm: 0.024975
+    c_norm: 0.000178
+    ba: 0.995
     distribution: bimodal
     feasible: true
   vowel_omission:
@@ -397,7 +397,7 @@ meta-llama_Llama-3.1-8B-Instruct:
     feasible: true
 openai_gpt-oss-20b:
   _meta:
-    last_updated: '2026-03-28'
+    last_updated: '2026-03-31'
     pareto_caps:
       max_d_norm: 0.05
       max_c_norm: 0.05
@@ -563,9 +563,9 @@ openai_gpt-oss-20b:
     distribution: bimodal
     feasible: true
   vocabulary_diversity:
-    threshold: 0.215
-    d_norm: 0.0
-    c_norm: 0.000127
+    threshold: 0.179
+    d_norm: 5.0e-06
+    c_norm: 0.000622
     ba: 1.0
     distribution: bimodal
     feasible: true
@@ -585,7 +585,7 @@ openai_gpt-oss-20b:
     feasible: true
 google_gemma-3-27b-it:
   _meta:
-    last_updated: '2026-03-28'
+    last_updated: '2026-03-31'
     pareto_caps:
       max_d_norm: 0.05
       max_c_norm: 0.05
@@ -750,9 +750,9 @@ google_gemma-3-27b-it:
     distribution: bimodal
     feasible: true
   vocabulary_diversity:
-    threshold: 0.185
-    d_norm: 0.000147
-    c_norm: 0.003484
+    threshold: 0.182
+    d_norm: 0.0
+    c_norm: 0.027839
     ba: 1.0
     distribution: bimodal
     feasible: true
@@ -771,7 +771,7 @@ google_gemma-3-27b-it:
     fallback: baseline_midpoint
 Qwen_Qwen2.5-7B-Instruct:
   _meta:
-    last_updated: '2026-03-28'
+    last_updated: '2026-03-31'
     pareto_caps:
       max_d_norm: 0.1
       max_c_norm: 0.1
@@ -926,11 +926,12 @@ Qwen_Qwen2.5-7B-Instruct:
     distribution: bimodal
     feasible: true
   vocabulary_diversity:
-    threshold: 0.288
-    ba: 0.82
+    threshold: 0.217
+    d_norm: 0.000201
+    c_norm: 0.013056
+    ba: 0.915
     distribution: bimodal
-    feasible: false
-    fallback: baseline_midpoint
+    feasible: true
   vowel_omission:
     threshold: 0.957
     d_norm: 0.04459

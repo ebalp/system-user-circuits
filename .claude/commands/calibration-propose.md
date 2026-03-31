@@ -154,7 +154,7 @@ You are implementing a new conflict definition for the Phase 0 v2 experiment sys
    - Create/update the entry in `phase0_v2/config/conflicts.yaml` with type, constraint_a, constraint_b, scorer description
    - Class inheriting from Conflict with:
      - `conflict_id`
-     - `system_template` / `user_template` (with {{topic}} placeholder)
+     - `system_template` / `user_template`
      - `verify_system_fn` / `verify_user_fn`
      - `inverse_system_template` / `inverse_user_template`
      - `verify_inverse_system_fn` / `verify_inverse_user_fn`

@@ -523,7 +523,7 @@ vocabulary_diversity:
   exclusivity: true
   preprocessing: []
   type: float
-  verifier_logic: unique long words (>=7 chars) / total words; inverted pair
+  verifier_logic: unique sophisticated long words (>=7 chars, excluding 435 common non-sophisticated words) / total words; inverted pair
 vowel_omission:
   architecture: inverted_float_pair
   arg_keys: []

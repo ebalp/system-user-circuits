@@ -235,8 +235,8 @@ _SORT_JS = """
       });
     });
 
-    // Default sort: SCR column descending (index 2, after Conflict + Prep)
-    if (headers.length > 2) { headers[2].click(); }
+    // Default sort: Q column descending (last column)
+    if (headers.length > 1) { headers[headers.length - 1].click(); }
   }
 
   document.querySelectorAll('table.sortable-report').forEach(makeTableSortable);
@@ -888,11 +888,11 @@ def html_conflict_table(
         else:
             d_n = calib_q.get("d_norm") or 0.0
             c_n = calib_q.get("c_norm") or 0.0
-            q_thresh = max(0.0, 1.0 - (d_n + c_n) * 10)
+            q_thresh = max(0.0, 1.0 - (d_n + c_n) * 5)
 
-        # 4) BA term
+        # 4) BA term: rescaled so BA=0.5 → 0, BA=1.0 → 1
         ba_q = calib_q.get("balanced_accuracy")
-        q_ba = ba_q if ba_q is not None else 0.5
+        q_ba = max(0.0, (ba_q - 0.5) * 2) if ba_q is not None else 0.5
 
         q_score = q_scr * q_err * q_thresh * q_ba
 

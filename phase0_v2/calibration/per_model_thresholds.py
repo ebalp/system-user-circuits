@@ -632,7 +632,21 @@ def update_thresholds_yaml(
             entry["fallback"] = r["fallback"]
         model_section[r["conflict_id"]] = entry
 
-    data[safe_id] = model_section
+    if safe_id in data and isinstance(data[safe_id], dict):
+        # Merge: update only the conflicts in results, preserve the rest.
+        # Preserve existing _meta (including pareto_caps) — only update
+        # last_updated timestamp. This prevents --conflicts runs from
+        # overwriting stored caps with CLI defaults.
+        existing = data[safe_id]
+        if "_meta" in existing:
+            existing["_meta"]["last_updated"] = date.today().isoformat()
+        else:
+            existing["_meta"] = model_section["_meta"]
+        for cid, entry in model_section.items():
+            if cid != "_meta":
+                existing[cid] = entry
+    else:
+        data[safe_id] = model_section
     data["_meta"] = {"last_updated": date.today().isoformat()}
 
     with open(yaml_path, "w") as f:
@@ -747,8 +761,13 @@ def run_pipeline(
     max_d: float = DEFAULT_MAX_D_NORM,
     max_c: float = DEFAULT_MAX_C_NORM,
     min_ba: float = DEFAULT_MIN_BA,
+    conflicts: list[str] | None = None,
 ) -> tuple[str, list[dict], int, dict]:
     """Run the full per-model threshold optimization pipeline.
+
+    Args:
+        conflicts: If provided, only optimize these conflict IDs.
+            Others are skipped entirely.
 
     Returns (model_id, results_list, n_cond_c_records, pareto_caps).
     """
@@ -766,6 +785,9 @@ def run_pipeline(
 
     # Find float conflicts (non-boolean scores across all conditions)
     float_conflicts = _collect_float_conflicts(records)
+    if conflicts:
+        requested = set(conflicts)
+        float_conflicts = float_conflicts & requested
 
     # Collect condition C scores
     cond_c_scores = _collect_cond_c_scores(records, float_conflicts)
@@ -881,7 +903,14 @@ def main():
         default=DEFAULT_MAX_C_NORM,
         help=f"Maximum c_norm feasibility cap (default: {DEFAULT_MAX_C_NORM})",
     )
+    parser.add_argument(
+        "--conflicts",
+        default=None,
+        help="Comma-separated conflict IDs to optimize (default: all float conflicts)",
+    )
     args = parser.parse_args()
+
+    conflict_list = [c.strip() for c in args.conflicts.split(",")] if args.conflicts else None
 
     model_id, results, n_cond_c, pareto_caps = run_pipeline(
         args.results_jsonl,
@@ -889,6 +918,7 @@ def main():
         max_d=args.max_d_norm,
         max_c=args.max_c_norm,
         min_ba=args.min_ba,
+        conflicts=conflict_list,
     )
 
     # Print summary table
@@ -922,21 +952,6 @@ def main():
                 f"{r['conflict_id']:<35} {'—':>7} {t_cur:>7} "
                 f"{'—':>8} {'—':>8} {'—':>7} {dist:>10} {'infeas':>8}"
             )
-
-    # Generate and write report
-    if args.output_dir:
-        output_dir = Path(args.output_dir)
-    else:
-        safe_id = model_id.replace("/", "_")
-        output_dir = Path("phase0_v2/calibration/output") / safe_id
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    report = generate_report(model_id, results, n_cond_c, pareto_caps)
-    now = datetime.now()
-    report_name = f"per_model_thresholds_{now.strftime('%m%d')}_{now.strftime('%H%M')}.md"
-    report_path = output_dir / report_name
-    report_path.write_text(report)
-    print(f"\nReport written to: {report_path}")
 
     # Optionally update thresholds.yaml
     yaml_path = Path(__file__).parent.parent / "config" / "thresholds.yaml"

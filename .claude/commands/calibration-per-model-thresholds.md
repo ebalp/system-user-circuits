@@ -13,7 +13,7 @@ Finds the Pareto frontier (no T is better on all three), then selects lexicograp
 
 ## Inputs
 
-`$ARGUMENTS` is the model ID (e.g., `meta-llama/Llama-3.1-8B-Instruct`). If not provided, ask the user.
+`$ARGUMENTS` is the model ID (e.g., `meta-llama/Llama-3.1-8B-Instruct`), optionally followed by `--conflicts X,Y,Z` to optimize only specific conflicts. If model ID is not provided, ask the user.
 
 $ARGUMENTS
 
@@ -30,6 +30,14 @@ Check that the results file exists.
 ```bash
 uv run python -m phase0_v2.calibration.per_model_thresholds \
   phase0_v2/data/results/{safe_model_id}_results.jsonl
+```
+
+To optimize only specific conflicts (recommended when called from `/calibration-optimize`):
+
+```bash
+uv run python -m phase0_v2.calibration.per_model_thresholds \
+  phase0_v2/data/results/{safe_model_id}_results.jsonl \
+  --conflicts vocabulary_diversity,formal_vs_casual_tone
 ```
 
 Default feasibility caps: `d_norm ≤ 0.05`, `c_norm ≤ 0.05`, `BA ≥ 0.90`. Override with:
@@ -60,8 +68,10 @@ Ask for confirmation before writing to thresholds.yaml.
 ```bash
 uv run python -m phase0_v2.calibration.per_model_thresholds \
   phase0_v2/data/results/{safe_model_id}_results.jsonl \
-  --update
+  --update [--conflicts X,Y,Z]
 ```
+
+When `--conflicts` is specified, only those conflicts are updated in the per-model section — other conflicts are preserved as-is. Without `--conflicts`, all float conflicts are re-optimized and written.
 
 This writes the per-model section to `thresholds.yaml` with:
 - `_meta.pareto_caps`: the caps used (max_d_norm, max_c_norm, min_ba)

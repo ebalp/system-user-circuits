@@ -285,7 +285,14 @@ uv run python -m phase0_v2.calibration.rescore \
   --reverify --conflicts {conflict_id}
 ```
 
-**2. Threshold optimization (float conflicts only)** — run `/calibration-per-model-thresholds` for the specific conflict. Each model gets its own Pareto-optimal threshold (no cross-model intersection — thresholds are per-model). This updates `phase0_v2/config/thresholds.yaml`.
+**2. Threshold optimization (float conflicts only)** — run per-model Pareto optimization for the specific conflict only. **Always use `--conflicts` to avoid disturbing other conflicts' thresholds.** Each model gets its own Pareto-optimal threshold (no cross-model intersection — thresholds are per-model). This updates `phase0_v2/config/thresholds.yaml`.
+
+```bash
+# For each model:
+uv run python -m phase0_v2.calibration.per_model_thresholds \
+  phase0_v2/data/results/{model}_results.jsonl \
+  --update --conflicts {conflict_id}
+```
 
 **3. Rescore** — apply updated thresholds on ALL target models:
 
