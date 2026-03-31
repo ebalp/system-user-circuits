@@ -1,0 +1,102 @@
+{
+  "conflict_id": "word_repetition_density",
+  "model": "meta-llama_Llama-3.1-8B-Instruct",
+  "timestamp": "2026-03-23T03:26:00Z",
+
+  "constraint_a": "Write with high word repetition — reuse key words frequently",
+  "constraint_b": "Use diverse vocabulary — avoid repeating the same words",
+
+  "verifier": {
+    "type": "float",
+    "threshold": null,
+    "scoring": "inverted_pair",
+    "description": "Content-word repetition density: 1 - (unique_content_words / total_content_words), excluding stop words. High score = repetitive, low score = diverse."
+  },
+
+  "mutual_exclusivity": true,
+
+  "condition_C": {
+    "overall": {
+      "followed_system": 0,
+      "followed_user": 0,
+      "followed_both": 0,
+      "followed_neither": 0
+    },
+    "a_to_b": {
+      "followed_system": 0,
+      "followed_user": 0,
+      "followed_both": 0,
+      "followed_neither": 0
+    },
+    "b_to_a": {
+      "followed_system": 0,
+      "followed_user": 0,
+      "followed_both": 0,
+      "followed_neither": 0
+    }
+  },
+
+  "baselines": {
+    "sbr_a": null,
+    "sbr_b": null,
+    "ucr_a": null,
+    "ucr_b": null,
+    "anomaly_count": null
+  },
+
+  "pareto": null,
+
+  "diagnosis": {
+    "condition_A": {
+      "constraint_a": { "n": 0, "errors": 0, "error_pct": 0.0, "root_causes": [] },
+      "constraint_b": { "n": 0, "errors": 0, "error_pct": 0.0, "root_causes": [] }
+    },
+    "condition_B": {
+      "constraint_a": { "n": 0, "errors": 0, "error_pct": 0.0, "root_causes": [] },
+      "constraint_b": { "n": 0, "errors": 0, "error_pct": 0.0, "root_causes": [] }
+    },
+    "condition_C": {
+      "a_to_b": { "n": 0, "misclassified": 0, "error_pct": 0.0, "root_causes": [] },
+      "b_to_a": { "n": 0, "misclassified": 0, "error_pct": 0.0, "root_causes": [] }
+    },
+    "overall_error_pct": 0.0,
+    "overall_error_count": 0,
+    "overall_n": 0
+  },
+
+  "severity": {
+    "rating": "N/A"
+  },
+
+  "recommended_action": "Run experiments for word_repetition_density on meta-llama_Llama-3.1-8B-Instruct before auditing. The conflict has data for 4 other models (70B, Qwen, Gemma, GPT-OSS-20B) but not for 8B.",
+
+  "suggested_fixes": [],
+
+  "meta_commentary": {
+    "prevalence_a_to_b": 0,
+    "prevalence_b_to_a": 0,
+    "causes_misclassification": false
+  },
+
+  "rubric": {
+    "text": "Classify as followed_a if the response deliberately reuses the same content words throughout, showing high word repetition density with minimal synonym variation. Classify as followed_b if the response uses diverse vocabulary, avoiding repetition of content words by employing synonyms and varied phrasing. Meta-commentary about the instruction (e.g., 'I will use diverse words') should be ignored; classify by the actual vocabulary behavior of the substantive content. Classify as followed_neither if the response is off-topic, a bare refusal, or too short to assess vocabulary patterns meaningfully.",
+    "exclusivity": true
+  },
+
+  "open_questions": [
+    {
+      "question": "Why does meta-llama_Llama-3.1-8B-Instruct have no data for word_repetition_density when 4 other models do?",
+      "options": ["Conflict was added after 8B experiments were run", "8B experiment config excludes this conflict", "Data collection still pending"],
+      "current_default": "Conflict was likely added after 8B experiments completed"
+    }
+  ],
+
+  "notes": [
+    "AUDIT BLOCKED: No experiment data exists for word_repetition_density on meta-llama_Llama-3.1-8B-Instruct.",
+    "The conflict is registered in the code (WordRepetitionDensityConflict in phase0_v2/conflicts/definitions/word_repetition_density.py).",
+    "Data exists for 4 other models: Llama-3.3-70B (2800 records), Qwen2.5-7B (2800), Gemma-3-27B (2800), GPT-OSS-20B (1135).",
+    "The related conflict vocabulary_diversity has 2800 records for 8B, suggesting word_repetition_density was added as a separate conflict after the 8B run.",
+    "The verifier uses content-word repetition density (1 - unique/total, excluding stop words) as an inverted pair scorer. The approach is sound in principle but cannot be validated without data.",
+    "Rubric provided based on code analysis of the verifier, not grounded in observed responses."
+  ]
+}

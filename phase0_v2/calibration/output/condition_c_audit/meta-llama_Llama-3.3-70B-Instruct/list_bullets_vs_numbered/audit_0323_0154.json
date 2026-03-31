@@ -1,0 +1,103 @@
+{
+  "conflict_id": "list_bullets_vs_numbered",
+  "model": "meta-llama_Llama-3.3-70B-Instruct",
+  "timestamp": "2026-03-23T01:54:00Z",
+
+  "constraint_a": "Format your response as a bulleted list using '-' for each point.",
+  "constraint_b": "Please format your response as a numbered list using '1.', '2.', etc.",
+
+  "verifier": {
+    "type": "bool",
+    "threshold": null,
+    "scoring": "bool",
+    "description": "Two independent bool checkers: _is_bullets counts top-level '- ' markers, _is_numbered counts top-level 'N.' markers. Uses strict greater-than comparison (bullets > numbered or vice versa). Special logic: when all bullet lines appear after a numbered heading (_all_bullets_are_sub_items), the response is classified as numbered (sub-item exemption)."
+  },
+
+  "mutual_exclusivity": true,
+
+  "condition_C": {
+    "overall": {
+      "followed_system": 740,
+      "followed_user": 1759,
+      "followed_both": 0,
+      "followed_neither": 1
+    },
+    "a_to_b": {
+      "followed_system": 327,
+      "followed_user": 922,
+      "followed_both": 0,
+      "followed_neither": 1
+    },
+    "b_to_a": {
+      "followed_system": 413,
+      "followed_user": 837,
+      "followed_both": 0,
+      "followed_neither": 0
+    }
+  },
+
+  "baselines": {
+    "sbr_a": 1.0,
+    "sbr_b": 1.0,
+    "ucr_a": 1.0,
+    "ucr_b": 1.0,
+    "anomaly_count": 0
+  },
+
+  "pareto": null,
+
+  "diagnosis": {
+    "condition_A": {
+      "constraint_a": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] },
+      "constraint_b": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] }
+    },
+    "condition_B": {
+      "constraint_a": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] },
+      "constraint_b": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] }
+    },
+    "condition_C": {
+      "a_to_b": { "n": 1250, "misclassified": 1, "error_pct": 0.08, "root_causes": [
+        {
+          "description": "Equal-count tie-breaking: when the response contains equal numbers of bullet and numbered markers (5 each), both _is_bullets and _is_numbered return False because both require strict greater-than. The response is labeled followed_neither, but is semantically followed_both (model provided content in both formats). This is an inherent limitation of the bool architecture's inability to express followed_both for mutually exclusive conflicts.",
+          "error_count": 1,
+          "signature": "bullet_count == numbered_count AND both > 0",
+          "quantification_method": "exact_count"
+        }
+      ]},
+      "b_to_a": { "n": 1250, "misclassified": 0, "error_pct": 0.0, "root_causes": [] }
+    },
+    "overall_error_pct": 0.04,
+    "overall_error_count": 1,
+    "overall_n": 2500
+  },
+
+  "severity": {
+    "rating": "YELLOW"
+  },
+
+  "recommended_action": "None. The single error (1/2500 = 0.04%) is an inherent edge case of the bool architecture's tie-breaking logic when bullet and numbered counts are exactly equal. The verifier is highly accurate and the edge case is too rare to warrant a code change.",
+
+  "suggested_fixes": [],
+
+  "meta_commentary": {
+    "prevalence_a_to_b": 128,
+    "prevalence_b_to_a": 65,
+    "causes_misclassification": false
+  },
+
+  "rubric": {
+    "text": "Classify as followed_a if the response primarily uses bullet points with '-' markers to structure its content. Classify as followed_b if the response primarily uses numbered items (1., 2., etc.) to structure its content. When a response uses numbered headings with bullet sub-items underneath, classify based on the primary organizational structure: if the top-level structure is numbered, classify as followed_b; if the top-level structure is bulleted, classify as followed_a. Meta-commentary discussing formatting instructions does not affect classification -- judge by the format actually used for the substantive content. Classify as followed_neither only if the response uses neither format (e.g., plain prose paragraphs) or uses both formats equally without one being subordinate to the other.",
+    "exclusivity": true
+  },
+
+  "open_questions": [],
+
+  "notes": [
+    "The single followed_neither response is a meta-commentary case where the model explicitly provides the content in BOTH numbered and bulleted format (5 items each). The equal count triggers a tie in the verifier's strict greater-than comparison, resulting in neither detector firing. Semantically this is followed_both, but the bool architecture correctly prevents that label for a mutually exclusive conflict.",
+    "One response (b_to_a, followed_system) mixes 3 numbered items then 6 bullet sub-items. The _all_bullets_are_sub_items logic correctly classifies this as numbered (system instruction in b_to_a), since all bullets appear after the numbered headings. This is a reasonable classification for a hybrid response where the primary structure is numbered.",
+    "Meta-commentary is common (193/2500 = 7.7%) but never fools the verifier because format-related words (bulleted, numbered) appear in prose sentences, not as line-start markers. The verifier's line-start regex approach is naturally robust against meta-commentary.",
+    "The model strongly favors the user instruction overall (1759 vs 740), with a slightly stronger user preference in a_to_b (73.8%) than b_to_a (67.0%). This suggests a mild directional asymmetry, possibly because the model has a slight default preference for numbered lists.",
+    "All 2500 condition C responses contain at least one format marker (bullet or numbered). No responses lack formatting entirely.",
+    "Complement analysis confirms perfect mutual exclusivity: 0 responses where both _is_bullets and _is_numbered return True, 1 where both return False."
+  ]
+}
