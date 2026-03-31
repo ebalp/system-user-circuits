@@ -14,5 +14,6 @@ data/
 notes/
 #plans/
 phase0_v2/calibration/output*
+phase0_v2/calibration/_optimize_tmp_*
 lambda_cloud/Lambda Cloud API spec 1.9.3.json
 implement-plan.md
