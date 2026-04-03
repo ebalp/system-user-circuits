@@ -60,7 +60,7 @@ def synthetic_condition_c_df():
                 ["followed_system", "followed_user"], size=n
             ),
             "constraint_type": rng.choice(constraint_types, size=n),
-            "strength": rng.choice(["weak", "medium", "strong"], size=n),
+            "system_style": rng.choice(["bare", "compliance", "authority"], size=n),
             "user_style": rng.choice(
                 ["with_instruction", "jailbreak"], size=n
             ),

@@ -12,5 +12,4 @@
 */__pycache__/*
 
 # Phase 1: skip large files (temporarily exclude both; remove checkpoint line when ready)
-*checkpoints/*
-*act_nn_*.npz
+

@@ -12,9 +12,12 @@ import pandas as pd
 import pytest
 
 from phase1_linear_probing.steer import (
+    _build_phase0_df,
     compute_steered_scr,
     load_steering_directions,
+    run_condition_comparison,
     run_steering_sweep,
+    save_experiment_manifest,
     score_steered_output,
 )
 
@@ -372,7 +375,7 @@ def _patch_sweep():
     import phase1_linear_probing.steer as _steer_mod
 
     return (
-        patch.object(_steer_mod, "steer_and_generate"),
+        patch.object(_steer_mod, "_generate_batch"),
         patch.object(_steer_mod, "score_steered_output"),
         patch.object(_steer_mod, "build_formatted_prompt",
                      create=True),
@@ -385,11 +388,12 @@ def test_run_steering_sweep_output_columns(steering_samples_df, d_model):
     mock_tokenizer = MagicMock()
 
     direction = np.random.default_rng(0).standard_normal(d_model).astype(np.float32)
+    n_samples = len(steering_samples_df)
 
-    p_sag, p_sso, p_bfp = _patch_sweep()
-    with p_sag as mock_sag, p_sso as mock_sso, p_bfp as mock_bfp:
+    p_batch, p_sso, p_bfp = _patch_sweep()
+    with p_batch as mock_batch, p_sso as mock_sso, p_bfp as mock_bfp:
         mock_bfp.return_value = "formatted prompt"
-        mock_sag.return_value = "generated response"
+        mock_batch.side_effect = lambda *a, **kw: ["generated response"] * len(a[2])
         mock_sso.return_value = ("followed_system", 1.0, True, False)
 
         result = run_steering_sweep(
@@ -412,15 +416,16 @@ def test_run_steering_sweep_output_columns(steering_samples_df, d_model):
 
 
 def test_run_steering_sweep_calls_per_sample(steering_samples_df, d_model):
-    """Sweep calls steer_and_generate once per (alpha, sample) combination."""
+    """Sweep calls _steer_and_generate_batch in batches, scoring each sample."""
     mock_model = MagicMock()
     mock_tokenizer = MagicMock()
     direction = np.zeros(d_model, dtype=np.float32)
+    n_samples = len(steering_samples_df)
 
-    p_sag, p_sso, p_bfp = _patch_sweep()
-    with p_sag as mock_sag, p_sso as mock_sso, p_bfp as mock_bfp:
+    p_batch, p_sso, p_bfp = _patch_sweep()
+    with p_batch as mock_batch, p_sso as mock_sso, p_bfp as mock_bfp:
         mock_bfp.return_value = "prompt"
-        mock_sag.return_value = "response"
+        mock_batch.side_effect = lambda *a, **kw: ["response"] * len(a[2])
         mock_sso.return_value = ("followed_system", 1.0, True, False)
 
         run_steering_sweep(
@@ -429,8 +434,7 @@ def test_run_steering_sweep_calls_per_sample(steering_samples_df, d_model):
             layer=0, alphas=[-1.0, 0.0, 1.0],
         )
 
-    # 2 samples × 3 alphas = 6 calls
-    assert mock_sag.call_count == 6
+    # 2 samples × 3 alphas = 6 scoring calls
     assert mock_sso.call_count == 6
 
 
@@ -440,10 +444,10 @@ def test_run_steering_sweep_preserves_alpha(steering_samples_df, d_model):
     mock_tokenizer = MagicMock()
     direction = np.zeros(d_model, dtype=np.float32)
 
-    p_sag, p_sso, p_bfp = _patch_sweep()
-    with p_sag as mock_sag, p_sso as mock_sso, p_bfp as mock_bfp:
+    p_batch, p_sso, p_bfp = _patch_sweep()
+    with p_batch as mock_batch, p_sso as mock_sso, p_bfp as mock_bfp:
         mock_bfp.return_value = "prompt"
-        mock_sag.return_value = "response"
+        mock_batch.side_effect = lambda *a, **kw: ["response"] * len(a[2])
         mock_sso.return_value = ("followed_user", 1.0, False, True)
 
         result = run_steering_sweep(
@@ -455,3 +459,231 @@ def test_run_steering_sweep_preserves_alpha(steering_samples_df, d_model):
     assert set(result["alpha"].unique()) == {0.0, 5.0}
     assert (result[result["alpha"] == 0.0].shape[0] == 2)
     assert (result[result["alpha"] == 5.0].shape[0] == 2)
+
+
+# ── _build_phase0_df ────────────────────────────────────────────────────────
+
+
+def test_build_phase0_df_columns():
+    """_build_phase0_df produces correct columns and derived fields."""
+    df = pd.DataFrame([
+        {
+            "conflict_id": "c1", "direction": "a_to_b",
+            "constraint_type": "tone", "response": "hello",
+            "label": "followed_system", "system_prompt": "sys",
+            "user_prompt": "usr",
+        },
+        {
+            "conflict_id": "c1", "direction": "b_to_a",
+            "constraint_type": "tone", "response": "bye",
+            "label": "followed_user", "system_prompt": "sys2",
+            "user_prompt": "usr2",
+        },
+    ])
+    result = _build_phase0_df(df)
+    assert "alpha" in result.columns
+    assert result["alpha"].isna().all()
+    assert result["confidence"].tolist() == [1.0, 1.0]
+    assert result["sys_ok"].tolist() == [True, False]
+    assert result["usr_ok"].tolist() == [False, True]
+
+
+def test_build_phase0_df_followed_both():
+    """followed_both sets both sys_ok and usr_ok."""
+    df = pd.DataFrame([{
+        "conflict_id": "c1", "direction": "a_to_b",
+        "constraint_type": "tone", "response": "r",
+        "label": "followed_both", "system_prompt": "s",
+        "user_prompt": "u",
+    }])
+    result = _build_phase0_df(df)
+    assert result["sys_ok"].iloc[0] == True  # noqa: E712
+    assert result["usr_ok"].iloc[0] == True  # noqa: E712
+
+
+# ── run_condition_comparison ─────────────────────────────────────────────────
+
+
+def _make_condition_c_df(conflict_ids, n_per_conflict=4):
+    """Build a minimal Condition C DataFrame for testing."""
+    rows = []
+    for cid in conflict_ids:
+        for i in range(n_per_conflict):
+            rows.append({
+                "conflict_id": cid,
+                "direction": "a_to_b" if i % 2 == 0 else "b_to_a",
+                "constraint_type": "tone",
+                "instruction_args": json.dumps({"topic": "test"}),
+                "system_prompt": f"sys for {cid}",
+                "user_prompt": f"usr for {cid}",
+                "response": f"phase0 response {i}",
+                "label": "followed_system" if i % 2 == 0 else "followed_user",
+            })
+    return pd.DataFrame(rows)
+
+
+def test_run_condition_comparison_structure(tmp_path, d_model):
+    """Returned dict has expected keys, DataFrames have expected columns/rows."""
+    import phase1_linear_probing.steer as _steer_mod
+
+    conflicts = ["conflict_a", "conflict_b"]
+    df_c = _make_condition_c_df(conflicts, n_per_conflict=4)
+    n_total = len(df_c)
+    direction = np.zeros(d_model, dtype=np.float32)
+
+    with patch.object(_steer_mod, "_generate_batch") as mock_batch, \
+         patch.object(_steer_mod, "score_steered_output") as mock_sso:
+        mock_batch.side_effect = lambda *a, **kw: ["response"] * len(a[2])
+        mock_sso.return_value = ("followed_system", 1.0, True, False)
+
+        results = run_condition_comparison(
+            MagicMock(), MagicMock(), df_c,
+            steering_directions={"probe": direction},
+            layer=2, alphas=[3.0, 6.0],
+            output_dir=tmp_path / "steering",
+            batch_size=16,
+        )
+
+    assert set(results.keys()) == {
+        "phase0", "unsteered", "unsteered_hooked", "steered_probe",
+    }
+
+    expected_cols = {
+        "conflict_id", "direction", "constraint_type", "alpha",
+        "response", "label", "confidence", "sys_ok", "usr_ok",
+        "system_prompt", "user_prompt",
+    }
+
+    for key in ["phase0", "unsteered", "unsteered_hooked"]:
+        assert expected_cols <= set(results[key].columns)
+        assert len(results[key]) == n_total
+
+    # Steered: 2 conflicts × 4 samples × 2 alphas = 16
+    assert len(results["steered_probe"]) == n_total * 2
+
+
+def test_run_condition_comparison_caching(tmp_path, d_model):
+    """Pre-existing JSONL files skip generation; missing ones trigger it."""
+    import phase1_linear_probing.steer as _steer_mod
+
+    conflicts = ["conflict_a", "conflict_b"]
+    df_c = _make_condition_c_df(conflicts, n_per_conflict=4)
+    direction = np.zeros(d_model, dtype=np.float32)
+
+    # Pre-write phase0, unsteered, unsteered_hooked for conflict_a
+    steer_dir = tmp_path / "steering"
+    for cond in ["phase0", "unsteered", "unsteered_hooked"]:
+        cond_dir = steer_dir / cond
+        cond_dir.mkdir(parents=True, exist_ok=True)
+    # Pre-write conflict_a for all baseline conditions
+    phase0_a = _build_phase0_df(
+        df_c[df_c["conflict_id"] == "conflict_a"]
+    )
+    for cond in ["phase0", "unsteered", "unsteered_hooked"]:
+        phase0_a.to_json(
+            steer_dir / cond / "conflict_a.jsonl",
+            orient="records", lines=True,
+        )
+
+    with patch.object(_steer_mod, "_generate_batch") as mock_batch, \
+         patch.object(_steer_mod, "score_steered_output") as mock_sso:
+        mock_batch.side_effect = lambda *a, **kw: ["response"] * len(a[2])
+        mock_sso.return_value = ("followed_system", 1.0, True, False)
+
+        results = run_condition_comparison(
+            MagicMock(), MagicMock(), df_c,
+            steering_directions={"probe": direction},
+            layer=2, alphas=[3.0],
+            output_dir=steer_dir,
+            batch_size=16,
+        )
+
+    # _generate_batch should NOT have been called for conflict_a baselines
+    # (cached), but SHOULD have been called for conflict_b baselines +
+    # steered for both.
+    # Baseline calls: conflict_b for unsteered + unsteered_hooked = 2 calls
+    # Steered calls: conflict_a + conflict_b at alpha=3.0 = 2 calls
+    # Total = 4 batch calls
+    assert mock_batch.call_count == 4
+
+    # All results should still be present
+    for key in ["phase0", "unsteered", "unsteered_hooked", "steered_probe"]:
+        assert key in results
+
+
+def test_run_condition_comparison_incremental_alpha(tmp_path, d_model):
+    """Adding a new alpha only generates files for that alpha."""
+    import phase1_linear_probing.steer as _steer_mod
+
+    conflicts = ["conflict_a"]
+    df_c = _make_condition_c_df(conflicts, n_per_conflict=4)
+    direction = np.zeros(d_model, dtype=np.float32)
+    steer_dir = tmp_path / "steering"
+
+    with patch.object(_steer_mod, "_generate_batch") as mock_batch, \
+         patch.object(_steer_mod, "score_steered_output") as mock_sso:
+        mock_batch.side_effect = lambda *a, **kw: ["response"] * len(a[2])
+        mock_sso.return_value = ("followed_system", 1.0, True, False)
+
+        # First run with alpha=3.0
+        run_condition_comparison(
+            MagicMock(), MagicMock(), df_c,
+            steering_directions={"probe": direction},
+            layer=2, alphas=[3.0],
+            output_dir=steer_dir,
+            batch_size=16,
+        )
+        calls_first = mock_batch.call_count
+
+    with patch.object(_steer_mod, "_generate_batch") as mock_batch2, \
+         patch.object(_steer_mod, "score_steered_output") as mock_sso2:
+        mock_batch2.side_effect = lambda *a, **kw: ["response"] * len(a[2])
+        mock_sso2.return_value = ("followed_system", 1.0, True, False)
+
+        # Second run with alpha=[3.0, 6.0]
+        results = run_condition_comparison(
+            MagicMock(), MagicMock(), df_c,
+            steering_directions={"probe": direction},
+            layer=2, alphas=[3.0, 6.0],
+            output_dir=steer_dir,
+            batch_size=16,
+        )
+
+    # Second run: baselines cached (0 calls), alpha=3.0 cached (0 calls),
+    # only alpha=6.0 for 1 conflict = 1 batch call
+    assert mock_batch2.call_count == 1
+    assert len(results["steered_probe"]) == 8  # 4 samples × 2 alphas
+
+
+# ── save_experiment_manifest ─────────────────────────────────────────────────
+
+
+def test_save_experiment_manifest(tmp_path):
+    """Manifest contains expected fields and lists JSONL files."""
+    output_dir = tmp_path / "steering"
+    output_dir.mkdir()
+    # Create some dummy JSONL files
+    (output_dir / "phase0").mkdir()
+    (output_dir / "phase0" / "conflict_a.jsonl").write_text("{}\n")
+    (output_dir / "phase0" / "conflict_b.jsonl").write_text("{}\n")
+
+    path = save_experiment_manifest(
+        output_dir,
+        seed=42,
+        model_name="test-model",
+        conflict_ids=["conflict_a", "conflict_b"],
+        direction_names=["probe"],
+        alphas=[3.0, 6.0],
+        max_new_tokens=512,
+        batch_size=16,
+        layer=15,
+    )
+
+    assert path == output_dir / "manifest.json"
+    manifest = json.loads(path.read_text())
+    assert manifest["seed"] == 42
+    assert manifest["model_name"] == "test-model"
+    assert manifest["layer"] == 15
+    assert manifest["alphas"] == [3.0, 6.0]
+    assert len(manifest["files"]) == 2
+    assert "phase0/conflict_a.jsonl" in manifest["files"]

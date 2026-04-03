@@ -138,7 +138,7 @@ Matches the notebook section order:
 
 | Function | Description |
 |---|---|
-| `build_category_lists(df, categorical_cols=...) -> dict` | Extract sorted unique values for each categorical column. Default `categorical_cols`: `["constraint_type", "strength", "user_style", "task_id"]` |
+| `build_category_lists(df, categorical_cols=...) -> dict` | Extract sorted unique values for each categorical column. Default `categorical_cols`: `["constraint_type", "system_style", "user_style", "task_id"]` |
 | `build_metadata_features(df, position_maps, cats, *, exclude_groups=None) -> ndarray` | Build feature matrix: one-hot categoricals + token length features. `exclude_groups` is a set of group names to omit (e.g. `{"length_feats", "constraint_type", "direction"}`) |
 | `get_feature_names(cats, *, exclude_groups=None) -> list[str]` | Ordered feature names matching the feature matrix columns. Respects `exclude_groups` to stay aligned with the matrix |
 | `get_feature_groups(cats, *, exclude_groups=None) -> dict[str, list[int]]` | Map group name to column indices (for ablation). When `exclude_groups` is given, excluded groups are omitted and indices are recomputed to match the reduced matrix |

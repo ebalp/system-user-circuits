@@ -34,7 +34,7 @@ def _one_hot(val, categories):
     return [int(val == c) for c in categories]
 
 
-def build_category_lists(df, categorical_cols=["constraint_type", "strength", "user_style", "task_id"]):
+def build_category_lists(df, categorical_cols=["constraint_type", "system_style", "user_style", "task_id"]):
     """Extract sorted unique values for each categorical column."""
     return {col: sorted(df[col].unique()) for col in categorical_cols}
 
@@ -45,7 +45,7 @@ def build_metadata_features(df, position_maps, cats, *, exclude_groups=None):
     Parameters
     ----------
     df : pd.DataFrame
-        Condition C data with columns: constraint_type, strength, user_style,
+        Condition C data with columns: constraint_type, system_style, user_style,
         task_id, direction.
     position_maps : list[dict]
         Per-sample token position dicts (from find_token_positions).
@@ -53,7 +53,7 @@ def build_metadata_features(df, position_maps, cats, *, exclude_groups=None):
         Output of build_category_lists.
     exclude_groups : set[str] or None
         Feature group names to exclude. Valid names: ``"length_feats"``,
-        ``"constraint_type"``, ``"strength"``, ``"user_style"``, ``"task_id"``,
+        ``"constraint_type"``, ``"system_style"``, ``"user_style"``, ``"task_id"``,
         ``"direction"``.
 
     Returns
@@ -73,8 +73,8 @@ def build_metadata_features(df, position_maps, cats, *, exclude_groups=None):
             ]
         if "constraint_type" not in excl:
             feats += _one_hot(row["constraint_type"], cats["constraint_type"])
-        if "strength" not in excl:
-            feats += _one_hot(row["strength"], cats["strength"])
+        if "system_style" not in excl:
+            feats += _one_hot(row["system_style"], cats["system_style"])
         if "user_style" not in excl:
             feats += _one_hot(row["user_style"], cats["user_style"])
         if "task_id" not in excl:
@@ -93,8 +93,8 @@ def get_feature_names(cats, *, exclude_groups=None):
         names += ["total_tokens", "sys_len", "user_len", "user_start"]
     if "constraint_type" not in excl:
         names += [f"ctype_{c}" for c in cats["constraint_type"]]
-    if "strength" not in excl:
-        names += [f"strength_{s}" for s in cats["strength"]]
+    if "system_style" not in excl:
+        names += [f"sys_style_{s}" for s in cats["system_style"]]
     if "user_style" not in excl:
         names += [f"style_{s}" for s in cats["user_style"]]
     if "task_id" not in excl:
@@ -123,7 +123,7 @@ def get_feature_groups(cats, *, exclude_groups=None):
 
     _add("length_feats", 4)
     _add("constraint_type", len(cats["constraint_type"]))
-    _add("strength", len(cats["strength"]))
+    _add("system_style", len(cats["system_style"]))
     _add("user_style", len(cats["user_style"]))
     _add("task_id", len(cats["task_id"]))
     _add("direction", 1)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -80,6 +81,129 @@ def load_steering_directions(
     return directions
 
 
+# ── nnsight Patch ────────────────────────────────────────────────────────────
+
+
+# ── Batched Generation ───────────────────────────────────────────────────────
+
+
+def _get_decoder_layers(hf_model):
+    """Resolve the decoder layer list for any supported HF model.
+
+    Handles both standard architectures (Llama, Gemma2, Qwen2, Mistral)
+    where layers live at ``model.layers`` and multimodal wrappers (Gemma3)
+    where they live at ``model.language_model.layers``.
+    """
+    if hasattr(hf_model.model, "layers"):
+        return hf_model.model.layers
+    if hasattr(hf_model.model, "language_model"):
+        return hf_model.model.language_model.layers
+    raise ValueError(
+        f"Cannot find decoder layers on {type(hf_model).__name__}. "
+        f"Expected model.model.layers or model.model.language_model.layers."
+    )
+
+
+def _generate_batch(
+    model,
+    tokenizer,
+    prompts: list[str],
+    *,
+    direction_vector: np.ndarray | None = None,
+    layer: int | None = None,
+    alpha: float = 0.0,
+    max_new_tokens: int = 512,
+) -> list[str]:
+    """Core batched generation primitive.
+
+    All generation flows through this function.  Uses raw HuggingFace
+    ``generate()`` for both steered (alpha != 0, via forward hook) and
+    unsteered (alpha == 0) paths to ensure identical backends.
+
+    Parameters
+    ----------
+    model : nnsight.LanguageModel
+        Loaded nnsight model (uses ``model._model`` for generation).
+    tokenizer
+        HuggingFace tokenizer.
+    prompts : list[str]
+        Pre-formatted prompt strings.
+    direction_vector : np.ndarray or None
+        Steering direction (required when ``alpha != 0``).
+    layer : int or None
+        Layer index for steering (required when ``alpha != 0``).
+    alpha : float
+        Steering strength.  0 = unsteered baseline.
+    max_new_tokens : int
+        Maximum tokens to generate.
+
+    Returns
+    -------
+    list[str]
+        Decoded responses (generated tokens only), one per prompt.
+    """
+    device = next(model.parameters()).device
+
+    # Ensure tokenizer has a pad token and uses left-padding for
+    # decoder-only models (required for correct batched generation)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+
+    pad_token_id = tokenizer.pad_token_id
+
+    # Batch-tokenize all prompts (used by all paths)
+    encoded = tokenizer(
+        prompts, return_tensors="pt", padding=True, add_special_tokens=False,
+    )
+    input_ids = encoded.input_ids.to(device)
+    attention_mask = encoded.attention_mask.to(device)
+    max_input_len = input_ids.shape[1]
+
+    gen_kwargs = dict(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        pad_token_id=pad_token_id,
+        max_new_tokens=max_new_tokens,
+        do_sample=False,
+    )
+
+    hf_model = model._model if hasattr(model, "_model") else model
+
+    if direction_vector is not None:
+        # Hooked path: forward hook adds alpha * steering_vector at every step.
+        # When alpha=0 this is a no-op hook (controls for hook overhead).
+        steer_vec = torch.tensor(
+            direction_vector, dtype=torch.float16,
+        ).to(device)
+
+        def _steering_hook(module, input, output):
+            if isinstance(output, tuple):
+                return (output[0] + alpha * steer_vec, *output[1:])
+            return output + alpha * steer_vec
+
+        handle = _get_decoder_layers(hf_model)[layer].register_forward_hook(
+            _steering_hook,
+        )
+        try:
+            with torch.no_grad():
+                output = hf_model.generate(**gen_kwargs)
+        finally:
+            handle.remove()
+    else:
+        # Unsteered baseline: raw HuggingFace generate, no hook
+        with torch.no_grad():
+            output = hf_model.generate(**gen_kwargs)
+
+    responses = []
+    for i in range(len(prompts)):
+        generated_ids = output[i, max_input_len:]
+        responses.append(
+            tokenizer.decode(generated_ids, skip_special_tokens=True)
+        )
+    return responses
+
+
 # ── Steering Core ─────────────────────────────────────────────────────────────
 
 
@@ -122,45 +246,13 @@ def steer_and_generate(
     str
         Decoded response (newly generated tokens only).
     """
-    # Prepare steering vector
-    device = next(model.parameters()).device
-    steer_vec = torch.tensor(
-        direction_vector, dtype=torch.float16
-    ).to(device)
-
-    encoded = tokenizer(
-        prompt, return_tensors="pt", add_special_tokens=False
-    )
-    input_ids = encoded.input_ids.to(device)
-    attention_mask = encoded.attention_mask.to(device)
-    n_prompt = input_ids.shape[1]
-
-    pad_token_id = tokenizer.pad_token_id
-    if pad_token_id is None:
-        pad_token_id = tokenizer.eos_token_id
-
-    output = None
-    with model.generate(
-        input_ids,
-        attention_mask=attention_mask,
-        pad_token_id=pad_token_id,
+    return _generate_batch(
+        model, tokenizer, [prompt],
+        direction_vector=direction_vector,
+        layer=layer,
+        alpha=alpha,
         max_new_tokens=max_new_tokens,
-        do_sample=False,
-    ) as tracer:
-        if alpha != 0:
-            with tracer.all():
-                # Add steering vector to all positions in the layer output.
-                # During KV-cached decode steps there is only 1 position;
-                # during prefill we steer all positions (broadcast handles
-                # both 2D and 3D hidden states).
-                model.model.layers[layer].output[0][:] += alpha * steer_vec
-        output = model.generator.output.save()
-
-    if output is None:
-        raise RuntimeError("nnsight generate failed — output proxy not saved")
-
-    generated_ids = output[0, n_prompt:]
-    return tokenizer.decode(generated_ids, skip_special_tokens=True)
+    )[0]
 
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
@@ -210,6 +302,299 @@ def score_steered_output(
     return label, confidence, sys_ok, usr_ok
 
 
+# ── Per-Conflict Generation + Scoring ────────────────────────────────────────
+
+
+def _build_phase0_df(df_conflict: pd.DataFrame) -> pd.DataFrame:
+    """Build a results DataFrame from stored Phase 0 data (no generation).
+
+    Copies columns from the original data and derives ``sys_ok``/``usr_ok``
+    from the stored label.
+    """
+    df = df_conflict[
+        ["conflict_id", "direction", "constraint_type",
+         "response", "label", "system_prompt", "user_prompt"]
+    ].copy()
+    df["alpha"] = None
+    df["confidence"] = 1.0
+    df["sys_ok"] = df["label"].isin(["followed_system", "followed_both"])
+    df["usr_ok"] = df["label"].isin(["followed_user", "followed_both"])
+    return df.reset_index(drop=True)
+
+
+def _generate_and_score_conflict(
+    model,
+    tokenizer,
+    df_conflict: pd.DataFrame,
+    *,
+    direction_vector: np.ndarray | None = None,
+    layer: int | None = None,
+    alpha: float = 0.0,
+    max_new_tokens: int = 512,
+    batch_size: int = 16,
+) -> pd.DataFrame:
+    """Generate and score all samples for one conflict_id.
+
+    Parameters
+    ----------
+    model : nnsight.LanguageModel
+        Loaded model.
+    tokenizer
+        HuggingFace tokenizer.
+    df_conflict : pd.DataFrame
+        All samples for one conflict_id.
+    direction_vector, layer, alpha
+        Steering parameters (direction/layer required when alpha != 0).
+    max_new_tokens, batch_size
+        Generation parameters.
+
+    Returns
+    -------
+    pd.DataFrame
+        Scored results with columns: conflict_id, direction, constraint_type,
+        alpha, response, label, confidence, sys_ok, usr_ok, system_prompt,
+        user_prompt.
+    """
+    from data import build_formatted_prompt
+
+    records = list(df_conflict.itertuples(index=False))
+    prompts = [
+        build_formatted_prompt(tokenizer, r.system_prompt, r.user_prompt)
+        for r in records
+    ]
+
+    rows: list[dict] = []
+    for start in range(0, len(prompts), batch_size):
+        batch_prompts = prompts[start : start + batch_size]
+        batch_records = records[start : start + batch_size]
+
+        responses = _generate_batch(
+            model, tokenizer, batch_prompts,
+            direction_vector=direction_vector,
+            layer=layer,
+            alpha=alpha,
+            max_new_tokens=max_new_tokens,
+        )
+
+        for rec, resp in zip(batch_records, responses):
+            label, confidence, sys_ok, usr_ok = score_steered_output(
+                resp, rec.conflict_id, rec.direction, rec.instruction_args,
+            )
+            rows.append({
+                "conflict_id": rec.conflict_id,
+                "direction": rec.direction,
+                "constraint_type": rec.constraint_type,
+                "alpha": alpha,
+                "response": resp,
+                "label": label,
+                "confidence": confidence,
+                "sys_ok": sys_ok,
+                "usr_ok": usr_ok,
+                "system_prompt": rec.system_prompt,
+                "user_prompt": rec.user_prompt,
+            })
+
+    return pd.DataFrame(rows)
+
+
+# ── Condition Comparison with Caching ────────────────────────────────────────
+
+
+def run_condition_comparison(
+    model,
+    tokenizer,
+    df_c: pd.DataFrame,
+    steering_directions: dict[str, np.ndarray],
+    layer: int,
+    alphas: list[float] | dict[str, list[float]],
+    *,
+    max_new_tokens: int = 512,
+    batch_size: int = 16,
+    output_dir: Path,
+    seed: int = 42,
+) -> dict[str, pd.DataFrame]:
+    """Run three baseline conditions + steered sweeps with per-conflict caching.
+
+    Parameters
+    ----------
+    model : nnsight.LanguageModel
+        Loaded model.
+    tokenizer
+        HuggingFace tokenizer.
+    df_c : pd.DataFrame
+        All Condition C samples (no subsampling).
+    steering_directions : dict[str, np.ndarray]
+        Named steering directions, e.g. ``{"probe": vec, "cmd_overall": vec}``.
+    layer : int
+        Layer to steer.
+    alphas : list[float] or dict[str, list[float]]
+        Nonzero alphas for steered condition.  A plain list applies the same
+        alphas to every direction; a dict maps direction name to its own list.
+    max_new_tokens, batch_size : int
+        Generation parameters.
+    output_dir : Path
+        Cache directory (e.g. ``{run_dir}/steering/``).
+    seed : int
+        Random seed (recorded in manifest only).
+
+    Returns
+    -------
+    dict[str, pd.DataFrame]
+        Keys: ``phase0``, ``unsteered``, ``unsteered_hooked``,
+        ``steered_{dir_name}`` for each direction.
+    """
+    conflict_ids = sorted(df_c["conflict_id"].unique())
+    grouped = df_c.groupby("conflict_id")
+    results: dict[str, pd.DataFrame] = {}
+
+    # Normalize alphas to per-direction dict
+    if isinstance(alphas, list):
+        alphas_per_dir: dict[str, list[float]] = {
+            name: alphas for name in steering_directions
+        }
+    else:
+        alphas_per_dir = alphas
+
+    # Direction vector for the hooked-alpha-0 baseline (any direction works
+    # since alpha=0 zeroes it out — we just need the hook registered).
+    hook_dir_vec = next(iter(steering_directions.values()))
+
+    # 1. Baselines: phase0 (stored), unsteered (raw HF), unsteered_hooked (hook + alpha=0)
+    baselines = [
+        ("phase0", None),
+        ("unsteered", dict(alpha=0.0)),
+        ("unsteered_hooked", dict(
+            alpha=0.0, direction_vector=hook_dir_vec, layer=layer,
+        )),
+    ]
+    for condition, gen_kwargs in baselines:
+        cond_dir = output_dir / condition
+        cond_dir.mkdir(parents=True, exist_ok=True)
+
+        cached, pending = [], []
+        for cid in conflict_ids:
+            if (cond_dir / f"{cid}.jsonl").exists():
+                cached.append(cid)
+            else:
+                pending.append(cid)
+
+        print(f"{condition}: {len(cached)} cached, {len(pending)} pending")
+
+        for cid in tqdm(pending, desc=condition):
+            df_conflict = grouped.get_group(cid)
+            if condition == "phase0":
+                df_result = _build_phase0_df(df_conflict)
+            else:
+                df_result = _generate_and_score_conflict(
+                    model, tokenizer, df_conflict,
+                    max_new_tokens=max_new_tokens, batch_size=batch_size,
+                    **gen_kwargs,
+                )
+            df_result.to_json(
+                cond_dir / f"{cid}.jsonl", orient="records", lines=True,
+            )
+
+        # Load all (cached + just-computed) and concatenate
+        all_dfs = [
+            pd.read_json(cond_dir / f"{cid}.jsonl", orient="records", lines=True)
+            for cid in conflict_ids
+        ]
+        results[condition] = pd.concat(all_dfs, ignore_index=True)
+
+    # 2. Steered conditions — per direction (with per-direction alphas)
+    for dir_name, dir_vec in steering_directions.items():
+        dir_dir = output_dir / "steered" / dir_name
+        dir_dir.mkdir(parents=True, exist_ok=True)
+        dir_alphas = alphas_per_dir[dir_name]
+
+        cached, pending = [], []
+        for alpha in dir_alphas:
+            for cid in conflict_ids:
+                fname = f"{cid}_alpha_{alpha}.jsonl"
+                if (dir_dir / fname).exists():
+                    cached.append((alpha, cid))
+                else:
+                    pending.append((alpha, cid))
+
+        print(f"steered/{dir_name}: {len(cached)} cached, {len(pending)} pending")
+
+        for alpha, cid in tqdm(pending, desc=f"steered/{dir_name}"):
+            df_conflict = grouped.get_group(cid)
+            df_result = _generate_and_score_conflict(
+                model, tokenizer, df_conflict,
+                direction_vector=dir_vec,
+                layer=layer, alpha=alpha,
+                max_new_tokens=max_new_tokens, batch_size=batch_size,
+            )
+            df_result.to_json(
+                dir_dir / f"{cid}_alpha_{alpha}.jsonl",
+                orient="records", lines=True,
+            )
+
+        # Load all and concatenate
+        all_dfs = []
+        for alpha in dir_alphas:
+            for cid in conflict_ids:
+                fname = f"{cid}_alpha_{alpha}.jsonl"
+                all_dfs.append(
+                    pd.read_json(dir_dir / fname, orient="records", lines=True)
+                )
+        results[f"steered_{dir_name}"] = pd.concat(all_dfs, ignore_index=True)
+
+    return results
+
+
+def save_experiment_manifest(
+    output_dir: Path,
+    *,
+    seed: int,
+    model_name: str,
+    conflict_ids: list[str],
+    direction_names: list[str],
+    alphas: list[float] | dict[str, list[float]],
+    max_new_tokens: int,
+    batch_size: int,
+    layer: int,
+) -> Path:
+    """Write ``manifest.json`` with experiment config and file inventory.
+
+    Returns
+    -------
+    Path
+        Path to the written manifest file.
+    """
+    try:
+        git_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        git_sha = "unknown"
+
+    # Inventory all JSONL files under output_dir
+    files = sorted(
+        str(p.relative_to(output_dir)) for p in output_dir.rglob("*.jsonl")
+    )
+
+    manifest = {
+        "timestamp": pd.Timestamp.now().isoformat(),
+        "git_sha": git_sha,
+        "seed": seed,
+        "model_name": model_name,
+        "conflict_ids": conflict_ids,
+        "direction_names": direction_names,
+        "alphas": alphas,
+        "max_new_tokens": max_new_tokens,
+        "batch_size": batch_size,
+        "layer": layer,
+        "files": files,
+    }
+
+    manifest_path = output_dir / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+    return manifest_path
+
+
 # ── Sweep ─────────────────────────────────────────────────────────────────────
 
 
@@ -222,6 +607,7 @@ def run_steering_sweep(
     alphas: list[float],
     *,
     max_new_tokens: int = 256,
+    batch_size: int = 16,
 ) -> pd.DataFrame:
     """Run steering across multiple alpha values and samples.
 
@@ -254,45 +640,50 @@ def run_steering_sweep(
     from data import build_formatted_prompt  # noqa: phase1_linear_probing/data.py
 
     rows: list[dict] = []
-    total = len(alphas) * len(df_samples)
+    samples_list = list(df_samples.itertuples(index=False))
+    prompts = [
+        build_formatted_prompt(tokenizer, s.system_prompt, s.user_prompt)
+        for s in samples_list
+    ]
+    total = len(alphas) * len(samples_list)
 
     with tqdm(total=total, desc="Steering sweep") as pbar:
         for alpha in alphas:
-            for _, sample in df_samples.iterrows():
-                prompt = build_formatted_prompt(
-                    tokenizer,
-                    sample["system_prompt"],
-                    sample["user_prompt"],
-                )
+            for start in range(0, len(prompts), batch_size):
+                batch_prompts = prompts[start : start + batch_size]
+                batch_samples = samples_list[start : start + batch_size]
 
-                response = steer_and_generate(
-                    model, tokenizer, prompt,
-                    direction_vector, layer, alpha,
+                responses = _generate_batch(
+                    model, tokenizer, batch_prompts,
+                    direction_vector=direction_vector,
+                    layer=layer,
+                    alpha=alpha,
                     max_new_tokens=max_new_tokens,
                 )
 
-                label, confidence, sys_ok, usr_ok = score_steered_output(
-                    response,
-                    sample["conflict_id"],
-                    sample["direction"],
-                    sample["instruction_args"],
-                )
+                for sample, response in zip(batch_samples, responses):
+                    label, confidence, sys_ok, usr_ok = score_steered_output(
+                        response,
+                        sample.conflict_id,
+                        sample.direction,
+                        sample.instruction_args,
+                    )
 
-                rows.append({
-                    "conflict_id": sample["conflict_id"],
-                    "direction": sample["direction"],
-                    "constraint_type": sample["constraint_type"],
-                    "alpha": alpha,
-                    "response": response,
-                    "label": label,
-                    "confidence": confidence,
-                    "sys_ok": sys_ok,
-                    "usr_ok": usr_ok,
-                    "system_prompt": sample["system_prompt"],
-                    "user_prompt": sample["user_prompt"],
-                })
+                    rows.append({
+                        "conflict_id": sample.conflict_id,
+                        "direction": sample.direction,
+                        "constraint_type": sample.constraint_type,
+                        "alpha": alpha,
+                        "response": response,
+                        "label": label,
+                        "confidence": confidence,
+                        "sys_ok": sys_ok,
+                        "usr_ok": usr_ok,
+                        "system_prompt": sample.system_prompt,
+                        "user_prompt": sample.user_prompt,
+                    })
 
-                pbar.update(1)
+                pbar.update(len(batch_samples))
 
     return pd.DataFrame(rows)
 
