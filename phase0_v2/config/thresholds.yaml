@@ -2,7 +2,7 @@
 # Boolean conflicts don't have thresholds and are not listed here.
 
 _meta:
-  last_updated: '2026-03-31'
+  last_updated: '2026-04-04'
 default:
   address_reader_directly: 0.143
   template_response: 0.561
@@ -945,3 +945,164 @@ Qwen_Qwen2.5-7B-Instruct:
     distribution: bimodal
     feasible: false
     fallback: baseline_midpoint
+google_gemma-4-31B-it:
+  _meta:
+    last_updated: '2026-04-04'
+    pareto_caps:
+      max_d_norm: 0.05
+      max_c_norm: 0.05
+      min_ba: 0.9
+  address_reader_directly:
+    threshold: 0.433
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  alliteration_density:
+    threshold: 0.354
+    d_norm: 0.018189
+    c_norm: 0.00174
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  alphabetical_sentences:
+    threshold: 0.451
+    d_norm: 0.000269
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  bullets_and_sub_bullets:
+    threshold: 0.47
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  capitalization_all_caps:
+    threshold: 0.512
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  direct_answer_vs_hedging:
+    threshold: 0.453
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  each_word_new_line:
+    threshold: 0.508
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  first_vs_third_person:
+    threshold: 0.576
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  formal_vs_casual_tone:
+    threshold: 0.623
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  imperative_vs_declarative:
+    threshold: 0.416
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  keyword_frequency:
+    threshold: 0.497
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  leetspeak_encoding:
+    threshold: 0.215
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  number_density:
+    threshold: 0.376
+    d_norm: 6.2e-05
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  past_vs_present_tense:
+    threshold: 0.397
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  pronoun_density:
+    threshold: 0.092
+    d_norm: 3.0e-06
+    c_norm: 1.1e-05
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  response_length:
+    threshold: 0.49
+    d_norm: 0.0
+    c_norm: 0.002768
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  sentence_connector_density:
+    threshold: 0.353
+    d_norm: 0.0
+    c_norm: 0.000116
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  short_vs_long_sentences:
+    threshold: 0.489
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  spanish_loanwords:
+    threshold: 0.45
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  vocabulary_diversity:
+    threshold: 0.238
+    d_norm: 0.0
+    c_norm: 7.0e-06
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  vowel_omission:
+    threshold: 0.803
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+  word_repetition_density:
+    threshold: 0.216
+    d_norm: 0.0
+    c_norm: 0.002304
+    ba: 1.0
+    distribution: bimodal
+    feasible: true

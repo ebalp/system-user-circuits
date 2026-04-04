@@ -11,6 +11,7 @@ models:
       - word_repetition_density
   - id: Qwen/Qwen2.5-7B-Instruct
   - id: openai/gpt-oss-20b
+  - id: google/gemma-4-31B-it
 
 # System prompt wrapping templates (rhetorical framings).
 # {system_instruction} is the full-sentence conflict system template, already rendered.
@@ -82,4 +83,4 @@ thresholds:
 api:
   timeout: 60
   max_retries: 3
-  concurrent_per_model: 12
+  concurrent_per_model: 96

@@ -53,6 +53,14 @@ model_gpu_map:
   openai/gpt-oss-20b:
     instance_type: gpu_1x_a100
     vllm_args: "--max-model-len 4096"
+  google/gemma-4-31B-it:
+    instance_type: gpu_2x_a100
+    instance_preferences:
+      - gpu_2x_a100
+      - gpu_8x_a100
+      - gpu_8x_a100_sxm4
+      - gpu_8x_a100_80gb_sxm4
+    vllm_args: "--tensor-parallel-size 2 --max-model-len 4096"
   _default:
     instance_type: gpu_1x_a100
     instance_preferences:
