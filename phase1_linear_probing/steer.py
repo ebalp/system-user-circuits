@@ -51,6 +51,8 @@ def load_steering_directions(
     from probe import load_results, results_path
 
     rpath = results_path(run_dir, cv_mode="grouped", use_scaler=False)
+    if not rpath.exists():
+        rpath = results_path(run_dir, cv_mode="stratified", use_scaler=False)
     results = load_results(rpath)
     pr = results[pos_name]
 
@@ -112,6 +114,7 @@ def _generate_batch(
     direction_vector: np.ndarray | None = None,
     layer: int | None = None,
     alpha: float = 0.0,
+    projection_target: float | None = None,
     max_new_tokens: int = 512,
 ) -> list[str]:
     """Core batched generation primitive.
@@ -119,6 +122,11 @@ def _generate_batch(
     All generation flows through this function.  Uses raw HuggingFace
     ``generate()`` for both steered (alpha != 0, via forward hook) and
     unsteered (alpha == 0) paths to ensure identical backends.
+
+    Steering modes (mutually exclusive):
+    - **additive** (default): ``h' = h + alpha * v``
+    - **projection**: ``h' = h + (target - h·v) * v`` — pins the component
+      along *v* to a constant value.  Set ``projection_target`` to enable.
 
     Parameters
     ----------
@@ -129,11 +137,16 @@ def _generate_batch(
     prompts : list[str]
         Pre-formatted prompt strings.
     direction_vector : np.ndarray or None
-        Steering direction (required when ``alpha != 0``).
+        Steering direction (required when ``alpha != 0`` or
+        ``projection_target is not None``).
     layer : int or None
-        Layer index for steering (required when ``alpha != 0``).
+        Layer index for steering.
     alpha : float
-        Steering strength.  0 = unsteered baseline.
+        Steering strength (additive mode).  0 = unsteered baseline.
+        Ignored when ``projection_target`` is set.
+    projection_target : float or None
+        If set, use projection mode: pin the component along
+        ``direction_vector`` to this value.
     max_new_tokens : int
         Maximum tokens to generate.
 
@@ -171,16 +184,29 @@ def _generate_batch(
     hf_model = model._model if hasattr(model, "_model") else model
 
     if direction_vector is not None:
-        # Hooked path: forward hook adds alpha * steering_vector at every step.
-        # When alpha=0 this is a no-op hook (controls for hook overhead).
         steer_vec = torch.tensor(
             direction_vector, dtype=torch.float16,
         ).to(device)
 
-        def _steering_hook(module, input, output):
-            if isinstance(output, tuple):
-                return (output[0] + alpha * steer_vec, *output[1:])
-            return output + alpha * steer_vec
+        if projection_target is not None:
+            # Projection mode: pin h·v to a constant target value.
+            # h' = h + (target - h·v) * v
+            target = projection_target
+
+            def _steering_hook(module, input, output):
+                h = output[0] if isinstance(output, tuple) else output
+                # h: (batch, seq, d_model), steer_vec: (d_model,)
+                proj = (h * steer_vec).sum(dim=-1, keepdim=True)
+                h_new = h + (target - proj) * steer_vec
+                if isinstance(output, tuple):
+                    return (h_new, *output[1:])
+                return h_new
+        else:
+            # Additive mode: h' = h + alpha * v
+            def _steering_hook(module, input, output):
+                if isinstance(output, tuple):
+                    return (output[0] + alpha * steer_vec, *output[1:])
+                return output + alpha * steer_vec
 
         handle = _get_decoder_layers(hf_model)[layer].register_forward_hook(
             _steering_hook,
@@ -463,9 +489,9 @@ def run_condition_comparison(
     baselines = [
         ("phase0", None),
         ("unsteered", dict(alpha=0.0)),
-        ("unsteered_hooked", dict(
-            alpha=0.0, direction_vector=hook_dir_vec, layer=layer,
-        )),
+        # ("unsteered_hooked", dict(
+        #     alpha=0.0, direction_vector=hook_dir_vec, layer=layer,
+        # )),  # same as unsteered — disabled
     ]
     for condition, gen_kwargs in baselines:
         cond_dir = output_dir / condition
