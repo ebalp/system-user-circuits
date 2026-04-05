@@ -1055,8 +1055,8 @@ def plot_fold_generalization(
     fold_weights: np.ndarray,
     fold_cmds: dict[str, np.ndarray] | np.ndarray,
     fold_scores: np.ndarray,
-    fold_group_names: list[str],
-    layer: int,
+    fold_group_names: list[str] | None = None,
+    layer: int = 0,
     *,
     constraint_cmds: dict[str, np.ndarray] | None = None,
     save_path: Path | None = None,
@@ -1072,8 +1072,10 @@ def plot_fold_generalization(
         aligned with *fold_group_names*.
     fold_scores : (n_folds,)
         Validation ROC AUC per fold.
-    fold_group_names : (n_folds,)
-        Constraint type label for each fold's held-out group.
+    fold_group_names : (n_folds,) or None
+        Constraint type label for each fold's held-out group.  When *None*,
+        labels are inferred from *fold_cmds* keys (if dict) or default to
+        "Fold 0", "Fold 1", etc.
     layer : int
         Layer index shown in the title.
     constraint_cmds : dict[str, ndarray] or None
@@ -1082,7 +1084,13 @@ def plot_fold_generalization(
     save_path : Path or None
         If given, figure is saved as HTML.
     """
-    n_folds = len(fold_group_names)
+    n_folds = fold_weights.shape[0]
+
+    if fold_group_names is None:
+        if isinstance(fold_cmds, dict):
+            fold_group_names = list(fold_cmds.keys())
+        else:
+            fold_group_names = [f"Fold {i}" for i in range(n_folds)]
 
     # Labels: "w/o {name}" for fold-level axes, bare names for rightmost col
     wo_names = [f"w/o {name}" for name in fold_group_names]

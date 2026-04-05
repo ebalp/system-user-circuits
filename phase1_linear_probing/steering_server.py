@@ -124,11 +124,19 @@ class GenerateResponse(BaseModel):
     elapsed_s: float
 
 
-class DirectionInfo(BaseModel):
-    name: str
-    shape: list[int]
-    norm: float
-    layer: int
+class DirectionType(BaseModel):
+    pattern: str
+    description: str
+    count_per_layer: int
+
+
+class DirectionsSummary(BaseModel):
+    total: int
+    n_layers: int
+    per_layer: int
+    layers: list[int]
+    types: list[DirectionType]
+    constraints: list[str]
 
 
 class HealthResponse(BaseModel):
@@ -136,7 +144,7 @@ class HealthResponse(BaseModel):
     model: str
     device: str
     gpu_memory_gb: float | None
-    directions: list[str]
+    n_directions: int
     layers: list[int]
     d_model: int
     batch_size: int
@@ -215,8 +223,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default="meta-llama/Llama-3.1-8B-Instruct")
     parser.add_argument("--run-id", default=None,
                         help="Probe run ID for loading directions")
-    parser.add_argument("--layers", type=int, nargs="*", default=[25],
-                        help="Layers to load directions for (default: 25)")
+    parser.add_argument("--layers", type=int, nargs="*", default=None,
+                        help="Layers to load directions for (default: all)")
     parser.add_argument("--batch-size", type=int, default=48)
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8000)
@@ -229,7 +237,6 @@ async def lifespan(app: FastAPI):
 
     args = _parse_args()
     _batch_size = args.batch_size
-    _layers = args.layers
 
     # Config
     _cfg = ProbeConfig(
@@ -246,6 +253,7 @@ async def lifespan(app: FastAPI):
     # d_model from the model's embedding dimension
     hf_model = _model._model if hasattr(_model, "_model") else _model
     _d_model = hf_model.config.hidden_size
+    _layers = args.layers if args.layers is not None else list(range(n_layers))
     print(f"d_model: {_d_model}, layers: {n_layers}")
 
     # Tokenizer
@@ -254,16 +262,22 @@ async def lifespan(app: FastAPI):
     # Steering directions (optional — server works without them)
     if args.run_id:
         pos = "last_prompt"
-        for layer in args.layers:
+        for layer in _layers:
             try:
                 dirs = load_steering_directions(_cfg.run_dir, pos, layer)
                 for name, vec in dirs.items():
                     if isinstance(vec, np.ndarray) and vec.ndim == 1:
                         _directions[f"{name}_L{layer}"] = vec
-                        # Also register without layer suffix if only one layer
-                        if len(args.layers) == 1:
+                        if len(_layers) == 1:
                             _directions[name] = vec
-                print(f"Loaded directions for L{layer}: {[k for k, v in dirs.items() if isinstance(v, np.ndarray) and v.ndim == 1]}")
+                    elif isinstance(vec, dict):
+                        # Unpack per-constraint CMDs (raw and normalized)
+                        prefix = "cmd_raw" if name.endswith("_raw") else "cmd"
+                        for cname, cvec in vec.items():
+                            if isinstance(cvec, np.ndarray) and cvec.ndim == 1:
+                                _directions[f"{prefix}_{cname}_L{layer}"] = cvec
+                loaded = [k for k in _directions if k.endswith(f"_L{layer}")]
+                print(f"Loaded {len(loaded)} directions for L{layer}")
             except Exception as e:
                 print(f"Warning: could not load directions for L{layer}: {e}")
 
@@ -298,31 +312,42 @@ async def health():
         model=_cfg.model_name,
         device=_cfg.device,
         gpu_memory_gb=gpu_mem,
-        directions=list(_directions.keys()),
+        n_directions=len(_directions),
         layers=_layers,
         d_model=_d_model,
         batch_size=_batch_size,
     )
 
 
-@app.get("/directions", response_model=list[DirectionInfo])
+@app.get("/directions", response_model=DirectionsSummary)
 async def directions():
-    result = []
-    for name, vec in _directions.items():
-        # Infer layer from name suffix (e.g., "probe_L25")
-        layer = _layers[0] if _layers else 0
-        if "_L" in name:
-            try:
-                layer = int(name.split("_L")[-1])
-            except ValueError:
-                pass
-        result.append(DirectionInfo(
-            name=name,
-            shape=list(vec.shape),
-            norm=round(float(np.linalg.norm(vec)), 6),
-            layer=layer,
-        ))
-    return result
+    # Extract constraint names from direction keys
+    constraints = sorted({
+        name.replace("cmd_", "").rsplit("_L", 1)[0]
+        for name in _directions
+        if name.startswith("cmd_") and not name.startswith("cmd_overall")
+        and not name.startswith("cmd_raw_")
+    })
+    n_constraints = len(constraints)
+    per_layer = 4 + n_constraints * 2  # probe, probe_raw, cmd_overall, cmd_overall_raw + per-constraint * 2
+
+    types = [
+        DirectionType(pattern="probe_L{layer}", description="unit-norm logistic regression weight", count_per_layer=1),
+        DirectionType(pattern="probe_raw_L{layer}", description="unnormalized logistic regression weight", count_per_layer=1),
+        DirectionType(pattern="cmd_overall_L{layer}", description="unit-norm overall class-mean difference", count_per_layer=1),
+        DirectionType(pattern="cmd_overall_raw_L{layer}", description="unnormalized overall CMD", count_per_layer=1),
+        DirectionType(pattern="cmd_{constraint}_L{layer}", description=f"unit-norm per-constraint CMD ({n_constraints} constraints)", count_per_layer=n_constraints),
+        DirectionType(pattern="cmd_raw_{constraint}_L{layer}", description=f"unnormalized per-constraint CMD ({n_constraints} constraints)", count_per_layer=n_constraints),
+    ]
+
+    return DirectionsSummary(
+        total=len(_directions),
+        n_layers=len(_layers),
+        per_layer=per_layer,
+        layers=_layers,
+        types=types,
+        constraints=constraints,
+    )
 
 
 @app.post("/generate", response_model=GenerateResponse)

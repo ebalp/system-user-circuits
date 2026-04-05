@@ -61,24 +61,41 @@ def load_steering_directions(
         "probe_raw": pr.weights_raw[layer],
     }
 
-    # Fold CMDs
-    fold_cmds_path = run_dir / f"fold_cmds_L{layer}.npz"
-    if fold_cmds_path.exists():
-        fold_data = np.load(fold_cmds_path)
-        vecs = np.stack([fold_data[k] for k in fold_data.files])
-        mean_cmd = vecs.mean(axis=0)
-        norm = np.linalg.norm(mean_cmd)
-        directions["cmd_overall"] = mean_cmd / norm if norm > 0 else mean_cmd
+    # Unified CMD file (from compute_cmds.py) — preferred source
+    unified_path = run_dir / "constraint_cmds.npz"
+    if unified_path.exists():
+        cdata = np.load(unified_path)
+        suffix = f"_L{layer}"
+        suffix_raw = f"_L{layer}_raw"
+        for key in cdata.files:
+            if key == f"overall{suffix}":
+                directions["cmd_overall"] = cdata[key]
+            elif key == f"overall{suffix_raw}":
+                directions["cmd_overall_raw"] = cdata[key]
+            elif key.endswith(suffix_raw):
+                name = key[: -len(suffix_raw)]
+                directions.setdefault("cmd_per_constraint_raw", {})[name] = cdata[key]
+            elif key.endswith(suffix):
+                name = key[: -len(suffix)]
+                directions.setdefault("cmd_per_constraint", {})[name] = cdata[key]
     else:
-        logger.warning("No fold CMDs at %s — cmd_overall unavailable", fold_cmds_path)
+        # Legacy per-layer files
+        fold_cmds_path = run_dir / f"fold_cmds_L{layer}.npz"
+        if fold_cmds_path.exists():
+            fold_data = np.load(fold_cmds_path)
+            vecs = np.stack([fold_data[k] for k in fold_data.files])
+            mean_cmd = vecs.mean(axis=0)
+            norm = np.linalg.norm(mean_cmd)
+            directions["cmd_overall"] = mean_cmd / norm if norm > 0 else mean_cmd
+        else:
+            logger.warning("No fold CMDs at %s — cmd_overall unavailable", fold_cmds_path)
 
-    # Per-constraint CMDs
-    constraint_cmds_path = run_dir / f"constraint_cmds_L{layer}.npz"
-    if constraint_cmds_path.exists():
-        cdata = np.load(constraint_cmds_path)
-        directions["cmd_per_constraint"] = {k: cdata[k] for k in cdata.files}
-    else:
-        logger.warning("No constraint CMDs at %s", constraint_cmds_path)
+        constraint_cmds_path = run_dir / f"constraint_cmds_L{layer}.npz"
+        if constraint_cmds_path.exists():
+            cdata = np.load(constraint_cmds_path)
+            directions["cmd_per_constraint"] = {k: cdata[k] for k in cdata.files}
+        else:
+            logger.warning("No constraint CMDs at %s", constraint_cmds_path)
 
     return directions
 
