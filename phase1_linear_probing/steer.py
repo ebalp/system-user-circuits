@@ -100,7 +100,82 @@ def load_steering_directions(
     return directions
 
 
-# ── nnsight Patch ────────────────────────────────────────────────────────────
+# ── Readout (Projection Measurement) ────────────────────────────────────────
+
+
+def readout_projections(
+    model,
+    tokenizer,
+    prompts: list[str],
+    direction_vectors: dict[str, np.ndarray],
+    layer: int,
+) -> list[dict[str, float]]:
+    """Measure projections of last-token hidden states onto directions.
+
+    Runs a single forward pass (no generation) with a readout hook at
+    *layer*, then computes dot products with each direction vector.
+
+    Parameters
+    ----------
+    model : nnsight.LanguageModel or HF model
+        Loaded model.
+    tokenizer
+        HuggingFace tokenizer.
+    prompts : list[str]
+        Pre-formatted prompt strings.
+    direction_vectors : dict[str, np.ndarray]
+        Named direction vectors, each shape ``(d_model,)``.
+    layer : int
+        Layer index to read activations from.
+
+    Returns
+    -------
+    list[dict[str, float]]
+        One dict per prompt mapping direction name to projection value.
+    """
+    device = next(model.parameters()).device
+    hf_model = model._model if hasattr(model, "_model") else model
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
+
+    encoded = tokenizer(
+        prompts, return_tensors="pt", padding=True, add_special_tokens=False,
+    )
+    input_ids = encoded.input_ids.to(device)
+    attention_mask = encoded.attention_mask.to(device)
+
+    # Hook to capture last-token hidden state
+    captured: dict[str, torch.Tensor] = {}
+
+    def _readout_hook(module, input, output):
+        h = output[0] if isinstance(output, tuple) else output
+        # With left-padding, last token is always at seq_len - 1
+        captured["h"] = h[:, -1, :].detach().float()
+
+    handle = _get_decoder_layers(hf_model)[layer].register_forward_hook(_readout_hook)
+    try:
+        with torch.no_grad():
+            hf_model(input_ids=input_ids, attention_mask=attention_mask)
+    finally:
+        handle.remove()
+
+    h = captured["h"]  # (batch, d_model)
+
+    # Build direction matrix and project
+    dir_names = list(direction_vectors.keys())
+    D = np.stack([direction_vectors[n] for n in dir_names], axis=1)  # (d_model, k)
+    D_t = torch.tensor(D, dtype=torch.float32, device=device)
+    projections = (h @ D_t).cpu().numpy()  # (batch, k)
+
+    results = []
+    for i in range(len(prompts)):
+        results.append({
+            name: float(projections[i, j])
+            for j, name in enumerate(dir_names)
+        })
+    return results
 
 
 # ── Batched Generation ───────────────────────────────────────────────────────
@@ -123,6 +198,45 @@ def _get_decoder_layers(hf_model):
     )
 
 
+def _make_multi_projection_hook(
+    directions_tensor: torch.Tensor,
+    targets_tensor: torch.Tensor,
+):
+    """Build a forward hook that pins projections along multiple directions.
+
+    For *k* directions at the same layer, solves:
+
+        h' = h + D @ (D^T D)^{-1} @ (targets - D^T h)
+
+    where D is (d_model, k) and targets is (k,).  When k=1 this reduces
+    to the single-direction formula ``h + (t - h·v) * v``.
+    """
+    # D: (d_model, k), targets: (k,)
+    D = directions_tensor  # already on device
+    t = targets_tensor
+    # Precompute (D^T D)^{-1} in float32 — small k×k matrix
+    D_f32 = D.float()
+    DtD_inv = torch.linalg.inv(D_f32.T @ D_f32)  # (k, k)
+    # Precompute D @ (D^T D)^{-1} to avoid repeated matmuls in the hook
+    D_DtDinv = (D_f32 @ DtD_inv).half()  # back to fp16: (d_model, k)
+
+    def _hook(module, input, output):
+        h = output[0] if isinstance(output, tuple) else output
+        # h: (batch, seq, d_model)
+        # D^T h: project h onto each direction → (batch, seq, k)
+        Dt_h = torch.einsum("dk,bsd->bsk", D, h)
+        # residual: (batch, seq, k)
+        residual = t.unsqueeze(0).unsqueeze(0) - Dt_h
+        # adjustment: D_DtDinv @ residual → (batch, seq, d_model)
+        correction = torch.einsum("dk,bsk->bsd", D_DtDinv, residual)
+        h_new = h + correction
+        if isinstance(output, tuple):
+            return (h_new, *output[1:])
+        return h_new
+
+    return _hook
+
+
 def _generate_batch(
     model,
     tokenizer,
@@ -132,6 +246,7 @@ def _generate_batch(
     layer: int | None = None,
     alpha: float = 0.0,
     projection_target: float | None = None,
+    projections: list[tuple[np.ndarray, int, float]] | None = None,
     max_new_tokens: int = 512,
 ) -> list[str]:
     """Core batched generation primitive.
@@ -140,10 +255,14 @@ def _generate_batch(
     ``generate()`` for both steered (alpha != 0, via forward hook) and
     unsteered (alpha == 0) paths to ensure identical backends.
 
-    Steering modes (mutually exclusive):
-    - **additive** (default): ``h' = h + alpha * v``
-    - **projection**: ``h' = h + (target - h·v) * v`` — pins the component
-      along *v* to a constant value.  Set ``projection_target`` to enable.
+    Steering modes (mutually exclusive, checked in this order):
+
+    1. **Multi-projection** (``projections`` is set): pins the component
+       along each direction to its target value.  Directions at the same
+       layer are handled jointly via least-squares solve.
+    2. **Single projection** (``projection_target`` is set):
+       ``h' = h + (target - h·v) * v``.
+    3. **Additive** (default): ``h' = h + alpha * v``.
 
     Parameters
     ----------
@@ -154,16 +273,17 @@ def _generate_batch(
     prompts : list[str]
         Pre-formatted prompt strings.
     direction_vector : np.ndarray or None
-        Steering direction (required when ``alpha != 0`` or
-        ``projection_target is not None``).
+        Steering direction (single-direction modes).
     layer : int or None
-        Layer index for steering.
+        Layer index (single-direction modes).
     alpha : float
         Steering strength (additive mode).  0 = unsteered baseline.
-        Ignored when ``projection_target`` is set.
     projection_target : float or None
-        If set, use projection mode: pin the component along
-        ``direction_vector`` to this value.
+        If set, use single-direction projection mode.
+    projections : list of (direction_vector, layer, target) or None
+        Multi-projection mode: each tuple specifies a direction (d_model,),
+        a layer index, and a target projection value.  Directions at the
+        same layer are solved jointly.
     max_new_tokens : int
         Maximum tokens to generate.
 
@@ -199,44 +319,67 @@ def _generate_batch(
     )
 
     hf_model = model._model if hasattr(model, "_model") else model
+    handles: list = []
 
-    if direction_vector is not None:
-        steer_vec = torch.tensor(
-            direction_vector, dtype=torch.float16,
-        ).to(device)
+    try:
+        if projections is not None:
+            # Multi-projection mode: group by layer, register one hook per layer
+            from collections import defaultdict
+            layer_groups: dict[int, list[tuple[np.ndarray, float]]] = defaultdict(list)
+            for vec, lyr, tgt in projections:
+                layer_groups[lyr].append((vec, tgt))
 
-        if projection_target is not None:
-            # Projection mode: pin h·v to a constant target value.
-            # h' = h + (target - h·v) * v
-            target = projection_target
+            decoder_layers = _get_decoder_layers(hf_model)
+            for lyr, group in layer_groups.items():
+                vecs = [v for v, _ in group]
+                tgts = [t for _, t in group]
+                D = torch.tensor(
+                    np.stack(vecs, axis=1), dtype=torch.float16,
+                ).to(device)  # (d_model, k)
+                t = torch.tensor(tgts, dtype=torch.float16).to(device)  # (k,)
+                hook = _make_multi_projection_hook(D, t)
+                handles.append(decoder_layers[lyr].register_forward_hook(hook))
 
-            def _steering_hook(module, input, output):
-                h = output[0] if isinstance(output, tuple) else output
-                # h: (batch, seq, d_model), steer_vec: (d_model,)
-                proj = (h * steer_vec).sum(dim=-1, keepdim=True)
-                h_new = h + (target - proj) * steer_vec
-                if isinstance(output, tuple):
-                    return (h_new, *output[1:])
-                return h_new
-        else:
-            # Additive mode: h' = h + alpha * v
-            def _steering_hook(module, input, output):
-                if isinstance(output, tuple):
-                    return (output[0] + alpha * steer_vec, *output[1:])
-                return output + alpha * steer_vec
-
-        handle = _get_decoder_layers(hf_model)[layer].register_forward_hook(
-            _steering_hook,
-        )
-        try:
             with torch.no_grad():
                 output = hf_model.generate(**gen_kwargs)
-        finally:
-            handle.remove()
-    else:
-        # Unsteered baseline: raw HuggingFace generate, no hook
-        with torch.no_grad():
-            output = hf_model.generate(**gen_kwargs)
+
+        elif direction_vector is not None:
+            steer_vec = torch.tensor(
+                direction_vector, dtype=torch.float16,
+            ).to(device)
+
+            if projection_target is not None:
+                # Single projection mode: pin h·v to a constant target value.
+                target = projection_target
+
+                def _steering_hook(module, input, output):
+                    h = output[0] if isinstance(output, tuple) else output
+                    proj = (h * steer_vec).sum(dim=-1, keepdim=True)
+                    h_new = h + (target - proj) * steer_vec
+                    if isinstance(output, tuple):
+                        return (h_new, *output[1:])
+                    return h_new
+            else:
+                # Additive mode: h' = h + alpha * v
+                def _steering_hook(module, input, output):
+                    if isinstance(output, tuple):
+                        return (output[0] + alpha * steer_vec, *output[1:])
+                    return output + alpha * steer_vec
+
+            handles.append(
+                _get_decoder_layers(hf_model)[layer].register_forward_hook(
+                    _steering_hook,
+                )
+            )
+            with torch.no_grad():
+                output = hf_model.generate(**gen_kwargs)
+        else:
+            # Unsteered baseline: raw HuggingFace generate, no hook
+            with torch.no_grad():
+                output = hf_model.generate(**gen_kwargs)
+    finally:
+        for h in handles:
+            h.remove()
 
     responses = []
     for i in range(len(prompts)):

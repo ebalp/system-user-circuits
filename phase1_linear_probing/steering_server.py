@@ -44,6 +44,7 @@ from data import (
 from steer import (
     _generate_batch,
     load_steering_directions,
+    readout_projections,
     score_steered_output,
 )
 
@@ -57,6 +58,7 @@ _cfg: ProbeConfig | None = None
 _gpu_lock = asyncio.Lock()
 _batch_size: int = 48
 _layers: list[int] = []
+_projection_stats: dict | None = None
 
 
 # ── Pydantic models ─────────────────────────────────────────────────────────
@@ -85,13 +87,23 @@ class ScoreMeta(BaseModel):
     instruction_args: dict = {}
 
 
+class ProjectionSpec(BaseModel):
+    """Pin the projection along a direction to a target value at a layer."""
+    direction: str | list[float]
+    layer: int
+    target: float
+
+
 class GenerateRequest(BaseModel):
     prompts: list[PromptItem]
+    # Single-direction mode (backward compatible)
     direction: str | list[float] | None = None
     layer: int = 25
     mode: Literal["additive", "projection"] = "additive"
     alpha: float = 0.0
     projection_target: float | None = None
+    # Multi-projection mode — takes precedence when set
+    projections: list[ProjectionSpec] | None = None
     max_new_tokens: int = 512
     score: bool = False
     score_meta: list[ScoreMeta] | None = None
@@ -153,28 +165,41 @@ class HealthResponse(BaseModel):
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _resolve_direction(req: GenerateRequest) -> np.ndarray | None:
-    """Resolve direction from request — name lookup or raw vector."""
-    if req.direction is None:
-        return None
-
-    if isinstance(req.direction, str):
-        if req.direction not in _directions:
+def _resolve_direction_value(direction: str | list[float]) -> np.ndarray:
+    """Resolve a direction name or raw vector to an ndarray."""
+    if isinstance(direction, str):
+        if direction not in _directions:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unknown direction {req.direction!r}. "
+                detail=f"Unknown direction {direction!r}. "
                 f"Available: {list(_directions.keys())}",
             )
-        return _directions[req.direction]
+        return _directions[direction]
 
-    # Raw vector
-    vec = np.array(req.direction, dtype=np.float32)
+    vec = np.array(direction, dtype=np.float32)
     if vec.shape != (_d_model,):
         raise HTTPException(
             status_code=400,
-            detail=f"Direction vector length {len(req.direction)} != d_model {_d_model}",
+            detail=f"Direction vector length {len(direction)} != d_model {_d_model}",
         )
     return vec
+
+
+def _resolve_direction(req: GenerateRequest) -> np.ndarray | None:
+    """Resolve single direction from request — name lookup or raw vector."""
+    if req.direction is None:
+        return None
+    return _resolve_direction_value(req.direction)
+
+
+def _resolve_projections(
+    specs: list[ProjectionSpec],
+) -> list[tuple[np.ndarray, int, float]]:
+    """Resolve a list of ProjectionSpec into (vector, layer, target) tuples."""
+    return [
+        (_resolve_direction_value(s.direction), s.layer, s.target)
+        for s in specs
+    ]
 
 
 def _format_prompts(items: list[PromptItem]) -> list[str]:
@@ -193,11 +218,12 @@ def _format_prompts(items: list[PromptItem]) -> list[str]:
 def _generate_chunked(
     prompts: list[str],
     *,
-    direction_vector: np.ndarray | None,
-    layer: int | None,
-    alpha: float,
-    projection_target: float | None,
-    max_new_tokens: int,
+    direction_vector: np.ndarray | None = None,
+    layer: int | None = None,
+    alpha: float = 0.0,
+    projection_target: float | None = None,
+    projections: list[tuple[np.ndarray, int, float]] | None = None,
+    max_new_tokens: int = 512,
 ) -> list[str]:
     """Generate with server-side batching."""
     all_responses: list[str] = []
@@ -209,6 +235,7 @@ def _generate_chunked(
             layer=layer,
             alpha=alpha,
             projection_target=projection_target,
+            projections=projections,
             max_new_tokens=max_new_tokens,
         )
         all_responses.extend(responses)
@@ -281,6 +308,15 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 print(f"Warning: could not load directions for L{layer}: {e}")
 
+    # Projection stats (optional — pre-computed by compute_projection_stats.py)
+    global _projection_stats
+    if args.run_id:
+        stats_path = _cfg.run_dir / "projection_stats.json"
+        if stats_path.exists():
+            import json
+            _projection_stats = json.loads(stats_path.read_text())
+            print(f"Loaded projection stats: {len(_projection_stats)} groups")
+
     print(f"Server ready — {len(_directions)} directions loaded")
     print(f"Directions: {list(_directions.keys())}")
 
@@ -350,21 +386,123 @@ async def directions():
     )
 
 
+class DirectionVectorResponse(BaseModel):
+    name: str
+    shape: list[int]
+    norm: float
+    vector: list[float]
+
+
+@app.get("/direction_vector/{name}", response_model=DirectionVectorResponse)
+async def direction_vector(name: str):
+    """Return the actual vector for a named direction."""
+    if name not in _directions:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown direction {name!r}. Use /directions for available patterns.",
+        )
+    vec = _directions[name]
+    return DirectionVectorResponse(
+        name=name,
+        shape=list(vec.shape),
+        norm=float(np.linalg.norm(vec)),
+        vector=vec.tolist(),
+    )
+
+
+@app.get("/projection_stats")
+async def projection_stats(
+    constraint_type: str | None = None,
+    layer: int | None = None,
+):
+    """Serve pre-computed projection distribution statistics."""
+    if _projection_stats is None:
+        raise HTTPException(
+            404, "Projection stats not computed. Run compute_projection_stats.py first.",
+        )
+    if constraint_type is None and layer is None:
+        return _projection_stats
+
+    # Filter by constraint and/or layer
+    result = {}
+    groups = [constraint_type] if constraint_type else list(_projection_stats.keys())
+    for g in groups:
+        if g not in _projection_stats:
+            continue
+        if layer is not None:
+            lk = f"L{layer}"
+            if lk in _projection_stats[g]:
+                result.setdefault(g, {})[lk] = _projection_stats[g][lk]
+        else:
+            result[g] = _projection_stats[g]
+    return result
+
+
+class ProjectRequest(BaseModel):
+    prompts: list[PromptItem]
+    directions: list[str]
+    layer: int = 25
+
+
+class ProjectionResult(BaseModel):
+    prompt_idx: int
+    values: dict[str, float]
+
+
+class ProjectResponse(BaseModel):
+    projections: list[ProjectionResult]
+    elapsed_s: float
+
+
+@app.post("/project", response_model=ProjectResponse)
+async def project(req: ProjectRequest):
+    """Readout-only: measure projections onto directions without steering."""
+    # Resolve direction vectors
+    dir_vectors: dict[str, np.ndarray] = {}
+    for name in req.directions:
+        dir_vectors[name] = _resolve_direction_value(name)
+
+    prompts = _format_prompts(req.prompts)
+
+    t0 = time.time()
+    async with _gpu_lock:
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(
+            None,
+            lambda: readout_projections(
+                _model, _tokenizer, prompts, dir_vectors, req.layer,
+            ),
+        )
+    elapsed = time.time() - t0
+
+    items = [
+        ProjectionResult(prompt_idx=i, values=vals)
+        for i, vals in enumerate(results)
+    ]
+    return ProjectResponse(projections=items, elapsed_s=elapsed)
+
+
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(req: GenerateRequest):
-    direction_vector = _resolve_direction(req)
-
-    # Determine steering kwargs
-    gen_kwargs = dict(
-        direction_vector=direction_vector,
-        layer=req.layer if direction_vector is not None else None,
-        alpha=req.alpha,
-        projection_target=None,
-        max_new_tokens=req.max_new_tokens,
-    )
-    if req.mode == "projection" and direction_vector is not None:
-        gen_kwargs["projection_target"] = req.projection_target
-        gen_kwargs["alpha"] = 0.0  # projection mode ignores alpha
+    # Multi-projection mode takes precedence
+    if req.projections:
+        proj_tuples = _resolve_projections(req.projections)
+        gen_kwargs = dict(
+            projections=proj_tuples,
+            max_new_tokens=req.max_new_tokens,
+        )
+    else:
+        direction_vector = _resolve_direction(req)
+        gen_kwargs = dict(
+            direction_vector=direction_vector,
+            layer=req.layer if direction_vector is not None else None,
+            alpha=req.alpha,
+            projection_target=None,
+            max_new_tokens=req.max_new_tokens,
+        )
+        if req.mode == "projection" and direction_vector is not None:
+            gen_kwargs["projection_target"] = req.projection_target
+            gen_kwargs["alpha"] = 0.0  # projection mode ignores alpha
 
     # Format prompts
     prompts = _format_prompts(req.prompts)
