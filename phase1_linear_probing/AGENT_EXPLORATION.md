@@ -120,7 +120,7 @@ import sys
 sys.path.insert(0, "phase1_linear_probing")
 from explore_utils import (
     get_sample_ids, generate, summarize, save_experiment,
-    steering_clues, get_projection_stats, CONFLICT_IDS,
+    steering_clues, get_projection_stats, CONFLICT_IDS, FINDINGS_DIR,
 )
 ```
 
@@ -156,7 +156,7 @@ config = {"direction": "probe_L12", "layer": 12, "mode": "additive",
           "alpha": clues["suggested_alpha"]}
 summary = summarize(result["responses"], "probe_L12_add")
 save_experiment("probe_L12_add", config, result["responses"],
-                "phase1_linear_probing/data/runs/curated4-8b-v002/agent_findings",
+                FINDINGS_DIR,
                 notes="L12 additive at 3x separation. list b_to_a and tense b_to_a "
                       "showed genuine flips. json barely moved. Starting_word resistant. "
                       "Try higher alpha next.")
@@ -469,7 +469,7 @@ Use the coherence module but also manually categorize responses you read:
 
 ## Output Format
 
-### Per-config result (save to `{run_dir}/agent_findings/`)
+### Per-config result (save to `{run_dir}/exploration_v2/`)
 
 ```json
 {
@@ -542,4 +542,4 @@ With 4 constraints, parallelize analysis work across sub-agents. The GPU has a l
 
 ## Saving Results
 
-Write results incrementally to `{run_dir}/agent_findings/` after each experiment using `save_experiment()` from `explore_utils`. The server also logs everything to `server_log.jsonl` as a backup.
+Write results incrementally to `{run_dir}/exploration_v2/` after each experiment using `save_experiment()` from `explore_utils`. The server also logs everything to `server_log.jsonl` as a backup.

@@ -31,6 +31,9 @@ CONFLICT_IDS = [
     "starting_word_hello_greetings",
 ]
 
+# Default output directory for this exploration (distinct from prior agent_findings/)
+FINDINGS_DIR = "phase1_linear_probing/data/runs/curated4-8b-v002/exploration_v2"
+
 
 def set_base_url(url: str):
     """Override the server base URL (default http://localhost:8000)."""
