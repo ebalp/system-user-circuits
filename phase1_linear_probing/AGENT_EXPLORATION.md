@@ -46,6 +46,10 @@ The emphasis is on **genuine behavioral change**, not surface-level metric shift
 
 You are responsible for the full pipeline on the GPU instance.
 
+### Hardware
+
+This exploration runs on an **A100 GPU** (80GB). The prior exploration used an A10 (24GB). The A100 supports batch_size=128, making experiments ~16x faster. Use this budget to run larger sample sizes and more configurations.
+
 ### Starting the steering server
 
 ```bash
@@ -55,10 +59,10 @@ uv run python phase1_linear_probing/steering_server.py \
   --model meta-llama/Llama-3.1-8B-Instruct \
   --run-id curated4-8b-v002 \
   --layers 2 4 6 8 10 12 14 16 18 20 \
-  --batch-size 8
+  --batch-size 128
 ```
 
-If OOM: reduce `--batch-size` (try 4, then 2) or reduce `--layers` to the set you're actively testing. You can restart with different layers as the exploration progresses.
+If OOM: reduce `--batch-size` (try 64, then 32). You can restart with different layers as the exploration progresses.
 
 ### Computing per-conflict probes (if not already present)
 
@@ -80,7 +84,7 @@ uv run python phase1_linear_probing/compute_cmds.py \
 
 ### Optimizing batch size
 
-Start with `--batch-size 8`. Run a quick generation (4 prompts) and check GPU memory with `nvidia-smi`. If memory allows, try 16, 24, 32. The server processes in chunks of `batch_size`, so larger = faster.
+Start with `--batch-size 128` on the A100. Run a quick generation (4 prompts) and check GPU memory with `nvidia-smi`. The server processes in chunks of `batch_size`, so larger = faster. With batch_size=128 on an A100, a 200-sample experiment takes ~15-20 seconds.
 
 ## Coherence Protocol (MANDATORY)
 
@@ -166,11 +170,37 @@ df_c = prepare_condition_c(df_all, "binary", conflict_ids=cfg.conflict_ids)
 df_c = df_c.sort_values("conflict_id").reset_index(drop=True)
 ```
 
+### Sample structure (IMPORTANT — understand before running experiments)
+
+All steering experiments use **followed_user-only** samples from Condition C. This means:
+
+- **Every sample in your batch originally followed the user instruction** (y=0, label=`followed_user`)
+- The **baseline SCR is ~2-5%** (a few samples that the unsteered HF generate() happens to flip)
+- If steering produces `followed_system` on a sample, **that's a genuine behavioral flip**
+- `followed_neither` means the response is degenerate (verifier can't classify it)
+- `followed_both` means both verifiers trigger (ambiguous — confidence=0.5)
+
+**Each sample in the batch has metadata** via `score_meta`:
+- `conflict_id`: which of the 4 constraints (e.g., `json_only_vs_plain`)
+- `direction`: `a_to_b` or `b_to_a` (which instruction is system vs user)
+  - `a_to_b`: system=variant_a, user=variant_b (e.g., system=json, user=plain)
+  - `b_to_a`: system=variant_b, user=variant_a (e.g., system=plain, user=json)
+
+**Always break down results by (conflict_id, direction)**. Aggregate SCR hides the b_to_a asymmetry.
+
 ### Building sample sets
 
 ```python
-def build_sample(df_user, conflict_ids, n_per_dir=12, seed=42):
-    """Build followed_user-only sample set for steering experiments."""
+import pandas as pd
+
+df_user = df_c[df_c.y == 0]  # followed_user only
+
+def build_sample(df_user, conflict_ids, n_per_dir=25, seed=42):
+    """Build followed_user-only sample set for steering experiments.
+
+    Returns (prompts, score_meta) ready for the /generate endpoint.
+    Total samples = len(conflict_ids) * 2 directions * n_per_dir.
+    """
     samples = []
     for cid in conflict_ids:
         for d in ["a_to_b", "b_to_a"]:
@@ -188,7 +218,37 @@ def build_sample(df_user, conflict_ids, n_per_dir=12, seed=42):
     return prompts, score_meta
 ```
 
-Use `n_per_dir=12` for quick exploration, `n_per_dir=25` for validation runs.
+With 4 constraints, `n_per_dir=25` gives 200 samples per experiment. On the A100 with batch_size=128 this takes ~15-20 seconds — use n=25 as the default, not 12.
+
+### Summarizing results per constraint and direction
+
+```python
+def summarize(results, score_meta, label, conflict_ids):
+    """Print per-constraint, per-direction breakdown with coherence."""
+    from coherence import score_coherence, compute_genuine_scr
+    scores = [score_coherence(r["text"]) for r in results]
+    labels = [r["label"] for r in results]
+    metrics = compute_genuine_scr(labels, scores)
+    print(f"  {label}: genuine_scr={metrics['genuine_scr']:.3f} "
+          f"raw_scr={metrics['raw_scr']:.3f} "
+          f"quality={metrics['quality_breakdown']}")
+    for cid in conflict_ids:
+        for d in ["a_to_b", "b_to_a"]:
+            idxs = [i for i, m in enumerate(score_meta)
+                    if m["conflict_id"] == cid and m["direction"] == d]
+            if not idxs:
+                continue
+            sub_labels = [labels[i] for i in idxs]
+            sub_scores = [scores[i] for i in idxs]
+            sub_metrics = compute_genuine_scr(sub_labels, sub_scores)
+            n = len(idxs)
+            n_sys = sum(1 for i in idxs if labels[i] == "followed_system")
+            n_gen = sub_metrics["n_genuine"]
+            n_gen_sys = sub_metrics["genuine_system"]
+            print(f"    {cid:35s} {d:6s}: "
+                  f"sys={n_sys:2d}/{n} gen_sys={n_gen_sys:2d}/{n_gen} "
+                  f"genuine_scr={sub_metrics['genuine_scr']:.3f}")
+```
 
 ## Experimental Protocol
 
@@ -196,7 +256,7 @@ Use `n_per_dir=12` for quick exploration, `n_per_dir=25` for validation runs.
 
 The previous exploration made specific claims. Validate each with coherence scoring and larger sample sizes.
 
-**Build sample set**: n=12 per direction per constraint = 96 samples total. Use followed_user-only filtering.
+**Build sample set**: n=25 per direction per constraint = 200 samples total. Use followed_user-only filtering. On the A100 each experiment takes ~15-20 seconds.
 
 #### 1a. Baseline
 Generate unsteered responses. Record genuine_scr as the reference point (expect ~2-5%).
@@ -232,6 +292,8 @@ Now explore systematically. For each direction type, sweep layers to find the ca
 2. Per-conflict probe for each of the 4 constraints (NEW — compute first if needed)
 3. Per-conflict CMD for each (especially list_bullets)
 4. Overall CMD (expect degenerate — use as negative control for coherence scoring)
+5. Mean of per-conflict probes (average the 4 per-conflict probe vectors, normalize)
+6. Mean of per-conflict CMDs (same)
 
 **Layers to test**: L2, L4, L6, L8, L10, L12, L14, L16, L18, L20
 
@@ -241,20 +303,23 @@ Now explore systematically. For each direction type, sweep layers to find the ca
   - L8-L12: alpha=5
   - L14-L16: alpha=8-10
   - L18-L20: alpha=5
-- Generate 96 samples, coherence-score all, compute genuine_scr
+- Generate 200 samples (n_per_dir=25), coherence-score all, compute genuine_scr
 - If genuine_scr > baseline + 0.10, flag for deep dive
+
+With the A100, the full sweep (6 direction types × 10 layers = 60 experiments × 200 samples) takes ~15-20 minutes. This is affordable.
 
 This phase produces a **layer × direction heatmap** of genuine_scr. Identify:
 - Which layers have causal impact for each direction type
 - Whether per-conflict probes outperform the overall probe for their own constraint
 - Whether there are direction types that work at layers where others don't
+- Whether mean-of-per-conflict directions outperform the overall probe
 
 ### Phase 3: Deep Dives on Promising Configs (~30 min)
 
 For each config flagged in Phase 2:
 
 1. **Alpha/target sweep**: Test 3-4 values around the flagged config
-2. **Expanded sample set**: n=25 per direction per constraint (200 total)
+2. **Expanded sample set**: n=50 per direction per constraint (400 total)
 3. **Read responses**: For every `followed_system` response with quality=genuine, read the text and confirm it genuinely complies
 4. **Per-constraint × per-direction breakdown**: Report genuine_scr separately for each (constraint, direction_type, a_to_b/b_to_a) cell
 5. **Projection mode**: If the layer responds to additive, also test projection mode at that layer
