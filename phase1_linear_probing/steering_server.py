@@ -311,6 +311,11 @@ async def lifespan(app: FastAPI):
     _layers = args.layers if args.layers is not None else list(range(n_layers))
     print(f"d_model: {_d_model}, layers: {n_layers}")
 
+    # Activate per-model thresholds for verifiers
+    from phase0_v2.config.thresholds import activate_model
+    activate_model(_cfg.model_name)
+    print(f"Activated per-model thresholds for {_cfg.model_name}")
+
     # Tokenizer
     _tokenizer = AutoTokenizer.from_pretrained(_cfg.model_name)
 
