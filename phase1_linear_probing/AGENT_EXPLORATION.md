@@ -73,7 +73,7 @@ uv run python phase1_linear_probing/compute_per_constraint_probes.py \
   --probe-C 0.01
 ```
 
-The per-conflict probes are underdetermined (d_model=4096 >> minority class ~192 samples). Strong regularization (low C) is needed. Try C=0.01 first; if CV AUC is low, also try C=0.001 and C=0.1. The server will automatically load `constraint_probes.npz` on next restart.
+The per-conflict probes are underdetermined (d_model=4096 >> minority class ~768 samples). Strong regularization (low C) is needed. Try C=0.01 first; if CV AUC is low, also try C=0.001 and C=0.1. The server will automatically load `constraint_probes.npz` on next restart.
 
 ### Computing CMDs (if not present for needed layers)
 
@@ -195,7 +195,7 @@ import pandas as pd
 
 df_user = df_c[df_c.y == 0]  # followed_user only
 
-def build_sample(df_user, conflict_ids, n_per_dir=24, seed=42):
+def build_sample(df_user, conflict_ids, n_per_dir=96, seed=42):
     """Build followed_user-only sample set for steering experiments.
 
     Returns (prompts, score_meta) ready for the /generate endpoint.
@@ -218,7 +218,7 @@ def build_sample(df_user, conflict_ids, n_per_dir=24, seed=42):
     return prompts, score_meta
 ```
 
-With 4 constraints, `n_per_dir=24` gives 192 samples per experiment. On the A100 with batch_size=128 this takes ~15-20 seconds — use n=25 as the default, not 12.
+With 4 constraints, `n_per_dir=96` gives 768 samples per experiment. On the A100 with batch_size=128 this takes ~15-20 seconds — use n=25 as the default, not 12.
 
 ### Summarizing results per constraint and direction
 
@@ -256,7 +256,7 @@ def summarize(results, score_meta, label, conflict_ids):
 
 The previous exploration made specific claims. Validate each with coherence scoring and larger sample sizes.
 
-**Build sample set**: n=25 per direction per constraint = 192 samples total. Use followed_user-only filtering. On the A100 each experiment takes ~15-20 seconds.
+**Build sample set**: n=25 per direction per constraint = 768 samples total. Use followed_user-only filtering. On the A100 each experiment takes ~15-20 seconds.
 
 #### 1a. Baseline
 Generate unsteered responses. Record genuine_scr as the reference point (expect ~2-5%).
@@ -303,10 +303,10 @@ Now explore systematically. For each direction type, sweep layers to find the ca
   - L8-L12: alpha=5
   - L14-L16: alpha=8-10
   - L18-L20: alpha=5
-- Generate 192 samples (n_per_dir=24), coherence-score all, compute genuine_scr
+- Generate 768 samples (n_per_dir=96), coherence-score all, compute genuine_scr
 - If genuine_scr > baseline + 0.10, flag for deep dive
 
-With the A100, the full sweep (6 direction types × 10 layers = 60 experiments × 192 samples) takes ~15-20 minutes. This is affordable.
+With the A100, the full sweep (6 direction types × 10 layers = 60 experiments × 768 samples) takes ~15-20 minutes. This is affordable.
 
 This phase produces a **layer × direction heatmap** of genuine_scr. Identify:
 - Which layers have causal impact for each direction type
@@ -319,7 +319,7 @@ This phase produces a **layer × direction heatmap** of genuine_scr. Identify:
 For each config flagged in Phase 2:
 
 1. **Alpha/target sweep**: Test 3-4 values around the flagged config
-2. **Expanded sample set**: n=48 per direction per constraint (384 total = 4 batches)
+2. **Expanded sample set**: use all available followed_user samples for the constraint
 3. **Read responses**: For every `followed_system` response with quality=genuine, read the text and confirm it genuinely complies
 4. **Per-constraint × per-direction breakdown**: Report genuine_scr separately for each (constraint, direction_type, a_to_b/b_to_a) cell
 5. **Projection mode**: If the layer responds to additive, also test projection mode at that layer
