@@ -59,10 +59,10 @@ uv run python phase1_linear_probing/steering_server.py \
   --model meta-llama/Llama-3.1-8B-Instruct \
   --run-id curated4-8b-v002 \
   --layers 2 4 6 8 10 12 14 16 18 20 \
-  --batch-size 128
+  --batch-size 96
 ```
 
-If OOM: reduce `--batch-size` (try 64, then 32). You can restart with different layers as the exploration progresses.
+The server is already running with `--batch-size 96` on an A100. Do NOT restart it unless needed. If OOM: reduce to 64, then 32.
 
 ### Computing per-conflict probes (if not already present)
 
@@ -73,7 +73,7 @@ uv run python phase1_linear_probing/compute_per_constraint_probes.py \
   --probe-C 0.01
 ```
 
-The per-conflict probes are underdetermined (d_model=4096 >> minority class ~200 samples). Strong regularization (low C) is needed. Try C=0.01 first; if CV AUC is low, also try C=0.001 and C=0.1. The server will automatically load `constraint_probes.npz` on next restart.
+The per-conflict probes are underdetermined (d_model=4096 >> minority class ~192 samples). Strong regularization (low C) is needed. Try C=0.01 first; if CV AUC is low, also try C=0.001 and C=0.1. The server will automatically load `constraint_probes.npz` on next restart.
 
 ### Computing CMDs (if not present for needed layers)
 
@@ -84,7 +84,7 @@ uv run python phase1_linear_probing/compute_cmds.py \
 
 ### Optimizing batch size
 
-Start with `--batch-size 128` on the A100. Run a quick generation (4 prompts) and check GPU memory with `nvidia-smi`. The server processes in chunks of `batch_size`, so larger = faster. With batch_size=128 on an A100, a 200-sample experiment takes ~15-20 seconds.
+The server is running with `--batch-size 96` on an A100. It processes prompts in chunks of 96, so **send prompts in multiples of 96** to maximize GPU utilization (192, 288, etc. are ideal). A 192-sample experiment (~2 batches) takes ~15-20 seconds.
 
 ## Coherence Protocol (MANDATORY)
 
@@ -195,7 +195,7 @@ import pandas as pd
 
 df_user = df_c[df_c.y == 0]  # followed_user only
 
-def build_sample(df_user, conflict_ids, n_per_dir=25, seed=42):
+def build_sample(df_user, conflict_ids, n_per_dir=24, seed=42):
     """Build followed_user-only sample set for steering experiments.
 
     Returns (prompts, score_meta) ready for the /generate endpoint.
@@ -218,7 +218,7 @@ def build_sample(df_user, conflict_ids, n_per_dir=25, seed=42):
     return prompts, score_meta
 ```
 
-With 4 constraints, `n_per_dir=25` gives 200 samples per experiment. On the A100 with batch_size=128 this takes ~15-20 seconds — use n=25 as the default, not 12.
+With 4 constraints, `n_per_dir=24` gives 192 samples per experiment. On the A100 with batch_size=128 this takes ~15-20 seconds — use n=25 as the default, not 12.
 
 ### Summarizing results per constraint and direction
 
@@ -256,7 +256,7 @@ def summarize(results, score_meta, label, conflict_ids):
 
 The previous exploration made specific claims. Validate each with coherence scoring and larger sample sizes.
 
-**Build sample set**: n=25 per direction per constraint = 200 samples total. Use followed_user-only filtering. On the A100 each experiment takes ~15-20 seconds.
+**Build sample set**: n=25 per direction per constraint = 192 samples total. Use followed_user-only filtering. On the A100 each experiment takes ~15-20 seconds.
 
 #### 1a. Baseline
 Generate unsteered responses. Record genuine_scr as the reference point (expect ~2-5%).
@@ -303,10 +303,10 @@ Now explore systematically. For each direction type, sweep layers to find the ca
   - L8-L12: alpha=5
   - L14-L16: alpha=8-10
   - L18-L20: alpha=5
-- Generate 200 samples (n_per_dir=25), coherence-score all, compute genuine_scr
+- Generate 192 samples (n_per_dir=24), coherence-score all, compute genuine_scr
 - If genuine_scr > baseline + 0.10, flag for deep dive
 
-With the A100, the full sweep (6 direction types × 10 layers = 60 experiments × 200 samples) takes ~15-20 minutes. This is affordable.
+With the A100, the full sweep (6 direction types × 10 layers = 60 experiments × 192 samples) takes ~15-20 minutes. This is affordable.
 
 This phase produces a **layer × direction heatmap** of genuine_scr. Identify:
 - Which layers have causal impact for each direction type
@@ -319,7 +319,7 @@ This phase produces a **layer × direction heatmap** of genuine_scr. Identify:
 For each config flagged in Phase 2:
 
 1. **Alpha/target sweep**: Test 3-4 values around the flagged config
-2. **Expanded sample set**: n=50 per direction per constraint (400 total)
+2. **Expanded sample set**: n=48 per direction per constraint (384 total = 4 batches)
 3. **Read responses**: For every `followed_system` response with quality=genuine, read the text and confirm it genuinely complies
 4. **Per-constraint × per-direction breakdown**: Report genuine_scr separately for each (constraint, direction_type, a_to_b/b_to_a) cell
 5. **Projection mode**: If the layer responds to additive, also test projection mode at that layer
