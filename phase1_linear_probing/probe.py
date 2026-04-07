@@ -657,17 +657,20 @@ def probe_per_constraint(
     pos_name: str,
     *,
     layers: list[int] | None = None,
-    probe_C: float = 1.0,
+    probe_C: float | list[float] = 0.01,
     random_state: int = 42,
     min_class_samples: int = 20,
     device: str | None = None,
-) -> dict[str, np.ndarray]:
+) -> tuple[dict[str, np.ndarray], pd.DataFrame]:
     """Train one linear probe per constraint type.
 
     For each unique value in *groups*, subsets activations and labels, fits a
     logistic regression, and extracts unit-norm and raw weight vectors per
     layer.  Uses :func:`probe_and_fit_gpu` when a CUDA device is available,
     falling back to :func:`probe_and_fit` on CPU.
+
+    When *probe_C* is a list, tries each value and keeps the one with the
+    highest mean ROC AUC across layers (automatic regularization selection).
 
     Parameters
     ----------
@@ -676,16 +679,18 @@ def probe_per_constraint(
     groups : constraint type labels, shape (n_samples,)
     pos_name : which token position to use
     layers : layer indices to extract (default: all)
-    probe_C : regularization parameter
+    probe_C : regularization parameter, or list to search over
     random_state : for reproducibility
     min_class_samples : skip constraints with fewer samples in either class
     device : ``"cuda"`` or ``"cpu"``; auto-detected if *None*
 
     Returns
     -------
-    dict ready for ``np.savez`` with keys:
-    - ``{constraint}_probe_L{layer}``     — unit-norm weight vector
-    - ``{constraint}_probe_raw_L{layer}`` — unnormalized weight vector
+    (npz_dict, cv_scores)
+    - npz_dict: ready for ``np.savez`` with keys
+      ``{constraint}_probe_L{layer}`` and ``{constraint}_probe_raw_L{layer}``
+    - cv_scores: DataFrame with columns
+      ``constraint, C, layer, roc_auc_mean, roc_auc_std, balanced_accuracy_mean``
     """
     X_full = activations[pos_name]  # (n_samples, n_layers, d_model)
     n_layers = X_full.shape[1]
@@ -695,7 +700,10 @@ def probe_per_constraint(
     use_gpu = device == "cuda" or (device is None and torch.cuda.is_available())
     fit_fn = probe_and_fit_gpu if use_gpu else probe_and_fit
 
+    c_values = probe_C if isinstance(probe_C, list) else [probe_C]
+
     results: dict[str, np.ndarray] = {}
+    cv_rows: list[dict] = []
 
     for group_name in np.unique(groups):
         mask = groups == group_name
@@ -705,30 +713,60 @@ def probe_per_constraint(
         if n_pos < min_class_samples or n_neg < min_class_samples:
             continue
 
-        # Subset activations for this constraint
         X_g = {pos_name: X_full[mask]}
         n_folds = min(5, n_pos, n_neg)
         if n_folds < 2:
             continue
 
-        fit_kwargs: dict = dict(
-            cv_mode="stratified",
-            n_folds=n_folds,
-            use_scaler=False,
-            probe_C=probe_C,
-            random_state=random_state,
-        )
-        if use_gpu:
-            fit_kwargs["device"] = device
-
-        pr = fit_fn(X_g, y_g, [pos_name], **fit_kwargs)[pos_name]
-
         key = str(group_name)
-        for layer in layers:
-            results[f"{key}_probe_L{layer}"] = pr.weights[layer]
-            results[f"{key}_probe_raw_L{layer}"] = pr.weights_raw[layer]
+        best_pr = None
+        best_c = None
+        best_mean_auc = -1.0
 
-    return results
+        for c_val in c_values:
+            fit_kwargs: dict = dict(
+                cv_mode="stratified",
+                n_folds=n_folds,
+                use_scaler=False,
+                probe_C=c_val,
+                random_state=random_state,
+            )
+            if use_gpu:
+                fit_kwargs["device"] = device
+
+            pr = fit_fn(X_g, y_g, [pos_name], **fit_kwargs)[pos_name]
+            mean_auc = pr.cv_scores["roc_auc_mean"].mean()
+
+            # Record CV scores for all C values
+            for _, row in pr.cv_scores.iterrows():
+                cv_rows.append({
+                    "constraint": key,
+                    "C": c_val,
+                    "layer": int(row["layer"]),
+                    "roc_auc_mean": row["roc_auc_mean"],
+                    "roc_auc_std": row["roc_auc_std"],
+                    "balanced_accuracy_mean": row["balanced_accuracy_mean"],
+                })
+
+            if mean_auc > best_mean_auc:
+                best_mean_auc = mean_auc
+                best_pr = pr
+                best_c = c_val
+
+        if best_pr is None:
+            continue
+
+        if len(c_values) > 1:
+            print(f"  {key}: best C={best_c} (mean AUC={best_mean_auc:.3f})")
+
+        for layer in layers:
+            results[f"{key}_probe_L{layer}"] = best_pr.weights[layer]
+            results[f"{key}_probe_raw_L{layer}"] = best_pr.weights_raw[layer]
+
+    cv_df = pd.DataFrame(cv_rows) if cv_rows else pd.DataFrame(
+        columns=["constraint", "C", "layer", "roc_auc_mean", "roc_auc_std", "balanced_accuracy_mean"]
+    )
+    return results, cv_df
 
 
 # ── Control Probe ────────────────────────────────────────────────────────────
