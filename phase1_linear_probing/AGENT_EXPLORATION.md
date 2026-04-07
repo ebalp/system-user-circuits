@@ -135,37 +135,32 @@ from explore_utils import (
 | `summarize(responses, label)` | Coherence-score, print per-constraint breakdown, return metrics. |
 | `save_experiment(name, config, responses, out_dir, notes=...)` | Save JSON with coherence annotations and your observations. |
 
-### Workflow: run → observe → save (DO NOT batch these into one script)
+### Workflow: run+save → read output → add notes
 
-**Step 1**: Run the experiment and print results. Read the output.
+**Step 1**: Run the experiment, summarize, and save in ONE script. `save_experiment` prints the summary AND example genuine followed_system responses so you can read them.
+
 ```python
-ids = get_sample_ids(baseline_label="followed_user", seed=42, limit=96)
+ids = get_sample_ids(seed=42, limit=96)
 stats = get_projection_stats()
 clues = steering_clues(stats, "json_only_vs_plain", "probe", 12)
-print(f"Clues: alpha={clues['suggested_alpha']:.2f}, target={clues['suggested_target']:.2f}")
 
 result = generate(ids, direction="probe_L12", layer=12,
                   mode="additive", alpha=clues["suggested_alpha"])
-summary = summarize(result["responses"], "probe_L12_add")
-
-# Print a few responses to inspect quality
-for r in result["responses"][:5]:
-    print(f"\n[{r['conflict_id']} {r['direction']}] label={r['label']} baseline={r['baseline_label']}")
-    print(r["text"][:200])
-```
-
-**Step 2**: After reading the output, reflect on what you see. Then save with notes that describe your actual observations — not pre-written boilerplate.
-```python
 config = {"direction": "probe_L12", "layer": 12, "mode": "additive",
           "alpha": clues["suggested_alpha"]}
-save_experiment("probe_L12_add", config, result["responses"], FINDINGS_DIR,
-                summary=summary,
-                notes="YOUR ACTUAL OBSERVATIONS HERE: what did the responses "
-                      "look like? which constraints flipped genuinely? was there "
-                      "repetition? what surprised you? what should we try next?")
+save_experiment("probe_L12_add", config, result["responses"], FINDINGS_DIR)
 ```
 
-**IMPORTANT**: Do NOT write all experiments in a single giant script. Run one experiment, read the output, think about what it means, save with real notes, then decide what to run next. This is research, not batch processing.
+**Step 2**: Read the printed output. Look at the genuine followed_system responses. Think about what you see. Then add notes:
+
+```python
+from explore_utils import add_notes, FINDINGS_DIR
+add_notes(f"{FINDINGS_DIR}/probe_L12_add.json",
+          "YOUR ACTUAL OBSERVATIONS: what did the responses look like? "
+          "which constraints flipped genuinely? what surprised you?")
+```
+
+**IMPORTANT**: Do NOT write all experiments in a single giant script. Run one experiment, read the output, think about what it means, add notes, then decide what to run next. This is research, not batch processing.
 
 **Reading responses is mandatory, not optional.** After every experiment:
 - Print ALL responses labeled `followed_system` with `quality=genuine` — these are your claimed behavioral flips. Read them. Does the text actually comply with the system instruction? A response labeled followed_system that just happens to not contain JSON is not the same as a response that genuinely explains something in plain English.

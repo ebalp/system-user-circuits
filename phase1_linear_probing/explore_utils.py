@@ -286,5 +286,27 @@ def save_experiment(
         "responses": responses,
     }
     out_path.write_text(json.dumps(data, indent=2))
-    print(f"  Saved: {out_path} ({len(responses)} samples)")
+
+    # Print example responses so the agent can read them
+    genuine_sys = [r for r, s in zip(responses, scores)
+                   if r["label"] == "followed_system" and s.quality == ResponseQuality.GENUINE]
+    if genuine_sys:
+        print(f"\n  === Genuine followed_system responses ({len(genuine_sys)} total) ===")
+        for r in genuine_sys[:5]:
+            print(f"\n  [{r.get('conflict_id','?')} {r.get('direction','?')}] "
+                  f"baseline={r.get('baseline_label','?')}")
+            print(f"  {r['text'][:300]}")
+    else:
+        print(f"\n  No genuine followed_system responses.")
+
+    print(f"\n  Saved: {out_path} ({len(responses)} samples)")
     return out_path
+
+
+def add_notes(experiment_path: str | Path, notes: str) -> None:
+    """Update the notes field of a saved experiment JSON file."""
+    path = Path(experiment_path)
+    data = json.loads(path.read_text())
+    data["notes"] = notes
+    path.write_text(json.dumps(data, indent=2))
+    print(f"  Notes updated: {path}")
