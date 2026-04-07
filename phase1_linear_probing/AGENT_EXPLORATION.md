@@ -111,51 +111,124 @@ print(f"Quality: {metrics['quality_breakdown']}")
 3. A config with high `raw_scr` but low `genuine_scr` is NOT a successful steering result
 4. Read 2-3 actual responses for every config that shows `genuine_scr > baseline + 0.05`
 
-## Server API
+## Exploration Utilities
 
-Base URL: `http://localhost:8000`
-
-### GET /health
-Server status, loaded layers, direction count, GPU memory.
-
-### GET /directions
-Summary of available directions — types, patterns, constraint list.
-
-### GET /projection_stats
-Pre-computed per-(constraint, layer, direction) projection statistics from training data. Use to understand separation quality before steering.
-
-### POST /generate
-Steered text generation. Supports additive, projection, and multi-projection modes.
+All common operations are in `phase1_linear_probing/explore_utils.py`. Import and use:
 
 ```python
-import requests, json
-
-BASE = "http://localhost:8000"
-
-def generate_scored(prompts, score_meta, direction=None, layer=14, alpha=0.0,
-                    mode="additive", projection_target=None, max_new_tokens=512):
-    body = {
-        "prompts": prompts, "alpha": alpha,
-        "max_new_tokens": max_new_tokens,
-        "score": True, "score_meta": score_meta,
-    }
-    if direction is not None:
-        body["direction"] = direction
-        body["layer"] = layer
-        body["mode"] = mode
-    if projection_target is not None:
-        body["projection_target"] = projection_target
-    r = requests.post(f"{BASE}/generate", json=body, timeout=300)
-    r.raise_for_status()
-    return r.json()
+import sys
+sys.path.insert(0, "phase1_linear_probing")
+from explore_utils import (
+    get_sample_ids, generate, summarize, save_experiment,
+    steering_clues, get_projection_stats, CONFLICT_IDS,
+)
 ```
 
-**Baseline (no steering)**: omit `direction` and set `alpha: 0`.
+### Key functions
 
-**Scoring**: Add `"score": true` and `"score_meta"` (one per prompt) to get behavioral labels. Response items include: `{text, label, confidence, sys_ok, usr_ok}`.
+| Function | Purpose |
+|----------|---------|
+| `get_sample_ids(conflict_ids, baseline_label, seed, limit)` | Query `/samples` for experiment_hashes. seed=42 for comparability. |
+| `generate(sample_ids, direction, layer, alpha, mode, ...)` | Steered generation via `/generate`. Auto-scores. Returns self-contained responses. |
+| `get_projection_stats()` | Fetch activation distributions for informed alpha/target. |
+| `steering_clues(stats, constraint, direction, layer)` | Orientation from activation distributions: `{suggested_alpha, suggested_target, separation, y0_mean, y1_mean, ...}`. Starting points — adapt from there. |
+| `summarize(responses, label)` | Coherence-score, print per-constraint breakdown, return metrics. |
+| `save_experiment(name, config, responses, out_dir, notes=...)` | Save JSON with coherence annotations and your observations. |
+
+### Quick example: one complete experiment
+
+```python
+# 1. Get samples
+ids = get_sample_ids(baseline_label="followed_user", seed=42, limit=96)
+
+# 2. Get informed steering parameters
+stats = get_projection_stats()
+clues = steering_clues(stats, "json_only_vs_plain", "probe", 12)
+print(f"Suggested alpha={clues['suggested_alpha']:.2f}, target={clues['suggested_target']:.2f}")
+print(f"Separation={clues['separation']:.3f}, Cohen's d={clues['cohens_d']}")
+
+# 3. Generate with steering
+result = generate(ids, direction="probe_L12", layer=12,
+                  mode="additive", alpha=params["alpha"])
+
+# 4. Summarize and save
+config = {"direction": "probe_L12", "layer": 12, "mode": "additive",
+          "alpha": clues["suggested_alpha"]}
+summary = summarize(result["responses"], "probe_L12_add")
+save_experiment("probe_L12_add", config, result["responses"],
+                "phase1_linear_probing/data/runs/curated4-8b-v002/agent_findings",
+                notes="L12 additive at 3x separation. list b_to_a and tense b_to_a "
+                      "showed genuine flips. json barely moved. Starting_word resistant. "
+                      "Try higher alpha next.")
+```
+
+### Server endpoints (for reference)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /health` | Server status, loaded layers, direction count, GPU memory |
+| `GET /directions` | Available direction names and types |
+| `GET /projection_stats` | Pre-computed activation distributions per constraint/layer/direction |
+| `GET /samples?conflict_id=...&direction=...&baseline_label=...&seed=42&limit=96` | Query sample_ids |
+| `POST /generate` | Steered generation (use `sample_ids` — auto-scores, self-contained responses) |
+
+**Responses are self-contained**: each response includes the steering config, sample_id, baseline_label, conflict_id, direction, and the original prompts. The server logs every request/response to `server_log.jsonl`.
+
+### Sample-ID based requests (PREFERRED)
+
+Instead of sending full prompt text, reference pre-loaded dataset samples by `experiment_hash`. This guarantees prompt fidelity and makes requests tiny.
+
+```python
+# Get sample IDs for a specific pool
+ids = requests.get(f"{BASE}/samples", params={
+    "conflict_id": "json_only_vs_plain",
+    "direction": "b_to_a",
+    "baseline_label": "followed_user",
+    "seed": 42,
+    "limit": 96,
+}).json()["sample_ids"]
+
+# Generate with sample_ids — scoring is automatic
+r = requests.post(f"{BASE}/generate", json={
+    "sample_ids": ids,
+    "direction": "probe_L12",
+    "layer": 12,
+    "mode": "additive",
+    "alpha": 5.0,
+}, timeout=300)
+results = r.json()["responses"]
+# Each result has: text, label, confidence, sys_ok, usr_ok, sample_id, baseline_label
+```
+
+When using `sample_ids`:
+- `score` is automatically True — the server knows the conflict_id, direction, and instruction_args
+- Each response includes `sample_id` (the experiment_hash) and `baseline_label` (what the model originally did)
+- No need to build prompts or score_meta manually
+
+### GET /samples — query available samples
+
+```
+GET /samples?conflict_id=json_only_vs_plain&direction=b_to_a&baseline_label=followed_user&seed=42&limit=96
+```
+
+Returns `{"sample_ids": [...], "total": N}`. Params:
+- `conflict_id`, `direction`, `baseline_label`: filters
+- `seed`: deterministic shuffle (same seed = same subset every time)
+- `limit`: max samples to return. Omit to get all matching samples.
+
+### Comparability: use the same seed across experiments
+
+**This is critical.** When comparing two steering configs, they MUST operate on the **exact same samples**. Use `seed=42` for all sweep experiments. This way, differences in genuine_scr reflect the steering config, not the sample set.
+
+- **Sweep phase**: `seed=42, limit=96` per (conflict_id, direction, baseline_label) cell
+- **Deep dives**: `seed=42` with no limit (all samples) — still comparable since the n=96 subset is a prefix of the full set with the same seed
+- **Independent replication**: use a different seed (e.g., `seed=123`) to check whether results hold on fresh samples
 
 ## Data Loading
 
+**Preferred: use the `/samples` endpoint** to get sample_ids by constraint, direction, and baseline label. No local data loading needed.
+
+For offline analysis or custom filtering, you can also load locally:
 ```python
 import sys
 sys.path.insert(0, "phase1_linear_probing")
@@ -172,13 +245,27 @@ df_c = df_c.sort_values("conflict_id").reset_index(drop=True)
 
 ### Sample structure (IMPORTANT — understand before running experiments)
 
-All steering experiments use **followed_user-only** samples from Condition C. This means:
+Steering experiments use Condition C samples. You should test **both** followed_user and followed_system samples to understand the full picture.
 
-- **Every sample in your batch originally followed the user instruction** (y=0, label=`followed_user`)
-- The **baseline SCR is ~2-5%** (a few samples that the unsteered HF generate() happens to flip)
-- If steering produces `followed_system` on a sample, **that's a genuine behavioral flip**
-- `followed_neither` means the response is degenerate (verifier can't classify it)
-- `followed_both` means both verifiers trigger (ambiguous — confidence=0.5)
+**Two sample pools:**
+
+1. **followed_user pool** (y=0, ~80-95% of Condition C per constraint):
+   Samples where the model originally followed the user instruction.
+   - Baseline SCR is ~2-5% (a few that unsteered HF generate() happens to flip)
+   - If positive steering produces `followed_system`, **that's a genuine flip**
+   - This is the primary pool for testing "can we steer toward system compliance?"
+
+2. **followed_system pool** (y=1, ~5-20% of Condition C per constraint):
+   Samples where the model originally followed the system instruction.
+   - Baseline SCR is ~95-100%
+   - If positive steering keeps `followed_system`, steering is **not damaging** existing compliance
+   - If positive steering produces `followed_user` or `followed_neither`, steering is **breaking** good behavior
+   - If **negative** steering flips these to `followed_user`, the direction is **bidirectional**
+
+**Run both pools for key configs.** For the sweep phase, use followed_user only (faster). For deep dives and conclusions, run both pools and report:
+- **Flip rate** on followed_user samples (the main metric)
+- **Retention rate** on followed_system samples (does steering break what works?)
+- **Negative steering flip rate** on followed_system samples (is the direction bidirectional?)
 
 **Each sample in the batch has metadata** via `score_meta`:
 - `conflict_id`: which of the 4 constraints (e.g., `json_only_vs_plain`)
@@ -190,68 +277,19 @@ All steering experiments use **followed_user-only** samples from Condition C. Th
 
 ### Building sample sets
 
-```python
-import pandas as pd
-
-df_user = df_c[df_c.y == 0]  # followed_user only
-
-def build_sample(df_user, conflict_ids, n_per_dir=96, seed=42):
-    """Build followed_user-only sample set for steering experiments.
-
-    Returns (prompts, score_meta) ready for the /generate endpoint.
-    Total samples = len(conflict_ids) * 2 directions * n_per_dir.
-    Pass n_per_dir=None to use ALL available samples (for final conclusions).
-    """
-    samples = []
-    for cid in conflict_ids:
-        for d in ["a_to_b", "b_to_a"]:
-            subset = df_user[(df_user.conflict_id == cid) & (df_user.direction == d)]
-            if n_per_dir is None:
-                picked = subset
-            else:
-                picked = subset.sample(min(n_per_dir, len(subset)), random_state=seed)
-            samples.append(picked)
-    sample_df = pd.concat(samples).reset_index(drop=True)
-    prompts, score_meta = [], []
-    for _, row in sample_df.iterrows():
-        prompts.append({"system_prompt": row["system_prompt"], "user_prompt": row["user_prompt"]})
-        args = row["instruction_args"]
-        if isinstance(args, str): args = json.loads(args)
-        score_meta.append({"conflict_id": row["conflict_id"],
-                           "direction": row["direction"], "instruction_args": args})
-    return prompts, score_meta
-```
-
-With 4 constraints, `n_per_dir=96` gives 768 samples per experiment (~8 batches, ~1 min). Use n=96 for sweep phases. For deep dives and final conclusions, pass `n_per_dir=None` to use **all** available followed_user samples (~1000+ per direction per constraint, ~8000+ total, ~10-15 min).
-
-### Summarizing results per constraint and direction
+Use `get_sample_ids()` from `explore_utils`. Key patterns:
 
 ```python
-def summarize(results, score_meta, label, conflict_ids):
-    """Print per-constraint, per-direction breakdown with coherence."""
-    from coherence import score_coherence, compute_genuine_scr
-    scores = [score_coherence(r["text"]) for r in results]
-    labels = [r["label"] for r in results]
-    metrics = compute_genuine_scr(labels, scores)
-    print(f"  {label}: genuine_scr={metrics['genuine_scr']:.3f} "
-          f"raw_scr={metrics['raw_scr']:.3f} "
-          f"quality={metrics['quality_breakdown']}")
-    for cid in conflict_ids:
-        for d in ["a_to_b", "b_to_a"]:
-            idxs = [i for i, m in enumerate(score_meta)
-                    if m["conflict_id"] == cid and m["direction"] == d]
-            if not idxs:
-                continue
-            sub_labels = [labels[i] for i in idxs]
-            sub_scores = [scores[i] for i in idxs]
-            sub_metrics = compute_genuine_scr(sub_labels, sub_scores)
-            n = len(idxs)
-            n_sys = sum(1 for i in idxs if labels[i] == "followed_system")
-            n_gen = sub_metrics["n_genuine"]
-            n_gen_sys = sub_metrics["genuine_system"]
-            print(f"    {cid:35s} {d:6s}: "
-                  f"sys={n_sys:2d}/{n} gen_sys={n_gen_sys:2d}/{n_gen} "
-                  f"genuine_scr={sub_metrics['genuine_scr']:.3f}")
+# Sweep: 96 per cell = 768 total (seed=42 for comparability)
+sweep_ids = get_sample_ids(baseline_label="followed_user", seed=42, limit=96)
+
+# Deep dive: all samples
+all_user_ids = get_sample_ids(baseline_label="followed_user", seed=42, limit=None)
+all_system_ids = get_sample_ids(baseline_label="followed_system", seed=42, limit=None)
+
+# Single constraint
+json_b2a = get_sample_ids(conflict_ids=["json_only_vs_plain"],
+                          baseline_label="followed_user", seed=42, limit=96)
 ```
 
 ## Experimental Protocol
@@ -301,19 +339,66 @@ Now explore systematically. For each direction type, sweep layers to find the ca
 
 **Layers to test**: L2, L4, L6, L8, L10, L12, L14, L16, L18, L20
 
-**For each (direction, layer) pair**:
-- Use the additive mode at one alpha within the established coherence budget:
-  - L2-L6: alpha=3-5 (early layers degrade fast)
-  - L8-L12: alpha=5
-  - L14-L16: alpha=8-10
-  - L18-L20: alpha=5
-- Generate 768 samples (n_per_dir=96), coherence-score all, compute genuine_scr
-- If genuine_scr > baseline + 0.10, flag for deep dive
+**For each (direction, layer) pair, test BOTH modes:**
 
-With the A100, the full sweep (6 direction types × 10 layers = 60 experiments × 768 samples) takes ~15-20 minutes. This is affordable.
+**Both modes should be informed by the projection stats.** Before running any steering experiments, fetch the pre-computed activation distributions:
 
-This phase produces a **layer × direction heatmap** of genuine_scr. Identify:
-- Which layers have causal impact for each direction type
+```python
+import requests
+stats = requests.get(f"{BASE}/projection_stats").json()
+# For a given constraint and layer:
+s = stats["json_only_vs_plain"][f"L12"]["probe"]
+y0_mean, y0_std = s["y0"]["mean"], s["y0"]["std"]
+y1_mean, y1_std = s["y1"]["mean"], s["y1"]["std"]
+separation = y1_mean - y0_mean  # gap between classes along this direction
+print(f"y0={y0_mean:.3f}±{y0_std:.3f}  y1={y1_mean:.3f}±{y1_std:.3f}  sep={separation:.3f}")
+```
+
+The stats tell you where followed_system (y1) and followed_user (y0) activations sit along each direction. Use this to set **informed steering strengths**:
+
+**Additive mode** — alpha should be scaled relative to the class separation:
+- The separation `y1_mean - y0_mean` is the natural scale. Adding `alpha * direction` shifts activations by `alpha` units along the direction.
+- **1x separation**: alpha = separation (subtle push, moves y0 mean to y1 mean)
+- **3-5x separation**: moderate push (moves y0 well into y1 territory)
+- **10x+ separation**: aggressive (prior exploration used alpha=5-10, which was 10-25x the ~0.4 separation at L12 — this is why degenerate text appeared)
+- Start with **3x separation** for the sweep. Adjust per layer based on coherence.
+
+**Projection mode** — target sets where the projection should land:
+- **Conservative**: target = y1_mean (push to the center of the followed_system distribution)
+- **Moderate**: target = y1_mean + 1*y1_std
+- **Aggressive**: target = y1_mean + 2-3*y1_std
+- Note: the prior exploration found that target=5.0 worked at L12 while y1_mean is only ~0.07. Effective targets can be FAR beyond the training distribution. The stats give you a starting point — but don't be afraid to go higher.
+- Start with **y1_mean + 2*y1_std** for the sweep.
+
+**Compute per-layer alpha/target in bulk:**
+```python
+def steering_clues(stats, constraint, direction_name, layer):
+    """Compute informed alpha and projection target from projection stats."""
+    s = stats[constraint][f"L{layer}"][direction_name]
+    y0_mean = s["y0"]["mean"]
+    y1_mean = s["y1"]["mean"]
+    y1_std = s["y1"]["std"]
+    separation = y1_mean - y0_mean
+    alpha = 3.0 * abs(separation)  # 3x separation
+    target = y1_mean + 2.0 * y1_std  # y1 mean + 2 std
+    return alpha, target
+```
+
+**Per experiment**: 768 samples (96 per constraint×direction cell, seed=42), coherence-score all, compute genuine_scr.
+
+**Adaptive protocol — don't grind through a fixed grid:**
+- Start with the informed alpha (3x separation) and target (y1_mean + 2*y1_std)
+- If genuine_scr > baseline + 0.05 but most flips are degenerate (raw_scr >> genuine_scr), try **lower** alpha/target — you're past the coherence ceiling
+- If genuine_scr ≈ baseline and quality is fine, try **higher** alpha/target (5x, 8x separation) — you haven't reached the effect threshold yet
+- If genuine_scr ≈ baseline AND higher alpha causes degenerate text, **move on** — this (direction, layer) pair has no causal leverage
+- If genuine_scr > baseline + 0.10 with good quality, **flag for Phase 3 deep dive** and move on
+- Don't spend more than 2-3 alpha/target values per (direction, layer) pair in the sweep. The goal is to map the landscape, not optimize each cell.
+
+The full sweep is ~120 (direction, layer, mode) combinations but with early stopping you'll skip many. Budget ~2 hours total.
+
+This phase produces **two layer × direction heatmaps** (additive and projection) of genuine_scr. Identify:
+- Which layers have causal impact for each direction type and mode
+- Whether projection outperforms additive at certain layers (as it did at L12 in the prior exploration)
 - Whether per-conflict probes outperform the overall probe for their own constraint
 - Whether there are direction types that work at layers where others don't
 - Whether mean-of-per-conflict directions outperform the overall probe
@@ -323,10 +408,11 @@ This phase produces a **layer × direction heatmap** of genuine_scr. Identify:
 For each config flagged in Phase 2:
 
 1. **Alpha/target sweep**: Test 3-4 values around the flagged config
-2. **Expanded sample set**: `n_per_dir=None` — use all available followed_user samples (~10-15 min on A100)
-3. **Read responses**: For every `followed_system` response with quality=genuine, read the text and confirm it genuinely complies
-4. **Per-constraint × per-direction breakdown**: Report genuine_scr separately for each (constraint, direction_type, a_to_b/b_to_a) cell
-5. **Projection mode**: If the layer responds to additive, also test projection mode at that layer
+2. **Full followed_user set**: `get_sample_ids(limit=None)` — all available samples (~10-15 min on A100)
+3. **Followed_system retention**: Run the same config on the followed_system pool. Report what fraction stay `followed_system` (retention rate). If retention drops significantly, the steering is damaging existing compliance.
+4. **Negative steering**: Apply the same direction with negative alpha on followed_system samples. Does it flip them to `followed_user`? If yes, the direction is bidirectional — it can steer both ways.
+5. **Read responses**: For every `followed_system` response with quality=genuine, read the text and confirm it genuinely complies
+6. **Per-constraint × per-direction breakdown**: Report genuine_scr separately for each (constraint, direction_type, a_to_b/b_to_a) cell
 
 ### Phase 4: Cross-Conflict Analysis (~20 min)
 
@@ -456,34 +542,4 @@ With 4 constraints, parallelize analysis work across sub-agents. The GPU has a l
 
 ## Saving Results
 
-Write results incrementally to `{run_dir}/agent_findings/` after each experiment. Use the JSON format above. Include the full response text so results can be re-analyzed later.
-
-```python
-import json
-from pathlib import Path
-from coherence import score_coherence, compute_genuine_scr
-
-def save_experiment(name, config, results, score_meta, out_dir):
-    """Save one experiment's results with coherence scoring."""
-    scores = [score_coherence(r["text"]) for r in results]
-    labels = [r["label"] for r in results]
-    metrics = compute_genuine_scr(labels, scores)
-
-    # Annotate results with quality
-    for r, s in zip(results, scores):
-        r["quality"] = s.quality.value
-        r["rep3"] = s.repetition_3gram
-        r["rep5"] = s.repetition_5gram
-
-    path = Path(out_dir) / f"{name}.json"
-    data = {
-        "config": config,
-        "n_samples": len(results),
-        **metrics,
-        "results": results,
-    }
-    path.write_text(json.dumps(data, indent=2))
-    print(f"Saved {name}: genuine_scr={metrics['genuine_scr']:.3f} "
-          f"raw_scr={metrics['raw_scr']:.3f} "
-          f"quality={metrics['quality_breakdown']}")
-```
+Write results incrementally to `{run_dir}/agent_findings/` after each experiment using `save_experiment()` from `explore_utils`. The server also logs everything to `server_log.jsonl` as a backup.

@@ -39,7 +39,9 @@ from data import (
     _cleanup_nn_model,
     _load_nn_model,
     build_formatted_prompt,
+    load_results,
     load_sync_env,
+    prepare_condition_c,
 )
 from steer import (
     _generate_batch,
@@ -59,6 +61,8 @@ _gpu_lock = asyncio.Lock()
 _batch_size: int = 48
 _layers: list[int] = []
 _projection_stats: dict | None = None
+_dataset: dict[str, dict] | None = None  # experiment_hash -> sample record
+_log_file = None  # append-only JSONL log of all /generate requests+responses
 
 
 # ── Pydantic models ─────────────────────────────────────────────────────────
@@ -95,7 +99,9 @@ class ProjectionSpec(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    prompts: list[PromptItem]
+    prompts: list[PromptItem] | None = None
+    # Reference samples by experiment_hash (alternative to prompts + score_meta)
+    sample_ids: list[str] | None = None
     # Single-direction mode (backward compatible)
     direction: str | list[float] | None = None
     layer: int = 25
@@ -109,10 +115,16 @@ class GenerateRequest(BaseModel):
     score_meta: list[ScoreMeta] | None = None
 
     @model_validator(mode="after")
-    def _check_score_meta(self):
-        if self.score:
+    def _check_prompts_or_ids(self):
+        has_prompts = self.prompts is not None and len(self.prompts) > 0
+        has_ids = self.sample_ids is not None and len(self.sample_ids) > 0
+        if not has_prompts and not has_ids:
+            raise ValueError("Provide either 'prompts' or 'sample_ids'")
+        if has_prompts and has_ids:
+            raise ValueError("Provide either 'prompts' or 'sample_ids', not both")
+        if has_prompts and self.score:
             if not self.score_meta:
-                raise ValueError("score_meta required when score=True")
+                raise ValueError("score_meta required when score=True with prompts")
             if len(self.score_meta) != len(self.prompts):
                 raise ValueError(
                     f"score_meta length ({len(self.score_meta)}) must match "
@@ -127,10 +139,26 @@ class ResponseItem(BaseModel):
     confidence: float | None = None
     sys_ok: bool | None = None
     usr_ok: bool | None = None
+    sample_id: str | None = None
+    baseline_label: str | None = None
+    conflict_id: str | None = None
+    direction: str | None = None  # a_to_b or b_to_a
+    system_prompt: str | None = None
+    user_prompt: str | None = None
+
+
+class SteeringConfig(BaseModel):
+    direction: str | None = None  # name only, raw vectors omitted
+    layer: int | None = None
+    mode: str | None = None
+    alpha: float | None = None
+    projection_target: float | None = None
+    projections: list[dict] | None = None  # simplified projection specs
 
 
 class GenerateResponse(BaseModel):
     responses: list[ResponseItem]
+    steering: SteeringConfig
     n_prompts: int
     batch_size: int
     elapsed_s: float
@@ -320,12 +348,54 @@ async def lifespan(app: FastAPI):
             _projection_stats = json.loads(stats_path.read_text())
             print(f"Loaded projection stats: {len(_projection_stats)} groups")
 
+    # Dataset (optional — enables sample_ids in /generate requests)
+    global _dataset
+    if args.run_id:
+        try:
+            from compute_cmds import load_run_config
+            run_cfg = load_run_config(_cfg.run_dir)
+            df_all = load_results(run_cfg.data_dir, run_cfg.model_name)
+            df_c = prepare_condition_c(df_all, run_cfg.label_mode,
+                                       conflict_ids=run_cfg.conflict_ids)
+            df_c = df_c.sort_values("conflict_id").reset_index(drop=True)
+            _dataset = {}
+            for _, row in df_c.iterrows():
+                h = row.get("experiment_hash")
+                if h is None:
+                    continue
+                args_val = row.get("instruction_args", {})
+                if isinstance(args_val, str):
+                    import json as _json
+                    args_val = _json.loads(args_val)
+                _dataset[h] = {
+                    "system_prompt": row["system_prompt"],
+                    "user_prompt": row["user_prompt"],
+                    "conflict_id": row["conflict_id"],
+                    "direction": row["direction"],
+                    "instruction_args": args_val,
+                    "label": row.get("label", ""),
+                    "y": int(row.get("y", 0)),
+                }
+            print(f"Loaded dataset: {len(_dataset)} samples indexed by experiment_hash")
+        except Exception as e:
+            print(f"Warning: could not load dataset for sample_ids: {e}")
+            _dataset = None
+
+    # Request/response log (append-only JSONL)
+    global _log_file
+    if args.run_id:
+        log_path = _cfg.run_dir / "server_log.jsonl"
+        _log_file = open(log_path, "a")
+        print(f"Logging to: {log_path}")
+
     print(f"Server ready — {len(_directions)} directions loaded")
     print(f"Directions: {list(_directions.keys())}")
 
     yield
 
     # Shutdown
+    if _log_file is not None:
+        _log_file.close()
     print("Shutting down — cleaning up model")
     if _model is not None:
         _cleanup_nn_model(_model, _cfg.device)
@@ -485,8 +555,77 @@ async def project(req: ProjectRequest):
     return ProjectResponse(projections=items, elapsed_s=elapsed)
 
 
+@app.get("/samples")
+async def get_samples(
+    conflict_id: str | None = None,
+    direction: str | None = None,
+    baseline_label: str | None = None,
+    limit: int | None = None,
+    seed: int | None = None,
+):
+    """List available sample_ids, optionally filtered and shuffled.
+
+    Query params:
+      - conflict_id: filter by constraint (e.g., json_only_vs_plain)
+      - direction: filter by a_to_b or b_to_a
+      - baseline_label: filter by followed_user or followed_system
+      - limit: max number of sample_ids to return
+      - seed: random seed for deterministic shuffling (omit for stable order)
+
+    Same seed always returns the same subset. Use seed=42 across experiments
+    for comparable sample sets, or vary the seed for independent samples.
+    """
+    if _dataset is None:
+        raise HTTPException(400, "Dataset not loaded")
+    ids = []
+    for h, rec in _dataset.items():
+        if conflict_id and rec["conflict_id"] != conflict_id:
+            continue
+        if direction and rec["direction"] != direction:
+            continue
+        if baseline_label:
+            bl = "followed_system" if rec["y"] == 1 else "followed_user"
+            if bl != baseline_label:
+                continue
+        ids.append(h)
+    if seed is not None:
+        import random
+        rng = random.Random(seed)
+        rng.shuffle(ids)
+    if limit and limit < len(ids):
+        ids = ids[:limit]
+    return {
+        "sample_ids": ids,
+        "total": len(ids),
+        "filters": {"conflict_id": conflict_id, "direction": direction,
+                     "baseline_label": baseline_label, "seed": seed},
+    }
+
+
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(req: GenerateRequest):
+    # Resolve sample_ids → prompts + score_meta
+    if req.sample_ids:
+        if _dataset is None:
+            raise HTTPException(400, "Dataset not loaded — cannot use sample_ids")
+        missing = [h for h in req.sample_ids if h not in _dataset]
+        if missing:
+            raise HTTPException(400, f"Unknown sample_ids: {missing[:5]}...")
+        req.prompts = []
+        req.score_meta = []
+        for h in req.sample_ids:
+            rec = _dataset[h]
+            req.prompts.append(PromptItem(
+                system_prompt=rec["system_prompt"],
+                user_prompt=rec["user_prompt"],
+            ))
+            req.score_meta.append(ScoreMeta(
+                conflict_id=rec["conflict_id"],
+                direction=rec["direction"],
+                instruction_args=rec["instruction_args"],
+            ))
+        req.score = True  # always score when using sample_ids
+
     # Multi-projection mode takes precedence
     if req.projections:
         proj_tuples = _resolve_projections(req.projections)
@@ -534,17 +673,66 @@ async def generate(req: GenerateRequest):
                 label = f"error: {e}"
                 confidence = 0.0
                 sys_ok = usr_ok = False
+        sample_id = req.sample_ids[i] if req.sample_ids else None
+        baseline_label = conflict_id_val = direction_val = sys_prompt = usr_prompt = None
+        if sample_id and _dataset:
+            rec = _dataset[sample_id]
+            baseline_label = "followed_system" if rec["y"] == 1 else "followed_user"
+            conflict_id_val = rec["conflict_id"]
+            direction_val = rec["direction"]
+            sys_prompt = rec["system_prompt"]
+            usr_prompt = rec["user_prompt"]
         items.append(ResponseItem(
             text=text, label=label, confidence=confidence,
             sys_ok=sys_ok, usr_ok=usr_ok,
+            sample_id=sample_id, baseline_label=baseline_label,
+            conflict_id=conflict_id_val, direction=direction_val,
+            system_prompt=sys_prompt, user_prompt=usr_prompt,
         ))
 
-    return GenerateResponse(
+    # Build steering config for response (omit raw vectors for brevity)
+    dir_name = req.direction if isinstance(req.direction, str) else (
+        f"<vector({len(req.direction)})>" if isinstance(req.direction, list) else None
+    )
+    proj_summary = None
+    if req.projections:
+        proj_summary = []
+        for p in req.projections:
+            d = p.direction if isinstance(p.direction, str) else f"<vector({len(p.direction)})>"
+            proj_summary.append({"direction": d, "layer": p.layer, "target": p.target})
+
+    steering = SteeringConfig(
+        direction=dir_name,
+        layer=req.layer if dir_name else None,
+        mode=req.mode if dir_name else None,
+        alpha=req.alpha if dir_name and req.mode == "additive" else None,
+        projection_target=req.projection_target if dir_name and req.mode == "projection" else None,
+        projections=proj_summary,
+    )
+
+    response = GenerateResponse(
         responses=items,
+        steering=steering,
         n_prompts=len(prompts),
         batch_size=_batch_size,
         elapsed_s=round(elapsed, 3),
     )
+
+    # Append to log
+    if _log_file is not None:
+        import json as _json
+        import datetime
+        log_entry = {
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "steering": steering.model_dump(),
+            "n_prompts": len(prompts),
+            "elapsed_s": round(elapsed, 3),
+            "responses": [item.model_dump(exclude_none=True) for item in items],
+        }
+        _log_file.write(_json.dumps(log_entry) + "\n")
+        _log_file.flush()
+
+    return response
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
