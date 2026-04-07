@@ -647,6 +647,90 @@ def compute_constraint_cmds(
     return cmds
 
 
+# ── Per-Constraint Probes ──────────────────────────────────────────────────
+
+
+def probe_per_constraint(
+    activations: dict[str, np.ndarray],
+    y: np.ndarray,
+    groups: np.ndarray,
+    pos_name: str,
+    *,
+    layers: list[int] | None = None,
+    probe_C: float = 1.0,
+    random_state: int = 42,
+    min_class_samples: int = 20,
+    device: str | None = None,
+) -> dict[str, np.ndarray]:
+    """Train one linear probe per constraint type.
+
+    For each unique value in *groups*, subsets activations and labels, fits a
+    logistic regression, and extracts unit-norm and raw weight vectors per
+    layer.  Uses :func:`probe_and_fit_gpu` when a CUDA device is available,
+    falling back to :func:`probe_and_fit` on CPU.
+
+    Parameters
+    ----------
+    activations : dict mapping position name -> (n_samples, n_layers, d_model)
+    y : binary labels, shape (n_samples,)
+    groups : constraint type labels, shape (n_samples,)
+    pos_name : which token position to use
+    layers : layer indices to extract (default: all)
+    probe_C : regularization parameter
+    random_state : for reproducibility
+    min_class_samples : skip constraints with fewer samples in either class
+    device : ``"cuda"`` or ``"cpu"``; auto-detected if *None*
+
+    Returns
+    -------
+    dict ready for ``np.savez`` with keys:
+    - ``{constraint}_probe_L{layer}``     — unit-norm weight vector
+    - ``{constraint}_probe_raw_L{layer}`` — unnormalized weight vector
+    """
+    X_full = activations[pos_name]  # (n_samples, n_layers, d_model)
+    n_layers = X_full.shape[1]
+    if layers is None:
+        layers = list(range(n_layers))
+
+    use_gpu = device == "cuda" or (device is None and torch.cuda.is_available())
+    fit_fn = probe_and_fit_gpu if use_gpu else probe_and_fit
+
+    results: dict[str, np.ndarray] = {}
+
+    for group_name in np.unique(groups):
+        mask = groups == group_name
+        y_g = y[mask]
+        n_pos = int(y_g.sum())
+        n_neg = int(len(y_g) - n_pos)
+        if n_pos < min_class_samples or n_neg < min_class_samples:
+            continue
+
+        # Subset activations for this constraint
+        X_g = {pos_name: X_full[mask]}
+        n_folds = min(5, n_pos, n_neg)
+        if n_folds < 2:
+            continue
+
+        fit_kwargs: dict = dict(
+            cv_mode="stratified",
+            n_folds=n_folds,
+            use_scaler=False,
+            probe_C=probe_C,
+            random_state=random_state,
+        )
+        if use_gpu:
+            fit_kwargs["device"] = device
+
+        pr = fit_fn(X_g, y_g, [pos_name], **fit_kwargs)[pos_name]
+
+        key = str(group_name)
+        for layer in layers:
+            results[f"{key}_probe_L{layer}"] = pr.weights[layer]
+            results[f"{key}_probe_raw_L{layer}"] = pr.weights_raw[layer]
+
+    return results
+
+
 # ── Control Probe ────────────────────────────────────────────────────────────
 
 

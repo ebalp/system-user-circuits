@@ -298,8 +298,11 @@ async def lifespan(app: FastAPI):
                         if len(_layers) == 1:
                             _directions[name] = vec
                     elif isinstance(vec, dict):
-                        # Unpack per-constraint CMDs (raw and normalized)
-                        prefix = "cmd_raw" if name.endswith("_raw") else "cmd"
+                        # Unpack per-constraint dicts (CMDs and probes)
+                        if "probe" in name:
+                            prefix = "probe_raw" if name.endswith("_raw") else "probe"
+                        else:
+                            prefix = "cmd_raw" if name.endswith("_raw") else "cmd"
                         for cname, cvec in vec.items():
                             if isinstance(cvec, np.ndarray) and cvec.ndim == 1:
                                 _directions[f"{prefix}_{cname}_L{layer}"] = cvec

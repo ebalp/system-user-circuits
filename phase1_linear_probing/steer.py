@@ -97,6 +97,20 @@ def load_steering_directions(
         else:
             logger.warning("No constraint CMDs at %s", constraint_cmds_path)
 
+    # Per-constraint probes (from compute_per_constraint_probes.py)
+    probes_path = run_dir / "constraint_probes.npz"
+    if probes_path.exists():
+        pdata = np.load(probes_path)
+        suffix_probe = f"_probe_L{layer}"
+        suffix_probe_raw = f"_probe_raw_L{layer}"
+        for key in pdata.files:
+            if key.endswith(suffix_probe_raw):
+                name = key[: -len(suffix_probe_raw)]
+                directions.setdefault("probe_per_constraint_raw", {})[name] = pdata[key]
+            elif key.endswith(suffix_probe):
+                name = key[: -len(suffix_probe)]
+                directions.setdefault("probe_per_constraint", {})[name] = pdata[key]
+
     return directions
 
 
