@@ -167,6 +167,12 @@ save_experiment("probe_L12_add", config, result["responses"], FINDINGS_DIR,
 
 **IMPORTANT**: Do NOT write all experiments in a single giant script. Run one experiment, read the output, think about what it means, save with real notes, then decide what to run next. This is research, not batch processing.
 
+**Reading responses is mandatory, not optional.** After every experiment:
+- Print ALL responses labeled `followed_system` with `quality=genuine` — these are your claimed behavioral flips. Read them. Does the text actually comply with the system instruction? A response labeled followed_system that just happens to not contain JSON is not the same as a response that genuinely explains something in plain English.
+- Print a few `followed_user` responses too — are they coherent or showing signs of degradation?
+- Your notes should describe what the genuine followed_system responses actually look like, not just the numbers.
+- If you can't explain in words what a steered response did differently from baseline, you don't understand the result yet.
+
 ### Server endpoints (for reference)
 
 | Endpoint | Purpose |
