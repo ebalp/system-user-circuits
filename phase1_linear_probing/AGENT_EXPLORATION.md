@@ -258,25 +258,12 @@ df_c = df_c.sort_values("conflict_id").reset_index(drop=True)
 
 Steering experiments use Condition C samples. You should test **both** followed_user and followed_system samples to understand the full picture.
 
-**Two sample pools:**
+**Do NOT filter by Phase 0 labels.** The Phase 0 labels reflect vLLM generation, not HF generate() — the same prompt can produce different text and different labels across backends. Use ALL Condition C samples and measure the server's own unsteered baseline as ground truth.
 
-1. **followed_user pool** (y=0, ~80-95% of Condition C per constraint):
-   Samples where the model originally followed the user instruction.
-   - Baseline SCR is ~2-5% (a few that unsteered HF generate() happens to flip)
-   - If positive steering produces `followed_system`, **that's a genuine flip**
-   - This is the primary pool for testing "can we steer toward system compliance?"
-
-2. **followed_system pool** (y=1, ~5-20% of Condition C per constraint):
-   Samples where the model originally followed the system instruction.
-   - Baseline SCR is ~95-100%
-   - If positive steering keeps `followed_system`, steering is **not damaging** existing compliance
-   - If positive steering produces `followed_user` or `followed_neither`, steering is **breaking** good behavior
-   - If **negative** steering flips these to `followed_user`, the direction is **bidirectional**
-
-**Run both pools for key configs.** For the sweep phase, use followed_user only (faster). For deep dives and conclusions, run both pools and report:
-- **Flip rate** on followed_user samples (the main metric)
-- **Retention rate** on followed_system samples (does steering break what works?)
-- **Negative steering flip rate** on followed_system samples (is the direction bidirectional?)
+The `baseline_label` field in responses tells you the Phase 0 label for reference, but don't use it for filtering. Instead:
+1. Run unsteered baseline on your sample set
+2. Record the server's own labels — this is the true baseline SCR per (constraint, direction) cell
+3. Compare steered results against these server baselines, not against Phase 0 labels
 
 **Each sample in the batch has metadata** via `score_meta`:
 - `conflict_id`: which of the 4 constraints (e.g., `json_only_vs_plain`)
@@ -291,16 +278,14 @@ Steering experiments use Condition C samples. You should test **both** followed_
 Use `get_sample_ids()` from `explore_utils`. Key patterns:
 
 ```python
-# Sweep: 96 per cell = 768 total (seed=42 for comparability)
-sweep_ids = get_sample_ids(baseline_label="followed_user", seed=42, limit=96)
+# Sweep: 96 per cell = 768 total (seed=42 for comparability, no label filtering)
+sweep_ids = get_sample_ids(seed=42, limit=96)
 
 # Deep dive: all samples
-all_user_ids = get_sample_ids(baseline_label="followed_user", seed=42, limit=None)
-all_system_ids = get_sample_ids(baseline_label="followed_system", seed=42, limit=None)
+all_ids = get_sample_ids(seed=42, limit=None)
 
 # Single constraint
-json_b2a = get_sample_ids(conflict_ids=["json_only_vs_plain"],
-                          baseline_label="followed_user", seed=42, limit=96)
+json_b2a = get_sample_ids(conflict_ids=["json_only_vs_plain"], seed=42, limit=96)
 ```
 
 ## Experimental Protocol

@@ -46,7 +46,7 @@ def set_base_url(url: str):
 
 def get_sample_ids(
     conflict_ids: list[str] | None = None,
-    baseline_label: str = "followed_user",
+    baseline_label: str | None = None,
     seed: int = 42,
     limit: int | None = 96,
 ) -> list[str]:
@@ -55,7 +55,8 @@ def get_sample_ids(
     Parameters
     ----------
     conflict_ids : constraints to include (default: all 4 curated4 constraints)
-    baseline_label : "followed_user" or "followed_system"
+    baseline_label : "followed_user", "followed_system", or None (all samples).
+        None is recommended — Phase 0 labels don't predict server behavior.
     seed : deterministic shuffle seed (same seed = same subset = comparable)
     limit : max samples per (conflict_id, direction) cell. None = all.
 
@@ -70,9 +71,10 @@ def get_sample_ids(
             params: dict = {
                 "conflict_id": cid,
                 "direction": d,
-                "baseline_label": baseline_label,
                 "seed": seed,
             }
+            if baseline_label is not None:
+                params["baseline_label"] = baseline_label
             if limit is not None:
                 params["limit"] = limit
             resp = requests.get(f"{BASE}/samples", params=params, timeout=30)
