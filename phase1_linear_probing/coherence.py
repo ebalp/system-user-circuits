@@ -109,15 +109,21 @@ def score_coherence(text: str) -> CoherenceScore:
         base.reason = f"Only {char_count} chars"
         return base
 
-    if rep3 > 0.4 or rep5 > 0.3:
-        base.quality = ResponseQuality.REPETITION_LOOP
-        base.reason = f"rep3={rep3:.2f} rep5={rep5:.2f}"
-        return base
-
-    if word_count > 50 and unique_word_ratio < 0.25:
-        base.quality = ResponseQuality.REPETITION_LOOP
-        base.reason = f"unique_ratio={unique_word_ratio:.2f} over {word_count} words"
-        return base
+    # For longer texts, structured content (lists, numbered items) naturally
+    # repeats formatting n-grams. Require BOTH high repetition AND low lexical
+    # diversity to flag as a loop. Short texts with high repetition are more
+    # likely genuine loops.
+    if word_count <= 50:
+        if rep3 > 0.4 or rep5 > 0.3:
+            base.quality = ResponseQuality.REPETITION_LOOP
+            base.reason = f"rep3={rep3:.2f} rep5={rep5:.2f}"
+            return base
+    else:
+        # Longer text: need both high repetition AND low diversity
+        if (rep5 > 0.3 and unique_word_ratio < 0.35) or unique_word_ratio < 0.25:
+            base.quality = ResponseQuality.REPETITION_LOOP
+            base.reason = f"rep5={rep5:.2f} unique_ratio={unique_word_ratio:.2f} over {word_count} words"
+            return base
 
     if _is_refusal(text_lower, char_count):
         base.quality = ResponseQuality.REFUSAL
@@ -163,7 +169,8 @@ def compute_genuine_scr(
     raw_sys = sum(1 for lb in labels if lb == "followed_system")
     raw_scr = raw_sys / n_total
 
-    genuine_mask = [cs.quality == ResponseQuality.GENUINE for cs in coherence_scores]
+    _GIBBERISH = {ResponseQuality.REPETITION_LOOP}
+    genuine_mask = [cs.quality not in _GIBBERISH for cs in coherence_scores]
     n_genuine = sum(genuine_mask)
     genuine_sys = sum(
         1

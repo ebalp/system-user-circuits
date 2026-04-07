@@ -20,7 +20,7 @@ from pathlib import Path
 
 import requests
 
-from coherence import score_coherence, compute_genuine_scr
+from coherence import ResponseQuality, score_coherence, compute_genuine_scr
 
 BASE = "http://localhost:8000"
 
@@ -114,11 +114,13 @@ def generate(
     elif direction is not None:
         body["direction"] = direction
         body["layer"] = layer
-        body["mode"] = mode
-        body["alpha"] = alpha
         if projection_target is not None:
+            body["mode"] = "projection"
             body["projection_target"] = projection_target
-    r = requests.post(f"{BASE}/generate", json=body, timeout=600)
+        else:
+            body["mode"] = mode
+            body["alpha"] = alpha
+    r = requests.post(f"{BASE}/generate", json=body, timeout=1200)
     r.raise_for_status()
     return r.json()
 
@@ -288,8 +290,9 @@ def save_experiment(
     out_path.write_text(json.dumps(data, indent=2))
 
     # Print example responses so the agent can read them
+    _GIBBERISH = {ResponseQuality.REPETITION_LOOP}
     genuine_sys = [r for r, s in zip(responses, scores)
-                   if r["label"] == "followed_system" and s.quality == ResponseQuality.GENUINE]
+                   if r["label"] == "followed_system" and s.quality not in _GIBBERISH]
     if genuine_sys:
         print(f"\n  === Genuine followed_system responses ({len(genuine_sys)} total) ===")
         for r in genuine_sys[:5]:

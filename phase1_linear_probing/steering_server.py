@@ -58,7 +58,7 @@ _directions: dict[str, np.ndarray] = {}  # name -> unit-norm vector
 _d_model: int = 0
 _cfg: ProbeConfig | None = None
 _gpu_lock = asyncio.Lock()
-_batch_size: int = 48
+_batch_size: int = 96
 _layers: list[int] = []
 _projection_stats: dict | None = None
 _dataset: dict[str, dict] | None = None  # experiment_hash -> sample record
@@ -280,7 +280,7 @@ def _parse_args() -> argparse.Namespace:
                         help="Probe run ID for loading directions")
     parser.add_argument("--layers", type=int, nargs="*", default=None,
                         help="Layers to load directions for (default: all)")
-    parser.add_argument("--batch-size", type=int, default=48)
+    parser.add_argument("--batch-size", type=int, default=96)
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8000)
     return parser.parse_args()
@@ -443,16 +443,19 @@ async def directions():
         and not name.startswith("cmd_raw_")
     })
     n_constraints = len(constraints)
-    per_layer = 4 + n_constraints * 2  # probe, probe_raw, cmd_overall, cmd_overall_raw + per-constraint * 2
 
     types = [
         DirectionType(pattern="probe_L{layer}", description="unit-norm logistic regression weight", count_per_layer=1),
         DirectionType(pattern="probe_raw_L{layer}", description="unnormalized logistic regression weight", count_per_layer=1),
+        DirectionType(pattern="probe_{constraint}_L{layer}", description=f"unit-norm per-constraint probe ({n_constraints} constraints)", count_per_layer=n_constraints),
+        DirectionType(pattern="probe_raw_{constraint}_L{layer}", description=f"unnormalized per-constraint probe ({n_constraints} constraints)", count_per_layer=n_constraints),
         DirectionType(pattern="cmd_overall_L{layer}", description="unit-norm overall class-mean difference", count_per_layer=1),
         DirectionType(pattern="cmd_overall_raw_L{layer}", description="unnormalized overall CMD", count_per_layer=1),
         DirectionType(pattern="cmd_{constraint}_L{layer}", description=f"unit-norm per-constraint CMD ({n_constraints} constraints)", count_per_layer=n_constraints),
         DirectionType(pattern="cmd_raw_{constraint}_L{layer}", description=f"unnormalized per-constraint CMD ({n_constraints} constraints)", count_per_layer=n_constraints),
     ]
+
+    per_layer = sum(t.count_per_layer for t in types)
 
     return DirectionsSummary(
         total=len(_directions),
@@ -486,6 +489,23 @@ async def direction_vector(name: str):
         norm=float(np.linalg.norm(vec)),
         vector=vec.tolist(),
     )
+
+
+class AddDirectionRequest(BaseModel):
+    name: str
+    vector: list[float]
+
+
+@app.post("/add_direction")
+async def add_direction(req: AddDirectionRequest):
+    """Register a custom direction by name (e.g., mean of per-constraint probes)."""
+    vec = np.array(req.vector, dtype=np.float32)
+    if vec.shape != (_d_model,):
+        raise HTTPException(
+            400, f"Vector length {len(req.vector)} != d_model {_d_model}"
+        )
+    _directions[req.name] = vec
+    return {"status": "ok", "name": req.name, "norm": float(np.linalg.norm(vec))}
 
 
 @app.get("/projection_stats")

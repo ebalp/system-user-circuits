@@ -152,10 +152,14 @@ def _select_directions(
             # Include probe, probe_raw, cmd_overall, cmd_overall_raw
             selected[name] = vec
         elif isinstance(vec, dict) and not name.endswith("_raw"):
-            # Include per-constraint CMDs (normalized only)
+            # Include per-constraint CMDs and per-constraint probes (normalized only)
+            if name.startswith("probe"):
+                prefix = "probe"
+            else:
+                prefix = "cmd"
             for cname, cvec in vec.items():
                 if isinstance(cvec, np.ndarray) and cvec.ndim == 1:
-                    selected[f"cmd_{cname}"] = cvec
+                    selected[f"{prefix}_{cname}"] = cvec
 
     return selected
 
@@ -213,6 +217,22 @@ def main():
     print(f"Saved: {out_path}")
     print(f"  {n_groups} groups, {len(layers)} layers, {n_dirs} directions/layer")
     print(f"  {size_mb:.1f} MB, {elapsed:.1f}s")
+
+    # Compute and save cosine similarity matrix between all directions at each layer
+    print("Computing cosine similarity matrices...")
+    cos_sim: dict = {}
+    for layer, directions in sorted(directions_by_layer.items()):
+        layer_key = f"L{layer}"
+        names = sorted(directions.keys())
+        D = np.stack([directions[n] for n in names], axis=1)  # (d_model, k)
+        norms = np.linalg.norm(D, axis=0, keepdims=True)
+        D_normed = D / np.where(norms > 0, norms, 1)
+        sim = (D_normed.T @ D_normed).tolist()  # (k, k)
+        cos_sim[layer_key] = {"names": names, "matrix": sim}
+
+    cos_path = cfg.run_dir / "direction_cosine_sim.json"
+    cos_path.write_text(json.dumps(cos_sim, indent=1) + "\n")
+    print(f"Saved: {cos_path} ({len(cos_sim)} layers)")
 
 
 if __name__ == "__main__":
