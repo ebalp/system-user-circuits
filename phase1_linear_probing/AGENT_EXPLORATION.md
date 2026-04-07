@@ -135,32 +135,37 @@ from explore_utils import (
 | `summarize(responses, label)` | Coherence-score, print per-constraint breakdown, return metrics. |
 | `save_experiment(name, config, responses, out_dir, notes=...)` | Save JSON with coherence annotations and your observations. |
 
-### Quick example: one complete experiment
+### Workflow: run → observe → save (DO NOT batch these into one script)
 
+**Step 1**: Run the experiment and print results. Read the output.
 ```python
-# 1. Get samples
 ids = get_sample_ids(baseline_label="followed_user", seed=42, limit=96)
-
-# 2. Get informed steering parameters
 stats = get_projection_stats()
 clues = steering_clues(stats, "json_only_vs_plain", "probe", 12)
-print(f"Suggested alpha={clues['suggested_alpha']:.2f}, target={clues['suggested_target']:.2f}")
-print(f"Separation={clues['separation']:.3f}, Cohen's d={clues['cohens_d']}")
+print(f"Clues: alpha={clues['suggested_alpha']:.2f}, target={clues['suggested_target']:.2f}")
 
-# 3. Generate with steering
 result = generate(ids, direction="probe_L12", layer=12,
-                  mode="additive", alpha=params["alpha"])
+                  mode="additive", alpha=clues["suggested_alpha"])
+summary = summarize(result["responses"], "probe_L12_add")
 
-# 4. Summarize and save
+# Print a few responses to inspect quality
+for r in result["responses"][:5]:
+    print(f"\n[{r['conflict_id']} {r['direction']}] label={r['label']} baseline={r['baseline_label']}")
+    print(r["text"][:200])
+```
+
+**Step 2**: After reading the output, reflect on what you see. Then save with notes that describe your actual observations — not pre-written boilerplate.
+```python
 config = {"direction": "probe_L12", "layer": 12, "mode": "additive",
           "alpha": clues["suggested_alpha"]}
-summary = summarize(result["responses"], "probe_L12_add")
-save_experiment("probe_L12_add", config, result["responses"],
-                FINDINGS_DIR,
-                notes="L12 additive at 3x separation. list b_to_a and tense b_to_a "
-                      "showed genuine flips. json barely moved. Starting_word resistant. "
-                      "Try higher alpha next.")
+save_experiment("probe_L12_add", config, result["responses"], FINDINGS_DIR,
+                summary=summary,
+                notes="YOUR ACTUAL OBSERVATIONS HERE: what did the responses "
+                      "look like? which constraints flipped genuinely? was there "
+                      "repetition? what surprised you? what should we try next?")
 ```
+
+**IMPORTANT**: Do NOT write all experiments in a single giant script. Run one experiment, read the output, think about what it means, save with real notes, then decide what to run next. This is research, not batch processing.
 
 ### Server endpoints (for reference)
 
