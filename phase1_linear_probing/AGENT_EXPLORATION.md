@@ -200,12 +200,16 @@ def build_sample(df_user, conflict_ids, n_per_dir=96, seed=42):
 
     Returns (prompts, score_meta) ready for the /generate endpoint.
     Total samples = len(conflict_ids) * 2 directions * n_per_dir.
+    Pass n_per_dir=None to use ALL available samples (for final conclusions).
     """
     samples = []
     for cid in conflict_ids:
         for d in ["a_to_b", "b_to_a"]:
             subset = df_user[(df_user.conflict_id == cid) & (df_user.direction == d)]
-            picked = subset.sample(min(n_per_dir, len(subset)), random_state=seed)
+            if n_per_dir is None:
+                picked = subset
+            else:
+                picked = subset.sample(min(n_per_dir, len(subset)), random_state=seed)
             samples.append(picked)
     sample_df = pd.concat(samples).reset_index(drop=True)
     prompts, score_meta = [], []
@@ -218,7 +222,7 @@ def build_sample(df_user, conflict_ids, n_per_dir=96, seed=42):
     return prompts, score_meta
 ```
 
-With 4 constraints, `n_per_dir=96` gives 768 samples per experiment. On the A100 with batch_size=128 this takes ~15-20 seconds — use n=25 as the default, not 12.
+With 4 constraints, `n_per_dir=96` gives 768 samples per experiment (~8 batches, ~1 min). Use n=96 for sweep phases. For deep dives and final conclusions, pass `n_per_dir=None` to use **all** available followed_user samples (~1000+ per direction per constraint, ~8000+ total, ~10-15 min).
 
 ### Summarizing results per constraint and direction
 
@@ -319,7 +323,7 @@ This phase produces a **layer × direction heatmap** of genuine_scr. Identify:
 For each config flagged in Phase 2:
 
 1. **Alpha/target sweep**: Test 3-4 values around the flagged config
-2. **Expanded sample set**: use all available followed_user samples for the constraint
+2. **Expanded sample set**: `n_per_dir=None` — use all available followed_user samples (~10-15 min on A100)
 3. **Read responses**: For every `followed_system` response with quality=genuine, read the text and confirm it genuinely complies
 4. **Per-constraint × per-direction breakdown**: Report genuine_scr separately for each (constraint, direction_type, a_to_b/b_to_a) cell
 5. **Projection mode**: If the layer responds to additive, also test projection mode at that layer
