@@ -111,6 +111,29 @@ def load_steering_directions(
                 name = key[: -len(suffix_probe)]
                 directions.setdefault("probe_per_constraint", {})[name] = pdata[key]
 
+    # IID Mass-Mean directions (from compute_iid_mm.py) — optional
+    iid_mm_path = run_dir / "iid_mm_directions.npz"
+    if iid_mm_path.exists():
+        idata = np.load(iid_mm_path)
+        overall_key = f"overall_iid_mm_L{layer}"
+        overall_z_key = f"overall_iid_mm_zscored_L{layer}"
+        mean_key = f"mean_iid_mm_L{layer}"
+        suffix_raw = f"_iid_mm_L{layer}"
+        suffix_z = f"_iid_mm_zscored_L{layer}"
+        for key in idata.files:
+            if key == overall_key:
+                directions["iid_mm_overall"] = idata[key]
+            elif key == overall_z_key:
+                directions["iid_mm_overall_zscored"] = idata[key]
+            elif key == mean_key:
+                directions["iid_mm_mean"] = idata[key]
+            elif key.endswith(suffix_z):
+                cid = key[: -len(suffix_z)]
+                directions.setdefault("iid_mm_per_constraint_zscored", {})[cid] = idata[key]
+            elif key.endswith(suffix_raw):
+                cid = key[: -len(suffix_raw)]
+                directions.setdefault("iid_mm_per_constraint", {})[cid] = idata[key]
+
     return directions
 
 

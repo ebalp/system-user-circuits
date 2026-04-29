@@ -63,6 +63,7 @@ _layers: list[int] = []
 _projection_stats: dict | None = None
 _dataset: dict[str, dict] | None = None  # experiment_hash -> sample record
 _log_file = None  # append-only JSONL log of all /generate requests+responses
+_direction_scales: dict[str, float] = {}  # server name -> projection std
 
 
 # ── Pydantic models ─────────────────────────────────────────────────────────
@@ -191,6 +192,117 @@ class HealthResponse(BaseModel):
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _unpack_directions(
+    dirs: dict, layer: int,
+) -> dict[str, np.ndarray]:
+    """Map :func:`load_steering_directions` output to flat server-name → vector.
+
+    Server name conventions (per layer L):
+      - probe family: ``probe_L{L}``, ``probe_raw_L{L}``,
+        ``probe_{cid}_L{L}``, ``probe_raw_{cid}_L{L}``.
+      - cmd family: ``cmd_overall_L{L}``, ``cmd_overall_raw_L{L}``,
+        ``cmd_{cid}_L{L}``, ``cmd_raw_{cid}_L{L}``.
+      - iid_mm family: ``iid_mm_L{L}``, ``iid_mm_zscored_L{L}``,
+        ``iid_mm_mean_L{L}``, ``iid_mm_{cid}_L{L}``,
+        ``iid_mm_zscored_{cid}_L{L}``.
+    """
+    out: dict[str, np.ndarray] = {}
+    for name, vec in dirs.items():
+        # iid_mm branch — must be checked BEFORE probe/cmd to avoid the
+        # "probe" / "cmd" substring tests below misclassifying these keys.
+        if name.startswith("iid_mm"):
+            if isinstance(vec, np.ndarray) and vec.ndim == 1:
+                if name == "iid_mm_overall":
+                    server_name = f"iid_mm_L{layer}"
+                elif name == "iid_mm_overall_zscored":
+                    server_name = f"iid_mm_zscored_L{layer}"
+                elif name == "iid_mm_mean":
+                    server_name = f"iid_mm_mean_L{layer}"
+                else:
+                    server_name = f"{name}_L{layer}"
+                out[server_name] = vec
+            elif isinstance(vec, dict):
+                if name == "iid_mm_per_constraint":
+                    prefix = "iid_mm"
+                elif name == "iid_mm_per_constraint_zscored":
+                    prefix = "iid_mm_zscored"
+                else:
+                    prefix = name
+                for cid, cvec in vec.items():
+                    if isinstance(cvec, np.ndarray) and cvec.ndim == 1:
+                        out[f"{prefix}_{cid}_L{layer}"] = cvec
+            continue
+
+        if isinstance(vec, np.ndarray) and vec.ndim == 1:
+            out[f"{name}_L{layer}"] = vec
+        elif isinstance(vec, dict):
+            if "probe" in name:
+                prefix = "probe_raw" if name.endswith("_raw") else "probe"
+            else:
+                prefix = "cmd_raw" if name.endswith("_raw") else "cmd"
+            for cname, cvec in vec.items():
+                if isinstance(cvec, np.ndarray) and cvec.ndim == 1:
+                    out[f"{prefix}_{cname}_L{layer}"] = cvec
+    return out
+
+
+def _proj_std_npz_to_server_name(key: str) -> str | None:
+    """Translate an iid_mm NPZ-style key to the corresponding server name.
+
+    Returns ``None`` for keys that do not match any known iid_mm layout.
+
+    Examples
+    --------
+    ``overall_iid_mm_L12`` -> ``iid_mm_L12``
+    ``overall_iid_mm_zscored_L12`` -> ``iid_mm_zscored_L12``
+    ``mean_iid_mm_L12`` -> ``iid_mm_mean_L12``
+    ``foo_bar_iid_mm_L12`` -> ``iid_mm_foo_bar_L12``
+    ``foo_bar_iid_mm_zscored_L12`` -> ``iid_mm_zscored_foo_bar_L12``
+    """
+    # Extract layer suffix
+    if "_L" not in key:
+        return None
+    body, layer_part = key.rsplit("_L", 1)
+    if not layer_part.isdigit():
+        return None
+    suffix = f"_L{layer_part}"
+
+    if body == "overall_iid_mm":
+        return f"iid_mm{suffix}"
+    if body == "overall_iid_mm_zscored":
+        return f"iid_mm_zscored{suffix}"
+    if body == "mean_iid_mm":
+        return f"iid_mm_mean{suffix}"
+    # Per-conflict: "{cid}_iid_mm" or "{cid}_iid_mm_zscored"
+    if body.endswith("_iid_mm_zscored"):
+        cid = body[: -len("_iid_mm_zscored")]
+        if cid:
+            return f"iid_mm_zscored_{cid}{suffix}"
+    if body.endswith("_iid_mm"):
+        cid = body[: -len("_iid_mm")]
+        if cid:
+            return f"iid_mm_{cid}{suffix}"
+    return None
+
+
+def _load_direction_scales(run_dir: Path) -> dict[str, float]:
+    """Load ``iid_mm_proj_std.json`` and remap to server direction names.
+
+    Returns an empty dict if the file does not exist.
+    """
+    path = run_dir / "iid_mm_proj_std.json"
+    if not path.exists():
+        return {}
+    import json as _json
+    raw = _json.loads(path.read_text())
+    out: dict[str, float] = {}
+    for k, v in raw.items():
+        server_name = _proj_std_npz_to_server_name(k)
+        if server_name is not None:
+            out[server_name] = float(v)
+    return out
 
 
 def _resolve_direction_value(direction: str | list[float]) -> np.ndarray:
@@ -325,24 +437,28 @@ async def lifespan(app: FastAPI):
         for layer in _layers:
             try:
                 dirs = load_steering_directions(_cfg.run_dir, pos, layer)
-                for name, vec in dirs.items():
-                    if isinstance(vec, np.ndarray) and vec.ndim == 1:
-                        _directions[f"{name}_L{layer}"] = vec
-                        if len(_layers) == 1:
-                            _directions[name] = vec
-                    elif isinstance(vec, dict):
-                        # Unpack per-constraint dicts (CMDs and probes)
-                        if "probe" in name:
-                            prefix = "probe_raw" if name.endswith("_raw") else "probe"
-                        else:
-                            prefix = "cmd_raw" if name.endswith("_raw") else "cmd"
-                        for cname, cvec in vec.items():
-                            if isinstance(cvec, np.ndarray) and cvec.ndim == 1:
-                                _directions[f"{prefix}_{cname}_L{layer}"] = cvec
+                unpacked = _unpack_directions(dirs, layer)
+                for server_name, vec in unpacked.items():
+                    _directions[server_name] = vec
+                    # Convenience aliases (single-layer servers)
+                    if len(_layers) == 1 and server_name.endswith(f"_L{layer}"):
+                        alias = server_name[: -len(f"_L{layer}")]
+                        if alias:
+                            _directions[alias] = vec
                 loaded = [k for k in _directions if k.endswith(f"_L{layer}")]
                 print(f"Loaded {len(loaded)} directions for L{layer}")
             except Exception as e:
                 print(f"Warning: could not load directions for L{layer}: {e}")
+
+        # Direction scales (projection std) for iid_mm rawspace dirs
+        global _direction_scales
+        try:
+            _direction_scales = _load_direction_scales(_cfg.run_dir)
+            if _direction_scales:
+                print(f"Loaded {len(_direction_scales)} direction scales from iid_mm_proj_std.json")
+        except Exception as e:
+            print(f"Warning: could not load direction scales: {e}")
+            _direction_scales = {}
 
     # Projection stats (optional — pre-computed by compute_projection_stats.py)
     global _projection_stats
@@ -444,6 +560,28 @@ async def directions():
     })
     n_constraints = len(constraints)
 
+    # iid_mm constraint set — keys like iid_mm_{cid}_L{layer}, excluding
+    # iid_mm_zscored_*, iid_mm_mean_*, and iid_mm_L{layer} (overall).
+    iid_mm_constraints = sorted({
+        name[len("iid_mm_"):].rsplit("_L", 1)[0]
+        for name in _directions
+        if name.startswith("iid_mm_")
+        and not name.startswith("iid_mm_zscored")
+        and not name.startswith("iid_mm_mean")
+        and "_L" in name[len("iid_mm_"):]  # body has an _L separator (excludes overall iid_mm_L{layer})
+        and name[len("iid_mm_"):].rsplit("_L", 1)[0]  # non-empty cid
+    })
+    n_iid_constraints = len(iid_mm_constraints)
+    has_iid_overall = any(
+        name.startswith("iid_mm_L") for name in _directions
+    )
+    has_iid_zscored_overall = any(
+        name.startswith("iid_mm_zscored_L") for name in _directions
+    )
+    has_iid_mean = any(
+        name.startswith("iid_mm_mean_L") for name in _directions
+    )
+
     types = [
         DirectionType(pattern="probe_L{layer}", description="unit-norm logistic regression weight", count_per_layer=1),
         DirectionType(pattern="probe_raw_L{layer}", description="unnormalized logistic regression weight", count_per_layer=1),
@@ -453,6 +591,11 @@ async def directions():
         DirectionType(pattern="cmd_overall_raw_L{layer}", description="unnormalized overall CMD", count_per_layer=1),
         DirectionType(pattern="cmd_{constraint}_L{layer}", description=f"unit-norm per-constraint CMD ({n_constraints} constraints)", count_per_layer=n_constraints),
         DirectionType(pattern="cmd_raw_{constraint}_L{layer}", description=f"unnormalized per-constraint CMD ({n_constraints} constraints)", count_per_layer=n_constraints),
+        DirectionType(pattern="iid_mm_L{layer}", description="unit-norm overall IID Mass-Mean direction (rawspace fit)", count_per_layer=1 if has_iid_overall else 0),
+        DirectionType(pattern="iid_mm_zscored_L{layer}", description="unit-norm overall IID Mass-Mean direction (zscored fit)", count_per_layer=1 if has_iid_zscored_overall else 0),
+        DirectionType(pattern="iid_mm_mean_L{layer}", description="mean of per-constraint IID-MM rawspace directions, renormalized", count_per_layer=1 if has_iid_mean else 0),
+        DirectionType(pattern="iid_mm_{constraint}_L{layer}", description=f"per-constraint IID-MM direction (rawspace fit, {n_iid_constraints} constraints)", count_per_layer=n_iid_constraints),
+        DirectionType(pattern="iid_mm_zscored_{constraint}_L{layer}", description=f"per-constraint IID-MM direction (zscored fit, {n_iid_constraints} constraints)", count_per_layer=n_iid_constraints),
     ]
 
     per_layer = sum(t.count_per_layer for t in types)
@@ -465,6 +608,16 @@ async def directions():
         types=types,
         constraints=constraints,
     )
+
+
+@app.get("/direction_scales")
+async def direction_scales():
+    """Per-direction projection std (rawspace IID-MM directions).
+
+    Keys are server direction names (e.g. ``iid_mm_L12``); values are floats.
+    Returns an empty dict if ``iid_mm_proj_std.json`` is not present.
+    """
+    return _direction_scales
 
 
 class DirectionVectorResponse(BaseModel):

@@ -149,10 +149,31 @@ def _select_directions(
 
     for name, vec in all_dirs.items():
         if isinstance(vec, np.ndarray) and vec.ndim == 1:
-            # Include probe, probe_raw, cmd_overall, cmd_overall_raw
-            selected[name] = vec
-        elif isinstance(vec, dict) and not name.endswith("_raw"):
-            # Include per-constraint CMDs and per-constraint probes (normalized only)
+            # Flat directions: probe, probe_raw, cmd_overall, cmd_overall_raw,
+            # and iid_mm_overall / iid_mm_overall_zscored / iid_mm_mean.
+            if name == "iid_mm_overall":
+                selected["iid_mm"] = vec
+            elif name == "iid_mm_overall_zscored":
+                selected["iid_mm_zscored"] = vec
+            elif name == "iid_mm_mean":
+                selected["iid_mm_mean"] = vec
+            else:
+                selected[name] = vec
+        elif isinstance(vec, dict):
+            # iid_mm per-constraint dicts — include both rawspace and zscored.
+            if name == "iid_mm_per_constraint":
+                for cid, cvec in vec.items():
+                    if isinstance(cvec, np.ndarray) and cvec.ndim == 1:
+                        selected[f"iid_mm_{cid}"] = cvec
+                continue
+            if name == "iid_mm_per_constraint_zscored":
+                for cid, cvec in vec.items():
+                    if isinstance(cvec, np.ndarray) and cvec.ndim == 1:
+                        selected[f"iid_mm_zscored_{cid}"] = cvec
+                continue
+            # CMD/probe per-constraint dicts (skip raw variants).
+            if name.endswith("_raw"):
+                continue
             if name.startswith("probe"):
                 prefix = "probe"
             else:

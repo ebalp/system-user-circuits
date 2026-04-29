@@ -32,7 +32,7 @@ CONFLICT_IDS = [
 ]
 
 # Default output directory for this exploration (distinct from prior agent_findings/)
-FINDINGS_DIR = "phase1_linear_probing/data/runs/curated4-8b-v002/exploration_v2"
+FINDINGS_DIR = "phase1_linear_probing/data/runs/curated4-8b-v002/exploration_v3"
 
 
 def set_base_url(url: str):
@@ -133,6 +133,60 @@ def get_projection_stats() -> dict:
     r = requests.get(f"{BASE}/projection_stats", timeout=30)
     r.raise_for_status()
     return r.json()
+
+
+def get_direction_scales() -> dict:
+    """Fetch per-direction projection-std multipliers from the server.
+
+    Returns a flat dict keyed by full server direction names
+    (e.g. ``iid_mm_L12``) mapping to a positive scalar `proj_std` —
+    the std of the projection of curated4 Condition C activations
+    onto the unit-norm direction at that layer. Used as the
+    additive-mode alpha-per-std unit for iid_mm steering.
+    """
+    r = requests.get(f"{BASE}/direction_scales", timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def iid_mm_steering_clues(
+    stats: dict,
+    scales: dict,
+    constraint: str,
+    direction_name: str,
+    layer: int,
+) -> dict:
+    """Orientation for iid_mm steering — projection-std units.
+
+    Parameters
+    ----------
+    stats : from :func:`get_projection_stats`
+    scales : from :func:`get_direction_scales`
+    constraint : conflict_id or ``"_overall"``
+    direction_name : e.g. ``"iid_mm"``, ``"iid_mm_mean"``, ``f"iid_mm_{cid}"``
+    layer : layer index
+
+    Returns
+    -------
+    dict with ``proj_std``, ``y0_mean``, ``y0_std``, ``y1_mean``,
+    ``y1_std``, ``separation``, ``alpha_per_std``, and four
+    ``target_*`` projection targets in per-class-std units.
+    """
+    proj_std = scales[f"{direction_name}_L{layer}"]
+    s = stats[constraint][f"L{layer}"][direction_name]
+    return {
+        "proj_std": proj_std,
+        "y0_mean": s["y0"]["mean"],
+        "y0_std":  s["y0"]["std"],
+        "y1_mean": s["y1"]["mean"],
+        "y1_std":  s["y1"]["std"],
+        "separation": s["y1"]["mean"] - s["y0"]["mean"],
+        "alpha_per_std": proj_std,
+        "target_y1_minus_half_class_std": s["y1"]["mean"] - 0.5 * s["y1"]["std"],
+        "target_y1":                       s["y1"]["mean"],
+        "target_y1_plus_half_class_std":   s["y1"]["mean"] + 0.5 * s["y1"]["std"],
+        "target_y1_plus_one_class_std":    s["y1"]["mean"] + 1.0 * s["y1"]["std"],
+    }
 
 
 def steering_clues(
