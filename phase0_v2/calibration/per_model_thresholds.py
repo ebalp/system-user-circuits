@@ -26,10 +26,49 @@ from ._shared import (
 )
 
 # Default feasibility caps — filter out degenerate solutions before Pareto computation.
-# Derived from empirical convergence analysis across 3 models.
-DEFAULT_MAX_D_NORM = 0.05
-DEFAULT_MAX_C_NORM = 0.05
-DEFAULT_MIN_BA = 0.90
+# Tightened from 0.05/0.05/0.90 to surface borderline picks as infeasible so the audit's
+# semantic-threshold step (Phase 4.5) can interrogate them.
+DEFAULT_MAX_D_NORM = 0.02
+DEFAULT_MAX_C_NORM = 0.02
+DEFAULT_MIN_BA = 0.95
+
+# Ambiguity bar — stricter than feasibility caps. A pick can be feasible yet still
+# ambiguous (audit-worthy). Triggers when any cost is non-trivial OR any BA is sacrificed.
+AMBIGUITY_MAX_D_NORM = 0.01
+AMBIGUITY_MAX_C_NORM = 0.01
+
+
+def is_ambiguous(result: dict, max_ba: float | None) -> bool:
+    """Return True if the per-conflict result deserves a semantic-threshold audit.
+
+    Triggers when any of:
+      - feasible is False (Pareto fell back to valley/baseline_midpoint), OR
+      - d_norm > AMBIGUITY_MAX_D_NORM, OR
+      - c_norm > AMBIGUITY_MAX_C_NORM, OR
+      - selected BA is below the model's max achievable BA (any BA cost).
+
+    **Lock for audit-set thresholds:** if `result["source"]` starts with
+    `audit_`, the entry was derived by an LLM agent's semantic analysis and is
+    treated as locked — `is_ambiguous` returns False regardless of the metrics.
+    This prevents future audits from re-deriving an already-vetted T. Use
+    `--force-overwrite-audit` on the optimizer (or `revert_audit_recommendation`)
+    to unlock.
+    """
+    source = result.get("source")
+    if isinstance(source, str) and source.startswith("audit_"):
+        return False
+    if not result.get("feasible", False):
+        return True
+    d = result.get("d_norm")
+    if d is not None and d > AMBIGUITY_MAX_D_NORM:
+        return True
+    c = result.get("c_norm")
+    if c is not None and c > AMBIGUITY_MAX_C_NORM:
+        return True
+    ba = result.get("ba")
+    if ba is not None and max_ba is not None and ba < max_ba - 1e-9:
+        return True
+    return False
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -601,8 +640,24 @@ def update_thresholds_yaml(
     model_id: str,
     results: list[dict],
     pareto_caps: dict,
+    *,
+    refresh_caps: bool = False,
+    force_overwrite_audit: bool = False,
 ):
-    """Add per-model threshold section to thresholds.yaml."""
+    """Add per-model threshold section to thresholds.yaml.
+
+    When `refresh_caps` is True, `_meta.pareto_caps` is overwritten with the
+    caps used by this run. When False (the default — used by partial
+    `--conflicts` updates), existing `_meta.pareto_caps` is preserved so the
+    section keeps the caps that produced the majority of its entries.
+
+    **Audit-lock protection:** entries with `source: audit_*` are treated as
+    locked — they were committed by an audit subagent's semantic analysis and
+    must not be silently overwritten by Pareto re-optimization. Locked entries
+    are skipped (kept as-is) unless `force_overwrite_audit=True`. The skipped
+    entries are returned in the result dict's `skipped_locked` list so the
+    caller can surface them to the user.
+    """
     with open(yaml_path) as f:
         data = yaml.safe_load(f) or {}
 
@@ -620,31 +675,53 @@ def update_thresholds_yaml(
 
     for r in results:
         entry = {"threshold": round(float(r["threshold"]), 3)}
+        # Provenance — every entry written by the optimizer is sourced "pareto"
+        # so the audit's threshold-provenance dashboard can distinguish
+        # optimizer picks from audit-vetted overrides.
+        entry["source"] = "pareto"
         if r.get("d_norm") is not None:
             entry["d_norm"] = round(float(r["d_norm"]), 6)
         if r.get("c_norm") is not None:
             entry["c_norm"] = round(float(r["c_norm"]), 6)
         if r.get("ba") is not None:
             entry["ba"] = round(float(r["ba"]), 4)
+        if r.get("max_ba") is not None:
+            entry["max_ba"] = round(float(r["max_ba"]), 4)
         entry["distribution"] = r.get("distribution", "unknown")
         entry["feasible"] = r.get("feasible", False)
         if r.get("fallback"):
             entry["fallback"] = r["fallback"]
+        entry["ambiguous"] = bool(r.get("ambiguous", False))
         model_section[r["conflict_id"]] = entry
 
+    skipped_locked: list[str] = []
     if safe_id in data and isinstance(data[safe_id], dict):
         # Merge: update only the conflicts in results, preserve the rest.
-        # Preserve existing _meta (including pareto_caps) — only update
-        # last_updated timestamp. This prevents --conflicts runs from
-        # overwriting stored caps with CLI defaults.
+        # Partial runs (`--conflicts X,Y`) keep existing `_meta.pareto_caps`
+        # so they don't get clobbered by CLI defaults that weren't used to
+        # produce the rest of the section. Full-section refreshes
+        # (`refresh_caps=True`) overwrite the caps to reflect this run.
         existing = data[safe_id]
-        if "_meta" in existing:
-            existing["_meta"]["last_updated"] = date.today().isoformat()
-        else:
+        if refresh_caps or "_meta" not in existing:
             existing["_meta"] = model_section["_meta"]
+        else:
+            existing["_meta"]["last_updated"] = date.today().isoformat()
         for cid, entry in model_section.items():
-            if cid != "_meta":
-                existing[cid] = entry
+            if cid == "_meta":
+                continue
+            # Audit-lock check: refuse to silently overwrite entries that an
+            # audit subagent committed via apply_audit_recommendation, unless
+            # force_overwrite_audit is set.
+            current = existing.get(cid)
+            if (
+                isinstance(current, dict)
+                and isinstance(current.get("source"), str)
+                and current["source"].startswith("audit_")
+                and not force_overwrite_audit
+            ):
+                skipped_locked.append(cid)
+                continue
+            existing[cid] = entry
     else:
         data[safe_id] = model_section
     data["_meta"] = {"last_updated": date.today().isoformat()}
@@ -653,6 +730,8 @@ def update_thresholds_yaml(
         f.write("# Float conflict thresholds — single source of truth.\n")
         f.write("# Boolean conflicts don't have thresholds and are not listed here.\n\n")
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+    return {"skipped_locked": skipped_locked}
 
 
 # ── Report generation ───────────────────────────────────────────────────
@@ -799,7 +878,7 @@ def run_pipeline(
     baseline_ranges = compute_baseline_ranges(records)
 
     # Load current thresholds for comparison
-    from ..config.thresholds import get_threshold
+    from ..config.thresholds import get_threshold, get_threshold_info
 
     # Count condition C records
     n_cond_c = sum(len(scores) for scores in cond_c_scores.values())
@@ -813,6 +892,7 @@ def run_pipeline(
         scores_arr = np.array(scores)
         bl_rows = baseline_rows.get(cid, [])
         current_t = get_threshold(cid, model_id)
+        current_info = get_threshold_info(cid, model_id) or {}
 
         r = select_threshold(
             scores_arr,
@@ -823,6 +903,10 @@ def run_pipeline(
         )
         r["conflict_id"] = cid
         r["current_threshold"] = current_t
+        r["current_source"] = current_info.get("source")
+        r["current_is_audit_locked"] = bool(current_info.get("is_audit_locked"))
+        max_ba = baseline_ranges.get(cid, {}).get("ba")
+        r["max_ba"] = round(float(max_ba), 4) if max_ba is not None else None
 
         # Fallback for infeasible: compute both valley and baseline midpoint,
         # pick whichever has higher BA. Ties go to valley (respects cond C shape).
@@ -857,6 +941,8 @@ def run_pipeline(
                 r["threshold"] = baseline_t
                 r["ba"] = baseline_ba
                 r["fallback"] = "baseline_midpoint"
+
+        r["ambiguous"] = is_ambiguous(r, r.get("max_ba"))
         results.append(r)
 
     return model_id, results, n_cond_c, pareto_caps
@@ -908,6 +994,16 @@ def main():
         default=None,
         help="Comma-separated conflict IDs to optimize (default: all float conflicts)",
     )
+    parser.add_argument(
+        "--force-overwrite-audit",
+        action="store_true",
+        help=(
+            "Overwrite per-conflict entries whose source is audit_* (set by "
+            "/calibration-audit-cond-c Phase 6.5). Default: skip them and "
+            "report which ones were preserved. Use only when you know the "
+            "audit-derived T is wrong and you want Pareto to re-pick."
+        ),
+    )
     args = parser.parse_args()
 
     conflict_list = [c.strip() for c in args.conflicts.split(",")] if args.conflicts else None
@@ -922,43 +1018,106 @@ def main():
     )
 
     # Print summary table
+    n_feas = sum(1 for r in results if r.get("feasible"))
+    n_fallback = sum(1 for r in results if not r.get("feasible") and r.get("fallback"))
+    n_unresolved = len(results) - n_feas - n_fallback
+    n_ambig = sum(1 for r in results if r.get("ambiguous"))
+    n_locked = sum(1 for r in results if r.get("current_is_audit_locked"))
     print(f"\nPer-model thresholds for: {model_id}")
     print(f"Pareto caps: d_norm ≤ {pareto_caps['max_d']}, c_norm ≤ {pareto_caps['max_c']}, BA ≥ {pareto_caps['min_ba']}")
     print(f"Condition C records: {n_cond_c}")
-    print(f"Float conflicts: {len(results)}")
+    print(
+        f"Float conflicts: {len(results)} "
+        f"({n_feas} feasible, {n_fallback} fallback, {n_unresolved} unresolved, "
+        f"{n_ambig} ambiguous, {n_locked} audit-locked)"
+    )
     print()
-    print(f"{'Conflict':<35} {'T_sel':>7} {'T_curr':>7} {'d_norm':>8} {'c_norm':>8} {'BA':>7} {'Dist':>10} {'Change':>8}")
-    print("-" * 97)
+    print(
+        f"{'Conflict':<35} {'T_sel':>7} {'T_curr':>7} {'Src':>5} {'d_norm':>8} {'c_norm':>8} "
+        f"{'BA':>7} {'maxBA':>7} {'Dist':>10} {'Feas':>5} {'Change':>8} {'Ambig':>6}"
+    )
+    print("-" * 125)
     for r in sorted(results, key=lambda x: x["conflict_id"]):
         t_cur = f"{r['current_threshold']:.3f}" if r.get("current_threshold") is not None else "—"
         dist = r.get("distribution", "?")
+        max_ba_str = f"{r['max_ba']:.3f}" if r.get("max_ba") is not None else "—"
+        amb_str = "[AMBIG]" if r.get("ambiguous") else ""
+        feas_str = "Y" if r.get("feasible") else "N"
+        # Source abbreviation. Locked entries are marked 🔒 so the operator
+        # immediately sees the Pareto pick won't be applied without --force.
+        src = r.get("current_source")
+        if r.get("current_is_audit_locked"):
+            src_str = "🔒aud"
+        elif src == "pareto":
+            src_str = "par"
+        elif src is None:
+            src_str = "—"
+        else:
+            src_str = src[:5]
+        # When an entry is audit-locked, the Pareto pick won't be applied —
+        # mark the change column "(locked)" so the operator doesn't read the
+        # diff as a pending change.
+        is_locked = r.get("current_is_audit_locked")
         if r.get("feasible"):
             change = r["threshold"] - r["current_threshold"] if r.get("current_threshold") is not None else None
-            change_str = f"{change:+.3f}" if change is not None else "new"
+            change_str = "(locked)" if is_locked else (f"{change:+.3f}" if change is not None else "new")
             print(
-                f"{r['conflict_id']:<35} {r['threshold']:>7.3f} {t_cur:>7} "
-                f"{r['d_norm']:>8.4f} {r['c_norm']:>8.4f} {r['ba']:>7.3f} {dist:>10} {change_str:>8}"
+                f"{r['conflict_id']:<35} {r['threshold']:>7.3f} {t_cur:>7} {src_str:>5} "
+                f"{r['d_norm']:>8.4f} {r['c_norm']:>8.4f} {r['ba']:>7.3f} "
+                f"{max_ba_str:>7} {dist:>10} {feas_str:>5} {change_str:>8} {amb_str:>6}"
             )
         elif r.get("fallback"):
             change = r["threshold"] - r["current_threshold"] if r.get("current_threshold") is not None else None
-            change_str = f"{change:+.3f}" if change is not None else "new"
+            change_str = "(locked)" if is_locked else (f"{change:+.3f}" if change is not None else "new")
             ba_str = f"{r['ba']:.3f}" if r.get("ba") is not None else "—"
             print(
-                f"{r['conflict_id']:<35} {r['threshold']:>7.3f} {t_cur:>7} "
-                f"{'—':>8} {'—':>8} {ba_str:>7} {dist:>10} {change_str:>8}  ← {r['fallback']}"
+                f"{r['conflict_id']:<35} {r['threshold']:>7.3f} {t_cur:>7} {src_str:>5} "
+                f"{'—':>8} {'—':>8} {ba_str:>7} "
+                f"{max_ba_str:>7} {dist:>10} {feas_str:>5} {change_str:>8} {amb_str:>6}  ← {r['fallback']}"
             )
         else:
             print(
-                f"{r['conflict_id']:<35} {'—':>7} {t_cur:>7} "
-                f"{'—':>8} {'—':>8} {'—':>7} {dist:>10} {'infeas':>8}"
+                f"{r['conflict_id']:<35} {'—':>7} {t_cur:>7} {src_str:>5} "
+                f"{'—':>8} {'—':>8} {'—':>7} "
+                f"{max_ba_str:>7} {dist:>10} {feas_str:>5} {'infeas':>8} {amb_str:>6}"
             )
+
+    print()
+    print(
+        "Legend: Src=🔒aud means the current YAML entry is audit-locked "
+        "(Pareto pick won't be applied without --force-overwrite-audit); "
+        "Src=par means optimizer-derived; Src=— means legacy entry without provenance. "
+        "Feas=Y means Pareto-feasible (ships as-is); Feas=N + fallback means "
+        "infeasible (used valley or baseline_midpoint); Ambig=[AMBIG] means the audit's "
+        "Phase 2.5 should re-derive a threshold from semantic samples."
+    )
 
     # Optionally update thresholds.yaml
     yaml_path = Path(__file__).parent.parent / "config" / "thresholds.yaml"
     if args.update:
-        # Write feasible + fallback results (skip truly unresolved)
+        # Write feasible + fallback results (skip truly unresolved).
+        # Full re-optimization (no --conflicts) refreshes _meta.pareto_caps;
+        # partial updates preserve them.
         feasible_results = [r for r in results if r.get("feasible") or r.get("fallback")]
-        update_thresholds_yaml(yaml_path, model_id, feasible_results, pareto_caps)
+        write_result = update_thresholds_yaml(
+            yaml_path, model_id, feasible_results, pareto_caps,
+            refresh_caps=conflict_list is None,
+            force_overwrite_audit=args.force_overwrite_audit,
+        ) or {}
+        skipped_locked = write_result.get("skipped_locked", [])
+        if skipped_locked:
+            print(
+                f"\n[lock] Preserved {len(skipped_locked)} audit-set entr"
+                f"{'y' if len(skipped_locked) == 1 else 'ies'} "
+                f"(source: audit_*) — Pareto pick was NOT written for:"
+            )
+            for cid in skipped_locked:
+                print(f"  - {cid}")
+            print(
+                "Re-run with --force-overwrite-audit to overwrite these, "
+                "or use revert_audit_recommendation() to restore the prior "
+                "Pareto pick first."
+            )
         print(f"Updated thresholds.yaml with per-model section for {model_id}")
 
         # Show suggested defaults

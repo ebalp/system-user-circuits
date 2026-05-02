@@ -174,7 +174,98 @@ Assess `baseline_integrity`:
 
 ---
 
-## Phase 2.5: Response structure landscape
+## Phase 2.5: Semantic threshold derivation (float, ambiguous only)
+
+This phase determines `working_T`, the threshold used by Phases 3-6 for sampling, label re-classification, diagnosis, and severity. The rest of the audit conditions on `working_T`, NOT on the threshold currently stored in `thresholds.yaml`. This is the single most important number the audit produces — get it right before doing any cond-C sampling.
+
+**Trigger:**
+- `verifier.type == "bool"` → set `working_T = None`, write `"semantic_threshold": {"ran": false, "trigger_reason": "bool_verifier"}`, skip the rest of this phase.
+- `info["is_audit_locked"] == true` → the YAML entry's `source` starts with `audit_`, meaning a prior audit's Phase 6.5 already committed this T. **Do not re-derive.** Set `working_T = info["threshold"]`, write `"semantic_threshold": {"ran": false, "trigger_reason": "audit_locked", "prior_audit_run": info["audit_run"]}`, and skip. Phases 4-5 still run, validating the locked T against fresh samples — if you find evidence the locked T is wrong, surface it in `notes` + `open_questions` (recommend `revert_audit_recommendation` rather than auto-overriding).
+- `verifier.type == "float"` AND `info["ambiguous"] == false` → set `working_T = info["threshold"]`, write `"semantic_threshold": {"ran": false, "trigger_reason": "not_ambiguous"}`, skip.
+- `verifier.type == "float"` AND `info["ambiguous"] == true` → run the procedure below to derive `T_recommended`, then set `working_T = T_recommended`.
+
+The ambiguous flag is set by `is_ambiguous()` (`phase0_v2/calibration/per_model_thresholds.py`) when **any** of: `feasible == false`, `d_norm > 0.01`, `c_norm > 0.01`, or `ba < max_ba`. `is_ambiguous` itself returns False for audit-locked entries, so once an audit has committed a T it stays committed across future audit runs. Read `info["ambiguous"]` and `info["is_audit_locked"]` directly from `get_threshold_info()` — never re-derive.
+
+### Why this exists and runs early
+
+Pareto optimization picks T from score-distribution geometry alone. When the geometry misleads (overlapping distributions, off-axis density modes inside a single behavioral cluster, fallback heuristics), the optimizer's pick can be globally wrong. Reading actual responses across score bands surfaces where the verifier's *intent* — what semantically counts as constraint_a vs constraint_b — actually flips.
+
+Running this **before Phases 3-5** means the rest of the audit analyzes the conflict at the threshold this audit is recommending, not the (potentially wrong) one in YAML. Diagnosis numbers, root causes, and severity reflect post-fix state. Without this ordering, you'd be diagnosing failure modes induced by the bad threshold itself.
+
+### Procedure
+
+1. **Sketch BA(T) and the score histogram.** Phase 2 already loaded the BA(T) curve via `_mean_ba_at_threshold` over the 0.001 grid and the per-conflict baseline rows. Confirm where `T_pareto` sits relative to peaks/valley, where `max_ba_achievable` is reached, and whether `baseline_optimal_range = [opt_lo, opt_hi]` is wide (`opt_hi - opt_lo >= 0.05`).
+
+2. **Stage A — landscape sweep (always run).** Call `sample_by_score_band` with the default 8 bands × 4 samples over condition C:
+
+   ```python
+   from phase0_v2.calibration._shared import load_records
+   from phase0_v2.calibration.audit_helpers import sample_by_score_band
+
+   records = load_records("{results_file_path}")
+   landscape = sample_by_score_band(
+       records, "{CONFLICT_ID}",
+       n_bands=8, samples_per_band=4, condition="C",
+   )
+   for (lo, hi), items in landscape.items():
+       print(f"[{lo:.3f}, {hi:.3f})  n={len(items)}")
+       for it in items:
+           print(f"  score={it['score']:.3f}  resp={it['record']['response'][:120]!r}")
+   ```
+
+3. **Label each landscape sample semantically:**
+
+   | Label | Meaning |
+   |-------|---------|
+   | `a` | Response semantically satisfies constraint_a (and not b). |
+   | `b` | Response semantically satisfies constraint_b (and not a). |
+   | `ambiguous` | Genuinely unclear — partial / mixed / surface-only compliance. |
+   | `refusal` | Bare refusal with no substantive content. |
+   | `meta` | Meta-commentary that doesn't actually attempt either constraint. |
+
+   Record sample-level labels in the report (`{REPORT_PATH}`) — JSON only carries the aggregate.
+
+4. **One-sided early-exit (skip Stage B).** Compute `n_a` and `n_b` from the labels. If `n_a + n_b > 0` and either side accounts for ≥90% of `(n_a + n_b)`:
+
+   - **If `baseline_optimal_range` is wide (`opt_hi - opt_lo >= 0.05`):** set `T_recommended = (opt_lo + opt_hi) / 2`, `confidence = "high"`, `skip_reason = "one_sided_cond_c"`. **Do not run Stage B.** Cond C never crosses the boundary, so the right T comes from the baseline data, not from cond-C label flips.
+   - **If the baseline range is narrow or absent:** still skip Stage B's drill-down at the cond-C boundary (it would be uninformative), but instead drill into condition A or B at the *baseline anomaly* score band to see if the anomalies suggest a tighter T. Document this in `rationale`.
+
+5. **Stage B — drill-down (run only when not one-sided).** When the labels show contestation across some band, re-call `sample_by_score_band` with explicit narrower `bands=[...]` and a larger `samples_per_band` (e.g., 8) around the disputed boundary. May restrict `condition` or `direction` to interrogate baseline anomalies. Don't drill blindly — choose bands based on what Stage A showed.
+
+6. **Score candidate thresholds.** The candidate set is: each Stage-A band edge, `T_pareto`, the fallback's `baseline_midpoint` if applicable, and the `baseline_optimal_range` endpoints + midpoint. For each candidate T, compute *agent-graded BA*:
+
+   ```
+   for each labeled sample (drop ambiguous/refusal/meta):
+     predict = "a" if sample.score >= T else "b"
+   agent_ba(T) = mean( recall_a, recall_b )
+   ```
+
+7. **Pick `T_recommended`.** Argmax `agent_ba`. Tie-break in this order:
+   - (a) closeness to the midpoint of `baseline_optimal_range` (if it exists),
+   - (b) closeness to the KDE valley (if bimodal),
+   - (c) closeness to `T_pareto` (preserve continuity).
+
+   This ordering reflects the priority: trust baseline data first, then cond-C geometry, then continuity.
+
+8. **Set `recommendation_confidence`.**
+   - `"high"` (default) — clear winner, well-sampled.
+   - `"medium"` — any band returned `< samples_per_band/2` records, OR Stage B was skipped without a baseline-range fallback.
+   - `"low"` — `>30%` of labeled samples are `ambiguous`, OR top two candidates differ by `<= 0.005` in agent BA.
+
+9. **Set `working_T = T_recommended`** and emit the `semantic_threshold` JSON block (schema in Phase 6).
+
+10. **Auto-apply (high confidence only).** When `recommendation_confidence == "high"` AND `T_recommended != T_pareto`, the audit auto-applies the change to `thresholds.yaml` and rescores the JSONL **at the very end of the audit** (Phase 6.5 — see schema/template below). The apply step is deterministic and provenance-recording. You do NOT call it inside Phase 2.5 — Phase 6.5 reads your written audit JSON and applies it. Set `working_T = T_recommended` here so Phases 3-5 use the new T for in-memory analysis; the JSONL itself is rewritten only at Phase 6.5.
+
+### Hard rules
+
+- **Phase 2.5 itself is read-only.** Do NOT edit `thresholds.yaml`, the JSONL, or any code in `phase0_v2/` from inside this phase. The auto-apply happens in Phase 6.5 after the JSON is written, so the audit JSON is always written first and the YAML/JSONL changes are reproducible from it.
+- **No invented samples.** Every cited response must come from the sampled bands; reference `record["response"]` directly.
+- **`working_T` is local to this audit until Phase 6.5.** Phases 3-5 condition on it for in-memory analysis only. Phase 6.5 commits it.
+- **Do not use `T_pareto` from a different model.** `get_threshold_info()` already filters per-model.
+
+---
+
+## Phase 3: Response structure landscape
 
 Before sampling, get a bird's-eye view of response structures for this conflict. This tells you where to focus investigation.
 
@@ -213,9 +304,24 @@ Populate `response_structure` in the JSON (see schema below) from this data.
 
 ---
 
-## Phase 3: Sample and classify responses
+## Phase 4: Sample and classify responses (at working_T)
 
-### 3a. Baselines (conditions A and B) — both types
+**Critical: stored labels in the JSONL reflect the YAML T at scoring time, NOT `working_T`.** When `working_T != info["threshold"]`, every sampled cond-C record's stored `label` may be wrong relative to the audit's target threshold. Re-classify on the fly:
+
+```python
+from phase0_v2.calibration._shared import apply_threshold, compute_label
+
+# For each cond-C record sampled:
+sys_pass = apply_threshold(rec["verify_system_score"], working_T, sys_inverted)
+usr_pass = apply_threshold(rec["verify_user_score"], working_T, usr_inverted)
+working_label = compute_label(sys_pass, usr_pass)  # followed_system / _user / _both / _neither
+```
+
+Use `working_label` for the rest of this phase's analysis (direction × label matrix, edge-case counts, behavioral taxonomy). The CLI commands below filter on the JSONL's *stored* label — when `working_T` differs from YAML T, you may need to re-pull samples by score band (Phase 2.5's `sample_by_score_band`) and apply the working-T classification yourself, then count.
+
+When `working_T == info["threshold"]` (unambiguous floats and bools), stored labels are correct — use them as-is.
+
+### 4a. Baselines (conditions A and B) — both types
 
 Sample 5-10 responses per condition. Learn what clean compliance looks like:
 
@@ -244,7 +350,7 @@ uv run python -m phase0_v2.calibration.audit_conflict \
 - **(b) Genuine model non-compliance** — model fails even without conflict
 - **(c) Ambiguous cases** — constraint is genuinely hard to evaluate
 
-### 3b. Condition C — the full grid — both types
+### 4b. Condition C — the full grid — both types
 
 You MUST sample every cell of the direction x label matrix. For each sample, independently judge correctness.
 
@@ -337,7 +443,7 @@ uv run python -m phase0_v2.calibration.audit_conflict \
   sample --anomalies --n 999
 ```
 
-### 3c. Build the behavioral taxonomy (both types)
+### 4c. Build the behavioral taxonomy (both types)
 
 As you read responses, categorize strategies:
 - **Clean compliance**: follows one instruction completely, ignores the other
@@ -399,9 +505,11 @@ Do NOT classify bare refusals as followed_neither solely because they lack subst
 
 ---
 
-## Phase 4: Investigate and quantify
+## Phase 5: Investigate and quantify (at working_T)
 
-### 4a. Mandatory meta-commentary sweep — both types
+All counts, error percentages, and root-cause attributions in this phase are computed at `working_T`. Use `reclassify_condition_c(records, conflict_id, verify_a, verify_b, threshold=working_T)` to get post-fix label counts. The diagnosis JSON field reports these post-fix numbers; `diagnosis_at_yaml_t` (Phase 6 schema) optionally reports the pre-fix view.
+
+### 5a. Mandatory meta-commentary sweep — both types
 
 Non-negotiable. For every direction, investigate whether meta-commentary fools the verifier.
 
@@ -426,7 +534,7 @@ If the regex sweep finds significantly more hits than the tagger's metacommentar
 - Does the conflict already have preprocessing that handles this? (Check Phase 2.5 `preprocessing` output)
 - Estimate misclassification count.
 
-### 4b. Quantify failure modes precisely — both types
+### 5b. Quantify failure modes precisely — both types
 
 When you identify a failure mode, **do not rely on sample-based estimation alone**. If detectable:
 
@@ -439,7 +547,7 @@ When you identify a failure mode, **do not rely on sample-based estimation alone
 
 **If no detectable signature:** Sample 15-20 and report confidence: "8/20 sampled were misclassified (40%) — sample estimate."
 
-### 4c. Second-pass root cause hunt — both types
+### 5c. Second-pass root cause hunt — both types
 
 Assume there are **additional failure modes** beyond what you found:
 
@@ -452,7 +560,7 @@ Assume there are **additional failure modes** beyond what you found:
 
 **Do not stop at one root cause.** A conflict can have multiple independent failure modes.
 
-### 4d. Float-specific: hypothesis testing with Pareto metrics
+### 5d. Float-specific: hypothesis testing with Pareto metrics
 
 For each root cause, test hypothesis using `run_pareto()` with a modified scorer:
 
@@ -477,7 +585,7 @@ print(f"AFTER FIX: threshold={result['threshold']}, ba={result['ba']}, "
 
 Populate `estimated_pareto` in the suggested fix from this result.
 
-### 4e. Bool-specific: additional investigation strategies
+### 5e. Bool-specific: additional investigation strategies
 
 Since bool conflicts have no threshold gradient, use these strategies:
 
@@ -617,7 +725,7 @@ print(f"changed: {fix['changed']} labels")
 
 Report `fix['error_pct']` as `estimated_error_pct`. Do NOT estimate by reasoning — measure it.
 
-### 4f. Structure-aware verifier assessment — both types
+### 5f. Structure-aware verifier assessment — both types
 
 Use the response structure data from Phase 2.5 to investigate whether the verifier would be more accurate if it stripped refusal prefixes or metacommentary before scoring. **Stripping is not a default** — most verifiers work correctly on full response text. Only propose it when you have evidence of misclassification caused by the non-content text.
 
@@ -684,9 +792,9 @@ Record your findings in the `response_structure` JSON field and in `notes`.
 
 ---
 
-## Phase 5: Write outputs
+## Phase 6: Write outputs
 
-### 5a. JSON (primary output)
+### 6a. JSON (primary output)
 
 Write to `{JSON_PATH}`. All structured fields filled. Schema:
 
@@ -738,14 +846,41 @@ Write to `{JSON_PATH}`. All structured fields filled. Schema:
   "pareto": {
     "threshold": 0.52,
     "ba": 0.995,
+    "max_ba": 1.0,
     "d_norm": 0.001,
     "c_norm": 0.002,
     "distribution": "bimodal",
     "feasible": true,
     "fallback": "null | baseline_midpoint | valley",
+    "ambiguous": false,
     "n_pareto": 12,
     "baseline_optimal_range": [0.40, 0.65],
     "baseline_integrity": "HEALTHY | FRAGILE | HIGH_COST | MISLEADING | FALLBACK"
+  },
+
+  "semantic_threshold": {
+    "ran": true,
+    "trigger_reason": "feasible=false | d_norm>0.01 | c_norm>0.01 | ba<max_ba",
+    "n_bands": 8,                    // Stage A landscape sweep
+    "samples_per_band": 4,           // Stage A landscape sweep
+    "drilled": true,                 // true if Stage B drill-down was run
+    "n_samples_total": 32,           // across all sample_by_score_band calls
+    "n_samples_labeled": 30,         // excludes refusal/meta/sparse-band gaps
+    "agent_labels_summary": {
+      "a": 12, "b": 14, "ambiguous": 3, "refusal": 1, "meta": 0
+    },
+    "candidate_thresholds": [
+      {"T": 0.125, "agent_ba": 0.83},
+      {"T": 0.234, "agent_ba": 0.85, "is_pareto_pick": true},
+      {"T": 0.500, "agent_ba": 0.94},
+      {"T": 0.625, "agent_ba": 0.92}
+    ],
+    "T_pareto": 0.234,
+    "T_recommended": 0.500,
+    "recommended_agent_ba": 0.94,
+    "recommendation_confidence": "high | medium | low",
+    "rationale": "Free-text: why this T best matches verifier intent. Cite 2-3 borderline samples that flip on this threshold.",
+    "delta_vs_pareto": 0.266
   },
 
   "diagnosis": {
@@ -766,11 +901,29 @@ Write to `{JSON_PATH}`. All structured fields filled. Schema:
     "overall_n": 0
   },
 
-  "severity": {
-    "rating": "GREEN | YELLOW | AMBER | RED"
+  "diagnosis_at_yaml_t": {
+    "_comment": "Populated only when working_T != info['threshold']. Same shape as `diagnosis`, computed at info['threshold'] (the YAML threshold). Lets dashboards show the pre-fix view alongside the post-fix one. Omit (or set null) when working_T == info['threshold'].",
+    "overall_error_pct": 0.0,
+    "overall_error_count": 0,
+    "overall_n": 0
   },
 
-  "recommended_action": "string (free-form summary)",
+  "severity": {
+    "rating": "GREEN | YELLOW | AMBER | RED",
+    "_comment": "Computed at working_T (post-fix state)."
+  },
+
+  "severity_at_yaml_t": "GREEN | YELLOW | AMBER | RED | null",
+
+  "recommended_action": {
+    "summary": "One concrete action. Single sentence. No 'either A or B' hedging — pick one.",
+    "type": "threshold_change | verifier_fix | constraint_redesign | none",
+    "steps": [
+      "1. ...",
+      "2. ..."
+    ],
+    "_comment": "When type=threshold_change, steps MUST include the YAML edit (dict form), the rescore command, and the re-audit command. See 'Recommendation routing' below."
+  },
 
   "suggested_fixes": [
     {
@@ -840,8 +993,34 @@ Write to `{JSON_PATH}`. All structured fields filled. Schema:
 - `suggested_fixes`: `[]` for GREEN conflicts
 - `notes`: free-form array of strings — observations, edge cases, surprises, caveats. Always populate.
 - Root cause schema within diagnosis: `{ "description": "...", "error_count": 0, "signature": "string | null", "quantification_method": "exact_count | sample_estimate" }`
+- `diagnosis_at_yaml_t`: only populate when `working_T != info["threshold"]`. Use `reclassify_condition_c(records, conflict_id, verify_a, verify_b, threshold=info["threshold"])` to compute the pre-fix counts. When `working_T == info["threshold"]`, omit or set `null`.
+- `severity_at_yaml_t`: only populate when `working_T != info["threshold"]`. Computed from `diagnosis_at_yaml_t.overall_error_pct`. Otherwise `null`.
 
-### 5b. Report (highlights)
+### Recommendation routing — hard rules
+
+The audit produces three kinds of forward-looking output. Each has a clear lane; do not cross them.
+
+**`recommended_action`** — exactly **one** concrete action that an operator (or a follow-up command) can execute end-to-end. No "either A or B" hedging. If you have multiple viable approaches, pick the one with highest confidence × lowest risk and put it here; demote the alternatives to `suggested_fixes`. The schema enforces `summary` (single sentence) + `type` + `steps` (executable list).
+
+**`suggested_fixes`** — per-conflict, per-model changes scoped to *this* conflict. Examples: a YAML threshold override for this (model, conflict) pair, a verifier-code change to a single conflict's `verify_*` function, a preprocessing tag added to this conflict's `conflicts.yaml` entry. Each fix must include `reproduction.code_snippet` in the exact format the operator will paste. **Per-model YAML overrides MUST use dict form** (`threshold: 0.75`), never bare scalar — bare-scalar entries lose `feasible`/`max_ba`/`ambiguous` metadata.
+
+**`open_questions`** — anything that crosses conflict boundaries or changes shared infrastructure. Examples: changes to `phase0_v2/calibration/per_model_thresholds.py` (selector logic, cap formulas, fallback heuristics), new preprocessing tag categories, schema additions, design decisions about when to clip thresholds globally. These need broader vetting and benchmarking across many conflicts; never propose them as `suggested_fixes`.
+
+### `recommended_action` template — `type: threshold_change`
+
+When the action is a threshold change (most common output of an ambiguous-conflict audit), `steps` MUST be exactly:
+
+```
+1. Edit phase0_v2/config/thresholds.yaml under {model_safe_id}.{conflict_id}:
+     threshold: {working_T}
+   (Use dict form, not bare scalar. Or run: uv run python -m phase0_v2.calibration.per_model_thresholds {results_path} --update --conflicts {conflict_id} after manually relaxing caps in CLI flags so this T becomes feasible.)
+2. Rescore: uv run python -m phase0_v2.calibration.rescore {results_path} {results_path} --model {model_id}
+3. Re-audit to verify: /calibration-audit-cond-c {model_short} --conflicts {conflict_id}
+```
+
+Every threshold-change recommendation needs all three steps. Step 2 is non-optional — without rescoring, downstream Phase 1 probing reads stale labels.
+
+### 6b. Report (highlights)
 
 Write to `{REPORT_PATH}`. Contains only what doesn't fit the JSON:
 
@@ -855,6 +1034,84 @@ Write to `{REPORT_PATH}`. Contains only what doesn't fit the JSON:
 - Anything noteworthy that doesn't fit JSON structure
 
 The report is **not** a duplicate of the JSON. Do not restate numbers that are in the JSON. Focus on qualitative evidence, reasoning, and excerpts that support the JSON's conclusions.
+
+---
+
+## Phase 6.5: Auto-apply (high-confidence threshold change only)
+
+After both `{JSON_PATH}` and `{REPORT_PATH}` are written, the audit auto-applies high-confidence threshold recommendations to `thresholds.yaml` and rescores the JSONL. This is a single deterministic helper call — do not edit YAML by hand and do not skip.
+
+```python
+from phase0_v2.calibration.audit_helpers import apply_audit_recommendation
+
+result = apply_audit_recommendation("{JSON_PATH}")
+print(result)
+```
+
+`apply_audit_recommendation` reads the audit JSON you just wrote and:
+
+1. **Skips (no-op)** when any of: `semantic_threshold.ran != true`, `T_recommended == T_pareto`, or `recommendation_confidence != "high"`. Returns `{"applied": False, "reason": "..."}`. For bool conflicts and unambiguous floats this is the path; nothing to do.
+
+2. **Writes the new threshold to `thresholds.yaml`** under `{model_label}.{conflict_id}` with full provenance:
+   ```yaml
+   {conflict_id}:
+     threshold: {T_recommended}
+     source: audit_{MMDD_HHMM}        # ← audit timestamp from the JSON filename
+     audit_run: {JSON_PATH}            # ← absolute path to the audit JSON
+     previous:                         # ← full snapshot of the prior entry, for one-command revert
+       threshold: {T_pareto}
+       source: pareto                  # or whatever the prior source was
+       ba: ...                         # all prior fields preserved
+       d_norm: ...
+       c_norm: ...
+       feasible: ...
+       ambiguous: ...
+       distribution: ...
+     ba: ...                           # ← recomputed at T_recommended
+     max_ba: ...                       # ← carried over (model-side max, threshold-independent)
+     d_norm: ...                       # ← recomputed at T_recommended
+     c_norm: ...                       # ← recomputed at T_recommended
+     feasible: ...                     # ← recomputed at T_recommended (against optimizer's caps)
+     ambiguous: ...                    # ← recomputed at T_recommended (typically False after a good fix)
+     distribution: ...                 # ← carried over
+   ```
+
+3. **Invalidates the threshold cache** so the rescore step reads the new YAML.
+
+4. **Rescores the JSONL** at `phase0_v2/data/results/{model_label}_results.jsonl` in-place via `rescore.main(["<path>", "<path>", "--model", "<model_id>"])`. Updates `verify_system_result`, `verify_user_result`, and `label` for every record of that model. Other conflicts' records pass through unchanged (their thresholds didn't move).
+
+Reports the apply outcome in the per-conflict report — typically a short "Auto-applied: T 0.978 → 0.75; 500 cond C labels relabeled; thresholds.yaml updated with provenance." sentence at the bottom of `{REPORT_PATH}`.
+
+### Why Phase 6.5 (not 2.5)
+
+Putting auto-apply at the very end means:
+- The audit JSON exists on disk before any state mutation. If the apply fails, the JSON is still there as a record of intent and is fully reproducible.
+- Phase 6.5 is a thin wrapper around the audit JSON — anyone can re-run it later by re-invoking `apply_audit_recommendation(json_path)`.
+- Phases 4-5 keep their in-memory `working_T` re-classification logic; they don't depend on the JSONL being already-rescored.
+
+### Concurrency
+
+The orchestrator launches subagents in batches (default 4). Two subagents running Phase 6.5 simultaneously each write to a different `(model, conflict)` entry in `thresholds.yaml`, so collisions are unlikely. The YAML write is read-modify-write — if two subagents read the same in-memory snapshot and one of them is preempted, the second write can lose the first's entry. Mitigation: small batch size (default 4) keeps the simultaneity window narrow; in practice, audit-graded labeling takes minutes per agent and the YAML write is sub-second, so collisions are vanishingly rare. If you observe a missing entry after a batch, re-run `apply_audit_recommendation` for the affected (model, conflict) — it's idempotent.
+
+### Confidence gating
+
+`recommendation_confidence` is the load-bearing signal. Set it honestly:
+- `"high"` — Stage A samples are unambiguous, agent BA at the recommended T is meaningfully higher than at neighbors, and (if `baseline_optimal_range` exists) `T_recommended` lies inside it. Auto-apply fires.
+- `"medium"` — sparse band, missing baseline range, or top-two candidates differ by `<= 0.005` agent BA. Auto-apply does NOT fire; recommendation stays in the audit JSON for operator review.
+- `"low"` — `>30%` of labeled samples are `ambiguous`, OR an unresolvable tie. Auto-apply does NOT fire; surface as needs human input.
+
+If you find yourself wanting to auto-apply a medium/low confidence recommendation, downgrade your confidence assessment instead — the gating is a circuit-breaker, not a hurdle.
+
+### Revert
+
+If an auto-applied recommendation later proves wrong:
+
+```python
+from phase0_v2.calibration.audit_helpers import revert_audit_recommendation
+revert_audit_recommendation(model_label="{model_label}", conflict_id="{CONFLICT_ID}")
+```
+
+Restores the `previous` snapshot to the top-level fields, removes the `previous` block, invalidates the cache, and rescores the JSONL. Single command, no data loss.
 
 ---
 

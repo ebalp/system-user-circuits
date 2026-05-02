@@ -69,9 +69,12 @@ def get_threshold(conflict_id: str, model_id: str | None = None) -> float | None
 def get_threshold_info(conflict_id: str, model_id: str) -> dict | None:
     """Return full threshold metadata for a conflict+model pair.
 
-    Returns dict with keys: threshold, feasible, fallback, ba, d_norm, c_norm,
-    distribution.  Returns None if no per-model entry exists (conflict may be
-    bool or model section absent).
+    Returns dict with keys: threshold, feasible, fallback, ba, max_ba, d_norm,
+    c_norm, distribution, ambiguous. Returns None if no per-model entry exists
+    (conflict may be bool or model section absent).
+
+    `max_ba` and `ambiguous` are present on entries written by the optimizer
+    after the 2026-05 caps tightening; older entries return None / False.
     """
     data = _load_thresholds()
     safe_id = model_id.replace("/", "_")
@@ -82,15 +85,34 @@ def get_threshold_info(conflict_id: str, model_id: str) -> dict | None:
     if entry is None:
         return None
     if not isinstance(entry, dict):
-        return {"threshold": entry, "feasible": True, "fallback": None}
+        return {
+            "threshold": entry,
+            "feasible": True,
+            "fallback": None,
+            "max_ba": None,
+            "ambiguous": False,
+            "source": None,
+            "audit_run": None,
+        }
+    source = entry.get("source")
+    # Audit-set entries are locked: they were derived by an LLM agent's
+    # semantic analysis and should not be silently re-derived. Callers should
+    # check `is_audit_locked` before re-running threshold optimization or
+    # Phase 2.5 of the audit subagent.
+    is_audit_locked = isinstance(source, str) and source.startswith("audit_")
     return {
         "threshold": entry.get("threshold"),
         "feasible": entry.get("feasible", True),
         "fallback": entry.get("fallback"),
         "ba": entry.get("ba"),
+        "max_ba": entry.get("max_ba"),
         "d_norm": entry.get("d_norm"),
         "c_norm": entry.get("c_norm"),
         "distribution": entry.get("distribution"),
+        "ambiguous": entry.get("ambiguous", False),
+        "source": source,
+        "audit_run": entry.get("audit_run"),
+        "is_audit_locked": is_audit_locked,
     }
 
 
