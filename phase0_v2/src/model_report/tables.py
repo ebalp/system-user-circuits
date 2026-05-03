@@ -1094,6 +1094,13 @@ def load_audit_data(
     return result if result else None
 
 
+def _action_text(ra) -> str:
+    """Normalize recommended_action to a display string (handles dict + str)."""
+    if isinstance(ra, dict):
+        return ra.get("summary") or ra.get("type") or ""
+    return ra if isinstance(ra, str) else ""
+
+
 def _parse_audit_json(path: Path) -> dict | None:
     """Parse a single audit JSON file into the report data structure."""
     import json
@@ -1152,7 +1159,7 @@ def _parse_audit_json(path: Path) -> dict | None:
         "meta_commentary_a_to_b": meta.get("prevalence_a_to_b", 0),
         "meta_commentary_b_to_a": meta.get("prevalence_b_to_a", 0),
         "meta_causes_misclassification": meta.get("causes_misclassification", False),
-        "recommended_action": data.get("recommended_action", ""),
+        "recommended_action": _action_text(data.get("recommended_action", "")),
         "resp_bare_refusal_a_to_b": resp_a2b.get("bare_refusal", 0),
         "resp_bare_refusal_b_to_a": resp_b2a.get("bare_refusal", 0),
         "resp_refusal_content_a_to_b": resp_a2b.get("refusal_content", 0),

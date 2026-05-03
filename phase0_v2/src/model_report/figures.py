@@ -1016,9 +1016,15 @@ def fig_verifier_audit_reliability(
         "RED": "#e74c3c",
     }
 
+    def _action_text(ra) -> str:
+        """Normalize recommended_action to a display string (handles dict + str)."""
+        if isinstance(ra, dict):
+            return ra.get("summary") or ra.get("type") or ""
+        return ra if isinstance(ra, str) else ""
+
     def _wrap(text: str, width: int = 60) -> str:
         """Word-wrap text with <br> for hover readability."""
-        words = text.split()
+        words = (text or "").split()
         lines, line = [], ""
         for w in words:
             if line and len(line) + 1 + len(w) > width:
@@ -1060,7 +1066,7 @@ def fig_verifier_audit_reliability(
                 "meta_count": meta_count,
                 "meta_pct": meta_count / n * 100 if n > 0 else 0,
                 "meta_causes_misclass": entry.get("meta_causes_misclassification", False),
-                "recommended_action": entry.get("recommended_action", ""),
+                "recommended_action": _action_text(entry.get("recommended_action", "")),
             })
 
     if not rows:

@@ -12,6 +12,8 @@ models:
   - id: Qwen/Qwen2.5-7B-Instruct
   - id: openai/gpt-oss-20b
   - id: google/gemma-4-31B-it
+  - id: google/gemma-4-E2B-it
+  - id: google/gemma-4-E4B-it
 
 # System prompt wrapping templates (rhetorical framings).
 # {system_instruction} is the full-sentence conflict system template, already rendered.
@@ -65,7 +67,7 @@ seed: 42
 
 generation:
   temperature: 0.0
-  max_tokens: 2048
+  max_tokens: 512
   instances_per_cell: 1
 
 # Sampling

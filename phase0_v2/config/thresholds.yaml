@@ -2,7 +2,7 @@
 # Boolean conflicts don't have thresholds and are not listed here.
 
 _meta:
-  last_updated: '2026-04-04'
+  last_updated: '2026-05-02'
 default:
   address_reader_directly: 0.143
   template_response: 0.561
@@ -1106,3 +1106,628 @@ google_gemma-4-31B-it:
     ba: 1.0
     distribution: bimodal
     feasible: true
+google_gemma-4-E2B-it:
+  _meta:
+    last_updated: '2026-05-02'
+    pareto_caps:
+      max_d_norm: 0.02
+      max_c_norm: 0.02
+      min_ba: 0.95
+  address_reader_directly:
+    threshold: 0.001
+    source: pareto
+    d_norm: 0.0016
+    c_norm: 0.0
+    ba: 1.0
+    max_ba: 1.0
+    distribution: unimodal
+    feasible: true
+    ambiguous: false
+  alliteration_density:
+    threshold: 0.293
+    source: audit_0502_1253
+    audit_run: /Users/enrique/system-user-circuits/phase0_v2/calibration/output/condition_c_audit/google_gemma-4-E2B-it/alliteration_density/audit_0502_1253.json
+    previous:
+      threshold: 0.419
+      source: pareto
+      ba: 1.0
+      max_ba: 1.0
+      distribution: bimodal
+      feasible: false
+      fallback: valley
+      ambiguous: true
+    ba: 1.0
+    max_ba: 1.0
+    d_norm: 0.0
+    c_norm: 0.735962
+    distribution: bimodal
+    feasible: false
+    ambiguous: true
+  alphabetical_sentences:
+    threshold: 0.868
+    source: pareto
+    d_norm: 0.0
+    c_norm: 1.7e-05
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  bullets_and_sub_bullets:
+    threshold: 0.422
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  capitalization_all_caps:
+    threshold: 0.52
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  direct_answer_vs_hedging:
+    threshold: 0.533
+    source: pareto
+    d_norm: 0.013338
+    c_norm: 0.000891
+    ba: 0.985
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: true
+  each_word_new_line:
+    threshold: 0.064
+    source: pareto
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint
+    ambiguous: true
+  first_vs_third_person:
+    threshold: 0.337
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.000419
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  formal_vs_casual_tone:
+    threshold: 0.74
+    source: audit_0502_2112
+    audit_run: phase0_v2/calibration/output/condition_c_audit/google_gemma-4-E2B-it/formal_vs_casual_tone/audit_0502_2112.json
+    previous:
+      threshold: 0.704
+      source: pareto
+      d_norm: 0.0
+      c_norm: 0.013426
+      ba: 1.0
+      max_ba: 1.0
+      distribution: bimodal
+      feasible: true
+      ambiguous: true
+    ba: 1.0
+    max_ba: 1.0
+    d_norm: 0.015878
+    c_norm: 0.019762
+    distribution: bimodal
+    feasible: true
+    ambiguous: true
+  html_emphasis_tags:
+    threshold: 0.49
+    source: pareto
+    d_norm: 4.0e-06
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  imperative_vs_declarative:
+    threshold: 0.376
+    source: pareto
+    d_norm: 0.001125
+    c_norm: 0.002254
+    ba: 0.99
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: true
+  keyword_frequency:
+    threshold: 0.234
+    source: pareto
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint
+    ambiguous: true
+  leetspeak_encoding:
+    threshold: 0.149
+    source: pareto
+    d_norm: 1.0e-06
+    c_norm: 0.001212
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  number_density:
+    threshold: 0.5
+    source: audit_0502_0653
+    audit_run: phase0_v2/calibration/output/condition_c_audit/google_gemma-4-E2B-it/number_density/audit_0502_0653.json
+    previous:
+      threshold: 0.063
+      source: pareto
+      ba: 0.995
+      max_ba: 0.995
+      distribution: unimodal
+      feasible: false
+      fallback: baseline_midpoint
+      ambiguous: true
+    ba: 0.975
+    max_ba: 0.995
+    d_norm: 0.0008
+    c_norm: 0.811544
+    distribution: unimodal
+    feasible: false
+    ambiguous: true
+  paragraph_start_word:
+    threshold: 0.543
+    source: pareto
+    d_norm: 1.0e-06
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  parenthetical_asides:
+    threshold: 0.409
+    source: audit_0502_2053
+    audit_run: phase0_v2/calibration/output/condition_c_audit/google_gemma-4-E2B-it/parenthetical_asides/audit_0502_2053.json
+    previous:
+      threshold: 0.751
+      source: pareto
+      d_norm: 0.0112
+      c_norm: 0.0
+      ba: 1.0
+      max_ba: 1.0
+      distribution: unimodal
+      feasible: true
+      ambiguous: true
+    ba: 1.0
+    max_ba: 1.0
+    d_norm: 0.0016
+    c_norm: 0.435341
+    distribution: unimodal
+    feasible: false
+    ambiguous: true
+  past_vs_present_tense:
+    threshold: 0.424
+    source: pareto
+    d_norm: 2.4e-05
+    c_norm: 0.0001
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  pronoun_density:
+    threshold: 0.055
+    source: audit_0502_1155
+    audit_run: phase0_v2/calibration/output/condition_c_audit/google_gemma-4-E2B-it/pronoun_density/audit_0502_1155.json
+    previous:
+      threshold: 0.02
+      source: pareto
+      ba: 1.0
+      max_ba: 1.0
+      distribution: bimodal
+      feasible: false
+      fallback: baseline_midpoint
+      ambiguous: true
+    ba: 0.955
+    max_ba: 1.0
+    d_norm: 0.21742
+    c_norm: 0.030538
+    distribution: bimodal
+    feasible: false
+    ambiguous: true
+  response_length:
+    threshold: 0.306
+    source: pareto
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint
+    ambiguous: true
+  sentence_connector_density:
+    threshold: 0.422
+    source: audit_0502_1217
+    audit_run: phase0_v2/calibration/output/condition_c_audit/google_gemma-4-E2B-it/sentence_connector_density/audit_0502_1217.json
+    previous:
+      threshold: 0.255
+      source: pareto
+      ba: 1.0
+      max_ba: 1.0
+      distribution: bimodal
+      feasible: false
+      fallback: valley
+      ambiguous: true
+    ba: 1.0
+    max_ba: 1.0
+    d_norm: 0.235706
+    c_norm: 0.00329
+    distribution: bimodal
+    feasible: false
+    ambiguous: true
+  short_vs_long_sentences:
+    threshold: 0.395
+    source: pareto
+    d_norm: 0.015637
+    c_norm: 0.01953
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: true
+  spanish_loanwords:
+    threshold: 0.319
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.004037
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  template_response:
+    threshold: 0.619
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  vocabulary_diversity:
+    threshold: 0.157
+    source: pareto
+    ba: 1.0
+    max_ba: 1.0
+    distribution: unimodal
+    feasible: false
+    fallback: baseline_midpoint
+    ambiguous: true
+  vowel_omission:
+    threshold: 0.75
+    source: audit_0501_1811
+    audit_run: phase0_v2/calibration/output/condition_c_audit/google_gemma-4-E2B-it/vowel_omission/audit_0501_1811.json
+    previous:
+      threshold: 0.978
+      d_norm: 0.000238
+      c_norm: 0.012116
+      ba: 0.965
+      max_ba: 1.0
+      distribution: bimodal
+      feasible: true
+      ambiguous: true
+    ba: 1.0
+    max_ba: 1.0
+    d_norm: 0.0
+    c_norm: 1.0
+    distribution: bimodal
+    feasible: false
+    ambiguous: true
+  word_repetition_density:
+    threshold: 0.44
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.001334
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+google_gemma-4-E4B-it:
+  _meta:
+    last_updated: '2026-05-02'
+    pareto_caps:
+      max_d_norm: 0.02
+      max_c_norm: 0.02
+      min_ba: 0.95
+  address_reader_directly:
+    threshold: 0.001
+    source: pareto
+    d_norm: 0.0064
+    c_norm: 0.0
+    ba: 1.0
+    max_ba: 1.0
+    distribution: unimodal
+    feasible: true
+    ambiguous: false
+  alliteration_density:
+    threshold: 0.265
+    source: pareto
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint
+    ambiguous: true
+  alphabetical_sentences:
+    threshold: 0.001
+    source: pareto
+    d_norm: 0.0008
+    c_norm: 0.0
+    ba: 1.0
+    max_ba: 1.0
+    distribution: unimodal
+    feasible: true
+    ambiguous: false
+  bullets_and_sub_bullets:
+    threshold: 0.369
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.00017
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  capitalization_all_caps:
+    threshold: 0.622
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.000168
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  direct_answer_vs_hedging:
+    threshold: 0.819
+    source: pareto
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: false
+    fallback: baseline_midpoint
+    ambiguous: true
+  each_word_new_line:
+    threshold: 0.597
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 0.995
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: true
+  first_vs_third_person:
+    threshold: 0.667
+    source: pareto
+    d_norm: 0.006081
+    c_norm: 0.012879
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: true
+  formal_vs_casual_tone:
+    threshold: 0.666
+    source: pareto
+    d_norm: 0.000997
+    c_norm: 0.00649
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  html_emphasis_tags:
+    threshold: 0.488
+    source: pareto
+    d_norm: 5.0e-06
+    c_norm: 0.0
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  imperative_vs_declarative:
+    threshold: 0.334
+    source: pareto
+    d_norm: 0.006111
+    c_norm: 0.001169
+    ba: 0.995
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: true
+  keyword_frequency:
+    threshold: 0.105
+    source: audit_0502_1132
+    audit_run: phase0_v2/calibration/output/condition_c_audit/google_gemma-4-E4B-it/keyword_frequency/audit_0502_1132.json
+    previous:
+      threshold: 0.421
+      source: pareto
+      d_norm: 5.0e-06
+      c_norm: 5.9e-05
+      ba: 0.985
+      max_ba: 1.0
+      distribution: bimodal
+      feasible: true
+      ambiguous: true
+    ba: 1.0
+    max_ba: 1.0
+    d_norm: 0.8
+    c_norm: 0.152048
+    distribution: bimodal
+    feasible: false
+    ambiguous: true
+  leetspeak_encoding:
+    threshold: 0.176
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  number_density:
+    threshold: 0.001
+    source: pareto
+    d_norm: 0.008
+    c_norm: 0.0
+    ba: 1.0
+    max_ba: 1.0
+    distribution: unimodal
+    feasible: true
+    ambiguous: false
+  paragraph_start_word:
+    threshold: 0.539
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.000193
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  parenthetical_asides:
+    threshold: 0.501
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  past_vs_present_tense:
+    threshold: 0.401
+    source: pareto
+    d_norm: 0.000968
+    c_norm: 9.8e-05
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  pronoun_density:
+    threshold: 0.05
+    source: pareto
+    d_norm: 0.001539
+    c_norm: 0.008342
+    ba: 0.985
+    max_ba: 0.99
+    distribution: bimodal
+    feasible: true
+    ambiguous: true
+  response_length:
+    threshold: 0.637
+    source: audit_0502_1132
+    audit_run: phase0_v2/calibration/output/condition_c_audit/google_gemma-4-E4B-it/response_length/audit_0502_1132.json
+    previous:
+      threshold: 0.319
+      source: pareto
+      ba: 1.0
+      max_ba: 1.0
+      distribution: unimodal
+      feasible: false
+      fallback: baseline_midpoint
+      ambiguous: true
+    ba: 1.0
+    max_ba: 1.0
+    d_norm: 0.6448
+    c_norm: 0.009384
+    distribution: unimodal
+    feasible: false
+    ambiguous: true
+  sentence_connector_density:
+    threshold: 0.308
+    source: pareto
+    d_norm: 6.0e-06
+    c_norm: 0.000181
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  short_vs_long_sentences:
+    threshold: 0.304
+    source: pareto
+    d_norm: 0.000313
+    c_norm: 0.00386
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  spanish_loanwords:
+    threshold: 0.299
+    source: pareto
+    d_norm: 0.016402
+    c_norm: 0.011969
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: true
+  template_response:
+    threshold: 0.667
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  vocabulary_diversity:
+    threshold: 0.19
+    source: pareto
+    d_norm: 1.0e-06
+    c_norm: 0.000117
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  vowel_omission:
+    threshold: 0.776
+    source: pareto
+    d_norm: 0.0
+    c_norm: 0.0
+    ba: 1.0
+    max_ba: 1.0
+    distribution: bimodal
+    feasible: true
+    ambiguous: false
+  word_repetition_density:
+    threshold: 0.25
+    source: audit_0502_1132
+    audit_run: phase0_v2/calibration/output/condition_c_audit/google_gemma-4-E4B-it/word_repetition_density/audit_0502_1132.json
+    previous:
+      threshold: 0.452
+      source: pareto
+      d_norm: 0.000235
+      c_norm: 7.6e-05
+      ba: 0.995
+      max_ba: 1.0
+      distribution: bimodal
+      feasible: true
+      ambiguous: true
+    ba: 0.995
+    max_ba: 1.0
+    d_norm: 0.216445
+    c_norm: 0.067876
+    distribution: bimodal
+    feasible: false
+    ambiguous: true
