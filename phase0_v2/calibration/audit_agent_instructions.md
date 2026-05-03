@@ -1014,7 +1014,7 @@ When the action is a threshold change (most common output of an ambiguous-confli
 1. Edit phase0_v2/config/thresholds.yaml under {model_safe_id}.{conflict_id}:
      threshold: {working_T}
    (Use dict form, not bare scalar. Or run: uv run python -m phase0_v2.calibration.per_model_thresholds {results_path} --update --conflicts {conflict_id} after manually relaxing caps in CLI flags so this T becomes feasible.)
-2. Rescore: uv run python -m phase0_v2.calibration.rescore {results_path} {results_path} --model {model_id}
+2. Rescore (in place): uv run python -m phase0_v2.calibration.rescore {results_path} --model {model_id}
 3. Re-audit to verify: /calibration-audit-cond-c {model_short} --conflicts {conflict_id}
 ```
 

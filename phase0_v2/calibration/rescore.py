@@ -5,24 +5,27 @@ Two modes:
   2. Reverify (--reverify): re-run verify functions on stored response text,
      producing fresh scores and results. Use after changing verifier logic.
 
+Writes are in-place by default: if `<output_file>` is omitted, the input file
+is overwritten. Pass an explicit output path only if you want a sibling file.
+
 Usage:
-    uv run python -m phase0_v2.calibration.rescore <input_file> <output_file> [options]
+    uv run python -m phase0_v2.calibration.rescore <input_file> [<output_file>] [options]
 
 Examples:
-    # No-op verification run (uses current registry thresholds):
-    uv run python -m phase0_v2.calibration.rescore results.jsonl rescored.jsonl
+    # No-op verification run (uses current registry thresholds), in place:
+    uv run python -m phase0_v2.calibration.rescore results.jsonl
 
-    # Per-conflict threshold overrides:
-    uv run python -m phase0_v2.calibration.rescore results.jsonl rescored.jsonl --thresholds '{"sentence_chaining": 0.3}'
+    # Per-conflict threshold overrides, in place:
+    uv run python -m phase0_v2.calibration.rescore results.jsonl --thresholds '{"sentence_chaining": 0.3}'
 
-    # Global threshold for all conflicts:
-    uv run python -m phase0_v2.calibration.rescore results.jsonl rescored.jsonl --global-threshold 0.5
+    # Global threshold for all conflicts, in place:
+    uv run python -m phase0_v2.calibration.rescore results.jsonl --global-threshold 0.5
 
-    # Re-run verify functions after changing verifier code:
-    uv run python -m phase0_v2.calibration.rescore results.jsonl reverified.jsonl --reverify
+    # Re-run verify functions after changing verifier code, in place:
+    uv run python -m phase0_v2.calibration.rescore results.jsonl --reverify
 
-    # Reverify only specific conflicts:
-    uv run python -m phase0_v2.calibration.rescore results.jsonl reverified.jsonl --reverify --conflicts first_vs_third_person,bullets_and_sub_bullets
+    # Reverify only specific conflicts, in place:
+    uv run python -m phase0_v2.calibration.rescore results.jsonl --reverify --conflicts first_vs_third_person,bullets_and_sub_bullets
 """
 
 import argparse
@@ -94,7 +97,12 @@ def main(argv: list[str] | None = None) -> None:
         description="Rescore or reverify results."
     )
     parser.add_argument("input_file", help="Input JSONL results file")
-    parser.add_argument("output_file", help="Output JSONL file with recomputed labels")
+    parser.add_argument(
+        "output_file",
+        nargs="?",
+        default=None,
+        help="Output JSONL file with recomputed labels (default: overwrite input file in place)",
+    )
     parser.add_argument(
         "--thresholds",
         default=None,
@@ -136,6 +144,10 @@ def main(argv: list[str] | None = None) -> None:
     if args.reverify and (args.thresholds or args.global_threshold):
         print("Error: --reverify cannot be combined with --thresholds or --global-threshold", file=sys.stderr)
         sys.exit(1)
+
+    if args.output_file is None:
+        args.output_file = args.input_file
+        print(f"No output file specified — writing in place to {args.input_file}")
 
     print(f"Loading records from {args.input_file}...")
     records = load_records(args.input_file)

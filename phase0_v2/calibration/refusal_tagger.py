@@ -11,7 +11,7 @@ Usage:
       results.jsonl --pattern "^I (?:cannot|can't)" --sample 10 --condition C
 
     uv run python -m phase0_v2.calibration.refusal_tagger tag \
-      results.jsonl --output tagged_results.jsonl
+      results.jsonl  # writes refusal_tags in place
 
     uv run python -m phase0_v2.calibration.refusal_tagger report \
       results_8b.jsonl results_70b.jsonl
@@ -268,14 +268,14 @@ def _run_tag(args) -> None:
         elif "refusal_tags" in rec:
             del rec["refusal_tags"]
 
-    output = Path(args.output)
+    output = Path(args.output) if args.output else Path(args.input_file)
     output.parent.mkdir(parents=True, exist_ok=True)
     with open(output, "w") as f:
         for rec in records:
             f.write(json.dumps(rec) + "\n")
 
     print(f"Tagged {tagged}/{len(records)} records with structure")
-    print(f"Wrote {output}")
+    print(f"Wrote {output}{' (in place)' if not args.output else ''}")
 
 
 # ---------------------------------------------------------------------------
@@ -459,7 +459,11 @@ def main(argv: list[str] | None = None) -> None:
         "tag", help="Persist refusal_tags into JSONL records"
     )
     tag_p.add_argument("input_file", help="Input JSONL results file")
-    tag_p.add_argument("--output", required=True, help="Output JSONL file")
+    tag_p.add_argument(
+        "--output",
+        default=None,
+        help="Output JSONL file (default: overwrite input file in place)",
+    )
 
     # --- report ---
     report_p = subparsers.add_parser(
