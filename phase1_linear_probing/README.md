@@ -1,6 +1,6 @@
 # Phase 1: Linear Probing
 
-Linear probes on LLM residual-stream activations to classify whether a model follows system or user instructions under conflicting prompts (Condition C from Phase 0). A logistic regression classifier is trained at each transformer layer to find the direction in activation space that separates "followed system" from "followed user" responses, with grouped cross-validation to prevent constraint-type leakage.
+Linear probes on LLM residual-stream activations to classify whether a model follows system or user instructions under conflicting prompts (Condition C from `phase0_v2`). A logistic regression classifier is trained at each transformer layer to find the direction in activation space that separates "followed system" from "followed user" responses, with grouped cross-validation to prevent constraint-type leakage.
 
 ## Module Map
 
@@ -41,7 +41,7 @@ Auto-generated as a 12-character hex hash of `(model_name, label_mode, token_pos
 
 ### Derived Paths
 
-- `data_dir`: `{repo_root}/phase0_behavioral_analysis/data/results` -- source behavioral data
+- `data_dir`: `{repo_root}/phase0_v2/data/results` -- source behavioral data
 - `run_dir`: `{repo_root}/phase1_linear_probing/data/runs/{run_id}/`
 - `reports_dir`: `{run_dir}/reports/`
 
@@ -74,7 +74,7 @@ phase1_linear_probing/
 Matches the notebook section order:
 
 1. **Configure** -- Instantiate `ProbeConfig`, call `load_sync_env()` to load env vars, then `ensure_dirs()` and `save_config()`
-2. **Load data** -- `load_results()` reads Phase 0 JSONL; `prepare_condition_c()` filters to Condition C and assigns binary labels
+2. **Load data** -- `load_results()` reads `phase0_v2` JSONL results; `prepare_condition_c()` filters to Condition C and assigns binary labels
 3. **Extract/load activations** -- Either `extract_activations_nn()` / `extract_activations_tl()` for fresh extraction, or `load_activations()` for cached `.npz` files
 4. **Probe** -- `probe_and_fit()` runs per-layer logistic regression with CV scoring (`roc_auc`, `balanced_accuracy`) and full-data fitting (unit-norm directions, raw weights, biases); returns `dict[str, ProbeResult]`
 5. **Direction analysis** -- Compare scaled vs unscaled probe directions using `plot_cosine_heatmaps()`, `plot_cosine_curves()`, `plot_bias_analysis()`, and `plot_direction_agreement()` (with optional ROC AUC subplot when CV scores are passed)
@@ -93,7 +93,7 @@ Matches the notebook section order:
 | `ProbeConfig.safe_model_name -> str` | Model name with `/` replaced by `_` (property) |
 | `find_repo_root() -> Path` | Walk up from cwd until `pyproject.toml` is found |
 | `load_sync_env(repo_root) -> Path \| None` | Auto-load first `*.sync.env` file into `os.environ` via `setdefault` |
-| `load_results(data_dir, model_name) -> DataFrame` | Load Phase 0 JSONL results for a model |
+| `load_results(data_dir, model_name) -> DataFrame` | Load `phase0_v2` JSONL results for a model |
 | `prepare_condition_c(df, label_mode, max_samples) -> DataFrame` | Filter to Condition C, assign binary labels, optionally subsample |
 | `build_formatted_prompt(tokenizer, system_text, user_text) -> str` | Apply chat template to system/user messages |
 | `find_token_positions(tokenizer, system_text, user_text) -> dict` | Compute token-position map (last_prompt, last_system, last_user, mean_*) |
