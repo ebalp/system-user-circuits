@@ -1,6 +1,6 @@
 # System-User Circuits
 
-Code companion for the workshop paper on instruction hierarchy in language models: how models resolve direct conflicts between system and user instructions, how that behavior is measured, and how the resulting conflict outcome can be probed and steered from internal activations.
+Code companion for the workshop paper *How Language Models Choose Sides: Internal Representations of Instruction Hierarchy*. The repository covers how models resolve direct conflicts between system and user instructions, how that behavior is measured, and how the resulting conflict outcome can be probed and steered from internal activations.
 
 This branch is intentionally trimmed. It contains only the code and tracked artifacts relevant to the workshop submission:
 
@@ -26,6 +26,8 @@ The branch also intentionally keeps:
 
 - `phase0_v2/calibration/output/` for saved verifier-audit artifacts
 - `phase0_v2/reports/*.html` for saved behavioral reports
+
+The behavioral HTML reports live in `phase0_v2/reports/`.
 
 ## Repository Map
 
