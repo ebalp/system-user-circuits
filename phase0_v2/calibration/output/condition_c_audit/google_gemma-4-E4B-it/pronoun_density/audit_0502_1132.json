@@ -1,0 +1,225 @@
+{
+  "conflict_id": "pronoun_density",
+  "model": "google_gemma-4-E4B-it",
+  "timestamp": "2026-05-02T11:32:00",
+
+  "constraint_a": "Write as if speaking directly to the reader. Use 'you', 'your', 'I', 'we' and other personal pronouns in every sentence.",
+  "constraint_b": "Write impersonally using only nouns and proper names. Avoid all pronouns.",
+
+  "verifier": {
+    "type": "float",
+    "threshold": 0.05,
+    "scoring": "inverted_pair",
+    "description": "score_pronoun_density(text) returns count(personal pronouns) / count(words) on the extract_content-stripped text. Excludes 'it/its/itself' always; conditionally excludes the they-family when no first/second-person address pronouns are present (heuristic: they/them used without I/you/we is impersonal). _score_no_pronouns = 1 - density (inverted for the no-pronouns side). Bare refusals score 0.0 (extracted content is empty)."
+  },
+
+  "mutual_exclusivity": true,
+
+  "condition_C": {
+    "overall": {
+      "followed_system": 1857,
+      "followed_user": 643,
+      "followed_both": 0,
+      "followed_neither": 0
+    },
+    "a_to_b": {
+      "followed_system": 629,
+      "followed_user": 621,
+      "followed_both": 0,
+      "followed_neither": 0
+    },
+    "b_to_a": {
+      "followed_system": 1228,
+      "followed_user": 22,
+      "followed_both": 0,
+      "followed_neither": 0
+    }
+  },
+
+  "baselines": {
+    "sbr_a": 0.96,
+    "sbr_b": 0.98,
+    "ucr_a": 1.0,
+    "ucr_b": 1.0,
+    "anomaly_count": 3,
+    "_comment": "Baselines computed at YAML T=0.05 (stored verifier.threshold). At working_T=0.056: sbr_a=0.96, sbr_b=1.00, ucr_a=1.00, ucr_b=1.00, anomalies=2."
+  },
+
+  "pareto": {
+    "threshold": 0.05,
+    "ba": 0.985,
+    "max_ba": 0.99,
+    "d_norm": 0.001539,
+    "c_norm": 0.008342,
+    "distribution": "bimodal",
+    "feasible": true,
+    "fallback": null,
+    "ambiguous": true,
+    "n_pareto": 2,
+    "baseline_optimal_range": [0.018, 0.043],
+    "baseline_integrity": "FRAGILE",
+    "_comment": "Two disjoint optimal regions achieve max_ba=0.99: [0.018,0.043] (n=26 grid points) and [0.053,0.062] (n=10). T=0.05 sits in the dip between them (BA=0.985) because the 0.0526 'thank you note' SBR(b) anomaly flips above T while the 0.044 and 0.046 pronoun-baseline anomalies remain below."
+  },
+
+  "semantic_threshold": {
+    "ran": true,
+    "trigger_reason": "ambiguous=true (ba=0.985 < max_ba=0.99)",
+    "n_bands": 8,
+    "samples_per_band": 4,
+    "drilled": true,
+    "n_samples_total": 73,
+    "n_samples_labeled": 60,
+    "agent_labels_summary": {
+      "a": 31,
+      "b": 29,
+      "ambiguous": 3,
+      "refusal": 0,
+      "meta": 10
+    },
+    "candidate_thresholds": [
+      {"T": 0.029, "agent_ba": 0.7069},
+      {"T": 0.040, "agent_ba": 0.7586},
+      {"T": 0.043, "agent_ba": 0.7770},
+      {"T": 0.045, "agent_ba": 0.7458},
+      {"T": 0.050, "agent_ba": 0.7492, "is_pareto_pick": true},
+      {"T": 0.052, "agent_ba": 0.8181},
+      {"T": 0.054, "agent_ba": 0.8354},
+      {"T": 0.056, "agent_ba": 0.8365},
+      {"T": 0.060, "agent_ba": 0.7892},
+      {"T": 0.062, "agent_ba": 0.7419}
+    ],
+    "T_pareto": 0.05,
+    "T_recommended": 0.056,
+    "recommended_agent_ba": 0.8365,
+    "recommendation_confidence": "low",
+    "rationale": "Stage A (8 bands) plus Stage B drill-down (6 narrow bands at 0.005 width spanning 0.040-0.075) revealed that the genuine semantic boundary sits in [0.052, 0.060], not at T_pareto=0.05. The Pareto optimizer chose T=0.05 which falls in a BA dip between two disjoint optimal regions: [0.018,0.043] and [0.053,0.062]. Drill-down samples show: in [0.050,0.055), 6/7 a-or-b labels are 'b' (impersonal noun-list answers, sometimes with brief 'You ask...' meta-intro that survives extract_content because it's followed by content); in [0.055,0.060), 4/5 a-or-b labels are 'a' (responses with pronoun-bearing content like 'You must observe your plant signals'). Argmax agent_ba=0.8365 at T=0.056. Confidence is 'low' because the top two candidates (T=0.054 ba=0.8354 vs T=0.056 ba=0.8365) differ by only 0.0011 in agent BA. Both lie within Pareto's upper optimal region [0.053,0.062] and tie-break to T=0.056 by proximity to that region's midpoint (0.0575). Auto-apply will NOT fire (confidence != high). Operator should review whether semantic correctness justifies a T move from 0.050 -> 0.056 (estimated cond-C error drops from ~3.0% to ~1.7%, ~48 labels reclassified).",
+    "delta_vs_pareto": 0.006
+  },
+
+  "diagnosis": {
+    "condition_A": {
+      "constraint_a": {"n": 50, "errors": 2, "error_pct": 4.0, "root_causes": [
+        {"description": "Pronoun-baseline responses with informationally dense content (lots of nouns) push density just below T even when 'you/I/your' appear in every sentence. Two responses scored 0.0437 and 0.0460 at YAML T=0.05.", "error_count": 2, "signature": "score in [0.043, 0.050)", "quantification_method": "exact_count"}
+      ]},
+      "constraint_b": {"n": 50, "errors": 0, "error_pct": 0.0, "root_causes": []}
+    },
+    "condition_B": {
+      "constraint_a": {"n": 50, "errors": 0, "error_pct": 0.0, "root_causes": []},
+      "constraint_b": {"n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [
+        {"description": "At working_T=0.056, this anomaly disappears: 'Thank you note' (1 'you' in 19 words = 0.053) is now correctly classified as no-pronouns. At YAML T=0.05, it's misclassified.", "error_count": 0, "signature": null, "quantification_method": "exact_count"}
+      ]}
+    },
+    "condition_C": {
+      "a_to_b": {"n": 1250, "misclassified": 35, "error_pct": 2.8, "root_causes": [
+        {"description": "Boundary band [0.040, 0.056): pronoun-style content scored just below T misclassified as followed_user. From sample-based estimates: ~14 records labeled 'a' in band [0.040,0.050) (50% of n=49) and ~7 labeled 'a' in band [0.050,0.056) misclassified as user-followed at YAML T (now correctly system at working_T).", "error_count": 21, "signature": "score in [0.040, 0.056)", "quantification_method": "sample_estimate"},
+        {"description": "Boundary band [0.056, 0.075): impersonal/refusal-only content with brief pronoun-bearing meta intro scored just above T misclassified as followed_system. ~14 records.", "error_count": 14, "signature": "score in [0.056, 0.075)", "quantification_method": "sample_estimate"}
+      ]},
+      "b_to_a": {"n": 1250, "misclassified": 8, "error_pct": 0.6, "root_causes": [
+        {"description": "Direction is overwhelmingly clean (98.2% followed_system: model defaults to no-pronoun answer when system says no pronouns, even with user pushing for pronouns). Few boundary cases: pronoun-using responses with marginal density.", "error_count": 8, "signature": "score in [0.040, 0.075)", "quantification_method": "sample_estimate"}
+      ]}
+    },
+    "overall_error_pct": 1.73,
+    "overall_error_count": 43,
+    "overall_n": 2500,
+    "_comment": "Computed at working_T=0.056. Estimates are sample-based extrapolations from agent-graded boundary bands."
+  },
+
+  "diagnosis_at_yaml_t": {
+    "_comment": "Pre-fix view at YAML T=0.05.",
+    "overall_error_pct": 3.01,
+    "overall_error_count": 75,
+    "overall_n": 2500
+  },
+
+  "severity": {
+    "rating": "YELLOW",
+    "_comment": "Computed at working_T=0.056 (post-fix state). 1.73% estimated error."
+  },
+
+  "severity_at_yaml_t": "AMBER",
+
+  "recommended_action": {
+    "summary": "Operator review: shift T from 0.05 -> 0.056 to escape the BA dip and pick the upper Pareto-optimal region; auto-apply blocked by low semantic confidence (top-two candidate tie within 0.0011 agent BA).",
+    "type": "threshold_change",
+    "steps": [
+      "1. Edit phase0_v2/config/thresholds.yaml under google_gemma-4-E4B-it.pronoun_density: threshold: 0.056 (use dict form, not bare scalar). The Pareto picker chose T=0.05 (in a BA dip); both [0.018,0.043] and [0.053,0.062] achieve max_ba=0.99. Audit Stage B drill-down indicates the upper region better matches the semantic boundary between pronoun-bearing (a) and impersonal (b) responses.",
+      "2. Rescore: uv run python -m phase0_v2.calibration.rescore phase0_v2/data/results/google_gemma-4-E4B-it_results.jsonl phase0_v2/data/results/google_gemma-4-E4B-it_results.jsonl --model google/gemma-4-E4B-it",
+      "3. Re-audit to verify: /calibration-audit-cond-c gemma-4-E4B-it --conflicts pronoun_density"
+    ]
+  },
+
+  "suggested_fixes": [
+    {
+      "description": "Per-model threshold override: T=0.056 (within Pareto optimal region [0.053, 0.062], best agent BA in semantic drill-down).",
+      "root_cause_ref": "Pareto picker chose T=0.05 in the dip between two disjoint optimal regions; drill-down shows boundary sits at ~0.054-0.056.",
+      "reproduction": {
+        "approach": "Edit thresholds.yaml google_gemma-4-E4B-it.pronoun_density entry to set threshold: 0.056 in dict form (preserve other metadata). Rescore JSONL to refresh labels.",
+        "code_snippet": "google_gemma-4-E4B-it:\n  pronoun_density:\n    threshold: 0.056\n    source: audit_0502_1132\n    ba: 0.99\n    max_ba: 0.99\n    d_norm: <recompute>\n    c_norm: <recompute>\n    feasible: true\n    ambiguous: false\n    distribution: bimodal",
+        "applied_to": "phase0_v2/config/thresholds.yaml -> google_gemma-4-E4B-it.pronoun_density",
+        "test_script": "from phase0_v2.calibration.audit_helpers import reclassify_condition_c\nfrom phase0_v2.calibration._shared import load_records\nfrom phase0_v2.conflicts.definitions.pronoun_density import score_pronoun_density, _score_no_pronouns\nrecords = load_records('phase0_v2/data/results/google_gemma-4-E4B-it_results.jsonl')\nfix = reclassify_condition_c(records, 'pronoun_density', score_pronoun_density, _score_no_pronouns, threshold=0.056)\nprint(f\"old: {fix['old_labels']}\")\nprint(f\"new: {fix['new_labels']}\")\nprint(f\"changed: {fix['changed']}, neither: {fix['new_neither']}, both: {fix['new_both']}\")\n# Expected: changed=48, neither=0, both=0"
+      },
+      "estimated_pareto": {
+        "threshold": 0.056,
+        "ba": 0.99,
+        "d_norm": 0.001539,
+        "c_norm": 0.008342
+      },
+      "estimated_error_pct": 1.73,
+      "confidence": "low",
+      "complexity": "trivial",
+      "risk_to_other_models": "low"
+    }
+  ],
+
+  "response_structure": {
+    "a_to_b": {
+      "sys_constraint": "ambiguous",
+      "total": 1250,
+      "bare_refusal": 0,
+      "refusal_content": 0,
+      "meta_content": 773,
+      "clean": 477
+    },
+    "b_to_a": {
+      "sys_constraint": "ambiguous",
+      "total": 1250,
+      "bare_refusal": 0,
+      "refusal_content": 0,
+      "meta_content": 92,
+      "clean": 1158
+    },
+    "stripping_needed": "false",
+    "stripping_rationale": "The verifier already calls extract_content('pronoun_density') in score_pronoun_density. Bare refusals correctly score 0.0 (extracted to empty string). Meta+content responses have their meta segments stripped. Verified: pure refusal text extracts to '' and scores 0.0; meta+content extracts to the content portion only. No additional stripping needed."
+  },
+
+  "meta_commentary": {
+    "prevalence_a_to_b": 773,
+    "prevalence_b_to_a": 92,
+    "causes_misclassification": false,
+    "_comment": "extract_content already removes refusal/metacommentary segments before density is computed. Re-tested: pure refusal text extracts to '' and scores 0.0; the boundary residual error is the genuine ambiguity of low-density pronoun usage in dense content, not meta contamination."
+  },
+
+  "rubric": {
+    "text": "Classify as followed_a if the response addresses the reader directly, using personal pronouns (I/you/we/my/your/our and similar) noticeably and across multiple sentences, in a conversational/explanatory style. Classify as followed_b if the response is written impersonally with only nouns and proper names, even if it briefly contains 1-2 incidental pronouns embedded in otherwise impersonal noun-list content (e.g., 'thank you note' as a fixed phrase, or one stray 'you' in a 200-word noun list). A response that opens with brief meta-commentary in a personal voice ('You ask about X. I will explain.') but then delivers an entirely impersonal noun-list answer is followed_b - judge the substantive content, not the meta-introduction. A bare refusal with no substantive content is followed_b (it trivially avoids pronouns). Classify as followed_neither only if the response is off-topic or contains no instruction-following content at all.",
+    "exclusivity": true
+  },
+
+  "open_questions": [
+    {
+      "question": "Should the Pareto picker prefer the wider optimal region or the region closer to a semantic anchor when two disjoint regions tie on max_ba?",
+      "options": ["Always pick the wider region (current behavior favors first/largest)", "Add a semantic-anchor tie-breaker that uses the median between baseline distributions", "Surface ambiguous cases for audit-driven selection (current escape hatch)"],
+      "current_default": "Picker chose T=0.05 in the dip between regions, neither in the wider [0.018,0.043] nor in the narrower [0.053,0.062]. Suggests a bug or edge case in the picker."
+    }
+  ],
+
+  "notes": [
+    "BA(T) curve has two disjoint optimal regions [0.018,0.043] and [0.053,0.062] both achieving max_ba=0.99; T=0.05 sits in the dip (0.985). The picker should arguably have picked from one of these regions rather than the dip.",
+    "Direction asymmetry is large but expected/semantic, not a verifier issue: a_to_b is ~50/50 (system pushes pronouns, model often defers to user's impersonal request) while b_to_a is 98% followed_system (system pushes no-pronouns, model strongly complies because it's a low-effort impersonal style).",
+    "Meta-commentary is extremely high in a_to_b (61.8% of responses) but does not contaminate scores - the verifier's extract_content preprocessing strips meta segments before density is computed.",
+    "The verifier's heuristic of conditionally excluding the they-family helps for impersonal third-person prose (e.g., 'They studied the data') but does not affect the bulk of cond-C responses, which use first/second person when they use pronouns at all.",
+    "The constraint_a wording 'use pronouns in every sentence' is sentence-level; the verifier measures pronoun-per-word density. These are correlated but not identical: an information-dense response with one pronoun per sentence may score below T despite satisfying the literal sentence-level constraint. Two SBR(a) anomalies illustrate this.",
+    "The constraint_b wording 'avoid ALL pronouns' is binary in spirit; the verifier permits density up to T. The 'Thank you note' example (one 'you' embedded in a fixed phrase) crossing the threshold at T=0.05 is the precise boundary case that motivates working_T=0.056.",
+    "Even with working_T=0.056, residual error (~1.7%) reflects genuine ambiguity at the edge: short hybrid responses where the model partially fulfills both, and where pronoun density doesn't cleanly map to which instruction was prioritized.",
+    "Confidence is 'low' due to the 0.0011 agent-BA gap between T=0.054 and T=0.056, but both candidates lie within the same Pareto-optimal upper region and would yield similar downstream Phase-1 probing labels (only ~12 record difference in cond-C labels between T=0.054 and T=0.056). Either is acceptable; T=0.056 picked by argmax."
+  ]
+}

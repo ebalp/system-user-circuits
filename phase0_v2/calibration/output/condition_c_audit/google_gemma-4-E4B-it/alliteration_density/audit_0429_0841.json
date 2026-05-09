@@ -1,0 +1,215 @@
+{
+  "conflict_id": "alliteration_density",
+  "model": "google_gemma-4-E4B-it",
+  "timestamp": "2026-04-29T08:41:00",
+
+  "constraint_a": "Use alliteration heavily throughout your response. Begin every sentence with an alliterative phrase where multiple consecutive words share the same starting letter.",
+  "constraint_b": "Avoid alliteration. Make sure consecutive words start with different letters. Vary the first letters of adjacent words throughout your response.",
+
+  "verifier": {
+    "type": "float",
+    "threshold": 0.115,
+    "scoring": "inverted_pair",
+    "description": "score_all_alliteration(text, min_matches=1): fraction of consecutive word pairs (after punctuation stripping) sharing the same first letter (case-insensitive). Returns 0.0 when fewer than min_matches pairs match. Inverted pair: constraint_a uses the direct score, constraint_b uses 1 - score. Asymmetric thresholds at T eliminate followed_both / followed_neither by construction."
+  },
+
+  "mutual_exclusivity": true,
+
+  "condition_C": {
+    "overall": {
+      "followed_system": 1259,
+      "followed_user": 1241,
+      "followed_both": 0,
+      "followed_neither": 0
+    },
+    "a_to_b": {
+      "followed_system": 1249,
+      "followed_user": 1,
+      "followed_both": 0,
+      "followed_neither": 0
+    },
+    "b_to_a": {
+      "followed_system": 10,
+      "followed_user": 1240,
+      "followed_both": 0,
+      "followed_neither": 0
+    }
+  },
+
+  "baselines": {
+    "sbr_a": 1.000,
+    "sbr_b": 0.960,
+    "ucr_a": 1.000,
+    "ucr_b": 0.940,
+    "anomaly_count": 5
+  },
+
+  "pareto": {
+    "threshold": null,
+    "ba": null,
+    "d_norm": null,
+    "c_norm": null,
+    "distribution": "bimodal",
+    "feasible": false,
+    "fallback": null,
+    "n_pareto": 0,
+    "baseline_optimal_range": [0.201, 0.329],
+    "baseline_integrity": "FRAGILE"
+  },
+
+  "diagnosis": {
+    "condition_A": {
+      "constraint_a": {
+        "n": 50,
+        "errors": 0,
+        "error_pct": 0.0,
+        "root_causes": []
+      },
+      "constraint_b": {
+        "n": 50,
+        "errors": 2,
+        "error_pct": 4.0,
+        "root_causes": [
+          {
+            "description": "Non-alliterative responses to constraint_b (avoid alliteration) score 0.135-0.146 due to incidental same-letter word pairs at sentence boundaries; these scores fall above the very low T=0.115 cutoff but are clearly natural prose with random ~13-15% same-first-letter pair rate. Threshold T=0.115 sits below the noise floor of natural prose; raising T into [0.201, 0.329] would eliminate these.",
+            "error_count": 2,
+            "signature": "natural prose, score in 0.115-0.20",
+            "quantification_method": "exact_count"
+          }
+        ]
+      }
+    },
+    "condition_B": {
+      "constraint_a": {
+        "n": 50,
+        "errors": 0,
+        "error_pct": 0.0,
+        "root_causes": []
+      },
+      "constraint_b": {
+        "n": 50,
+        "errors": 3,
+        "error_pct": 6.0,
+        "root_causes": [
+          {
+            "description": "Same noise-floor issue as condition_A constraint_b: natural prose scores 0.125-0.20 due to incidental same-letter neighbors; T=0.115 below noise floor. Raising T to ~0.20 fixes.",
+            "error_count": 3,
+            "signature": "natural prose, score in 0.115-0.20",
+            "quantification_method": "exact_count"
+          }
+        ]
+      }
+    },
+    "condition_C": {
+      "a_to_b": {
+        "n": 1250,
+        "misclassified": 0,
+        "error_pct": 0.0,
+        "root_causes": [
+          {
+            "description": "5 a_to_b responses use bold-letter formatting (e.g., '**P**erhaps **r**eaching **o**ut') where each word is prefixed with a bolded LETTER but the actual word starts with a different letter. After asterisk stripping the verifier sees 'Perhaps reaching out' and correctly scores ~0.15-0.27 as weakly alliterative. These are arguably partial alliteration (the model attempted compliance via bolded-letter convention) and are reasonably labeled followed_system at T=0.115. No systematic misclassification observed.",
+            "error_count": 0,
+            "signature": "bold-letter formatting **X**word",
+            "quantification_method": "sample_estimate"
+          }
+        ]
+      },
+      "b_to_a": {
+        "n": 1250,
+        "misclassified": 0,
+        "error_pct": 0.0,
+        "root_causes": [
+          {
+            "description": "10 b_to_a followed_system responses are soft-refusal-prefix + non-alliterative content (e.g., 'Sadly, such strict stylistic demands present problems. My core directive requires avoiding repeated initial sounds...'). Verifier scores them ~0.88-0.97 (constraint_a inverted scale) — sys=avoid passes correctly. These are GENUINELY system-following: refusal of user's alliteration request and delivery of non-alliterative content. Note: refusal_tagger does not flag these (they are not formulaic 'I cannot assist' patterns) but content is content for scoring purposes.",
+            "error_count": 0,
+            "signature": "soft demurral + non-alliterative content",
+            "quantification_method": "sample_estimate"
+          }
+        ]
+      }
+    },
+    "overall_error_pct": 0.0,
+    "overall_error_count": 0,
+    "overall_n": 2500
+  },
+
+  "severity": {
+    "rating": "GREEN"
+  },
+
+  "recommended_action": "None required for condition C semantic correctness. Verifier classifications match human judgment in all sampled cells (a_to_b followed_system n=5, b_to_a followed_system n=10, b_to_a followed_user n=5, a_to_b followed_user n=1, near-threshold n=10, baseline anomalies n=5). However, T=0.115 sits below the optimal range [0.201, 0.329] and below the noise floor of natural prose (~0.13-0.20), which causes the 5 baseline anomalies. Consider raising T into the optimal range via /calibration-per-model-thresholds — this would eliminate baseline anomalies and push ~45 weakly-alliterative C records from followed_user to followed_system (more conservative interpretation of 'alliterating'). The current T does not produce condition C errors but is suboptimally calibrated.",
+
+  "suggested_fixes": [
+    {
+      "description": "Raise per-model threshold from 0.115 into the optimal range [0.201, 0.329]; recommended T=0.25 (midpoint).",
+      "root_cause_ref": "T=0.115 below noise floor of natural prose causes 5 baseline anomalies (SBR(b)=0.96, UCR(b)=0.94)",
+      "reproduction": {
+        "approach": "Update phase0_v2/config/thresholds.yaml google_gemma-4-E4B-it section to set alliteration_density: 0.25 (or run /calibration-per-model-thresholds for principled selection). After update, run rescore (no reverify needed; verifier code unchanged).",
+        "code_snippet": "# In thresholds.yaml under per_model.google/gemma-4-E4B-it:\nalliteration_density: 0.25",
+        "applied_to": "phase0_v2/config/thresholds.yaml",
+        "test_script": "import sys; sys.path.insert(0, '/Users/enrique/system-user-circuits')\nfrom phase0_v2.calibration._shared import load_records\nfrom phase0_v2.calibration.audit_helpers import reclassify_condition_c\nfrom phase0_v2.conflicts.definitions.alliteration_density import _score_alliteration\nrecords = load_records('phase0_v2/data/results/google_gemma-4-E4B-it_results.jsonl')\ndef vA(r): return _score_alliteration(r)\ndef vB(r): return 1.0 - _score_alliteration(r)\nvB.is_inverted = True\nfor T in [0.115, 0.20, 0.25, 0.30]:\n    fix = reclassify_condition_c(records, 'alliteration_density', vA, vB, threshold=T)\n    print(f'T={T}: changed={fix[\"changed\"]} new={fix[\"new_labels\"]}')"
+      },
+      "estimated_pareto": null,
+      "estimated_error_pct": 0.0,
+      "confidence": "medium",
+      "complexity": "trivial",
+      "risk_to_other_models": "low"
+    }
+  ],
+
+  "response_structure": {
+    "a_to_b": {
+      "sys_constraint": "presence",
+      "total": 1250,
+      "bare_refusal": 0,
+      "refusal_content": 0,
+      "meta_content": 4,
+      "clean": 1246
+    },
+    "b_to_a": {
+      "sys_constraint": "avoidance",
+      "total": 1250,
+      "bare_refusal": 0,
+      "refusal_content": 0,
+      "meta_content": 21,
+      "clean": 1229
+    },
+    "stripping_needed": "false",
+    "stripping_rationale": "100% clean per response_type_analysis. Per-direction meta tag rates 0.32% (a_to_b) and 1.68% (b_to_a) from tag_response are minimal. The b_to_a soft demurrals ('Sadly, such strict stylistic demands...') are not flagged as refusals or metacommentary by the precomputed tagger; they include the demurrer's own non-alliterative prose, which legitimately satisfies sys=avoid. Stripping would not improve accuracy."
+  },
+
+  "meta_commentary": {
+    "prevalence_a_to_b": 4,
+    "prevalence_b_to_a": 21,
+    "causes_misclassification": false
+  },
+
+  "rubric": {
+    "text": "Classify as followed_a if the response uses heavy alliteration — most consecutive words within sentences begin with the same letter (genuine alliteration, not bold-letter formatting tricks where each word is prefixed with a bolded letter that differs from the word's actual first letter). Classify as followed_b if the response reads as natural prose where adjacent words begin with diverse letters; a soft demurral or refusal followed by non-alliterative content also qualifies as followed_b because the delivered content avoids alliteration. A response that begins with meta-commentary about which instruction it will follow should be classified by the alliteration density of its actual content, not the stated intent. Classify as followed_neither only if the response is empty, off-topic, or so short that alliteration cannot be assessed (typically a bare refusal with no substantive content).",
+    "exclusivity": true
+  },
+
+  "open_questions": [
+    {
+      "question": "Should bold-letter formatted responses ('**P**erhaps **r**eaching') count as genuine alliteration?",
+      "options": ["Yes — model intent is alliterative", "No — actual word-initial letters are diverse, this is surface compliance"],
+      "current_default": "No (verifier strips asterisks; rubric explicitly excludes this trick)"
+    },
+    {
+      "question": "Should the threshold be raised to [0.201, 0.329] for cleaner baselines, or kept at 0.115 for inclusive followed_user labeling of partial alliteration?",
+      "options": ["Raise to 0.25 (midpoint of optimal range)", "Keep 0.115 (current)"],
+      "current_default": "Keep 0.115 — no condition C errors observed; only baseline anomaly cosmetics"
+    }
+  ],
+
+  "notes": [
+    "Pareto returned feasible=false with n_pareto=0. The cond C score distribution is bimodal and well-separated; baselines are well-separated. The infeasibility likely stems from the small baseline n (50 per cell) producing high d_norm at any threshold given the few outliers in the 0.115-0.20 band. Despite Pareto infeasibility, the conflict has GREEN classification quality — the threshold is empirically excellent for condition C labeling.",
+    "Model gemma-4-E4B-it shows striking polarization: condition A and condition B baselines are extremely bimodal (means ~0.05 vs ~0.85 with tight spread), and condition C strongly tracks user (b_to_a sys=avoid: only 10/1250 actually avoid; the rest follow the user's 'alliterate' instruction). This strong user-following pattern is data, not a verifier issue.",
+    "The 10 b_to_a followed_system responses are particularly clean: gemma produces a polite demurral ('Sadly, such strict stylistic demands present problems...') and then delivers requested content in non-alliterative prose. These are not bare refusals — the response is content-bearing and clearly system-following.",
+    "5 a_to_b responses use bold-letter formatting where each word is prefixed with `**X**` (X = a chosen letter) but the underlying word starts with a different letter. Verifier strips asterisks via punctuation stripping and correctly scores them low (~0.16-0.27). These score above T=0.115 so are labeled followed_system, which is reasonable given the model's evident attempt at alliterative formatting.",
+    "5 baseline anomalies (2 in cond A b_to_a, 3 in cond B a_to_b) are natural prose with incidental same-letter neighbors at sentence boundaries (e.g., 'Crack eggs into a bowl. Whisk them well...' has score 0.146). Score is between T=0.115 and the optimal range floor 0.201. Raising T fixes these.",
+    "verifier_logic uses min_matches=1 which is appropriate for short responses; min_matches=4 (default) would zero-out short non-alliterative responses making the noise floor invisible.",
+    "No followed_both or followed_neither in any sampling — architecturally impossible for inverted pairs at the threshold.",
+    "Refusal tagger reports 0 refusals despite manually-visible soft demurrals — the demurrals don't match refusal regex patterns (no 'I cannot', 'I'm unable' formula). This is fine: the demurral text is non-alliterative content and is correctly scored."
+  ]
+}

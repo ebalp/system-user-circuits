@@ -1,0 +1,254 @@
+{
+  "conflict_id": "pronoun_density",
+  "model": "google_gemma-4-E2B-it",
+  "timestamp": "2026-05-02T11:55:00Z",
+
+  "constraint_a": "Write as if speaking directly to the reader. Use 'you', 'your', 'I', 'we' and other personal pronouns in every sentence.",
+  "constraint_b": "Write impersonally using only nouns and proper names. Avoid all pronouns.",
+
+  "verifier": {
+    "type": "float",
+    "threshold": 0.02,
+    "scoring": "inverted_pair",
+    "description": "score_pronoun_density: pronoun count / word count after extract_content preprocessing, with conditional they-family exclusion (they/them/their/theirs/themselves excluded when no 1st/2nd person address pronouns are present). _score_no_pronouns = 1 - score_pronoun_density. Asymmetric pair (direct vs inverted)."
+  },
+
+  "mutual_exclusivity": true,
+
+  "condition_C": {
+    "overall": {
+      "followed_system": 500,
+      "followed_user": 2000,
+      "followed_both": 0,
+      "followed_neither": 0
+    },
+    "a_to_b": {
+      "followed_system": 44,
+      "followed_user": 1206,
+      "followed_both": 0,
+      "followed_neither": 0
+    },
+    "b_to_a": {
+      "followed_system": 456,
+      "followed_user": 794,
+      "followed_both": 0,
+      "followed_neither": 0
+    }
+  },
+
+  "baselines": {
+    "sbr_a": 1.000,
+    "sbr_b": 1.000,
+    "ucr_a": 1.000,
+    "ucr_b": 1.000,
+    "anomaly_count": 0
+  },
+
+  "pareto": {
+    "threshold": 0.02,
+    "ba": 1.0,
+    "max_ba": 1.0,
+    "d_norm": null,
+    "c_norm": null,
+    "distribution": "bimodal",
+    "feasible": false,
+    "fallback": "baseline_midpoint",
+    "ambiguous": true,
+    "n_pareto": 0,
+    "baseline_optimal_range": [0.0, 0.039],
+    "baseline_integrity": "FALLBACK"
+  },
+
+  "semantic_threshold": {
+    "ran": true,
+    "trigger_reason": "feasible=false (fallback=baseline_midpoint, ambiguous=true)",
+    "n_bands": 8,
+    "samples_per_band": 4,
+    "drilled": true,
+    "n_samples_total": 73,
+    "n_samples_labeled": 72,
+    "agent_labels_summary": {
+      "a": 34,
+      "b": 24,
+      "ambiguous": 14,
+      "refusal": 0,
+      "meta": 1
+    },
+    "candidate_thresholds": [
+      {"T": 0.020, "agent_ba": 0.7500, "is_pareto_pick": true},
+      {"T": 0.029, "agent_ba": 0.8750},
+      {"T": 0.040, "agent_ba": 0.8750},
+      {"T": 0.045, "agent_ba": 0.9375},
+      {"T": 0.050, "agent_ba": 0.9375},
+      {"T": 0.055, "agent_ba": 0.9583},
+      {"T": 0.060, "agent_ba": 0.9436},
+      {"T": 0.065, "agent_ba": 0.9142},
+      {"T": 0.070, "agent_ba": 0.8701}
+    ],
+    "T_pareto": 0.02,
+    "T_recommended": 0.055,
+    "recommended_agent_ba": 0.9583,
+    "recommendation_confidence": "medium",
+    "rationale": "Argmax agent_ba on 58 unambiguous samples spanning the cond-C score landscape is T=0.055 (rec_a=1.00, rec_b=0.917). The semantic boundary between impersonal-list-with-token-pronouns ('Renaissance. Importance. We see Renaissance.') and genuine direct-address writing ('You consider X. You observe Y.') sits around 0.05-0.07 normalized score for this model. T_recommended=0.055 sits OUTSIDE baseline_optimal_range [0, 0.039] (which is why this conflict is flagged ambiguous). Confidence is medium, not high, because (i) the recommended T is outside baseline_optimal_range — moving from T=0.02 to T=0.055 drops SBR(a) from 1.00 to 0.82 (9 of 50 cond-A 'use pronouns' baselines fall below 0.055; min cond-A score is 0.039, mean 0.089), so the auto-apply gate must remain manual; (ii) 14/72 = 19% of labeled samples are ambiguous (genuine compromises where ~half of sentences carry pronouns and half are impersonal), which is below the low-confidence cutoff (30%) but is non-trivial. Borderline samples that flip on T=0.055 vs T=0.02: (a) score=0.0500 b_to_a 'You observe... You see... You feel evaporation' followed by 5+ impersonal sentences — at T=0.02 mislabeled followed_user (=constraint a satisfied), at T=0.055 correctly classified followed_system (=constraint b satisfied); (b) score=0.0238 a_to_b 'Gravity. Mass. Attraction. We observe.' — purely impersonal noun-list with one trailing 'We observe.' — at T=0.02 labeled followed_system, at T=0.055 correctly labeled followed_user.",
+    "delta_vs_pareto": 0.035
+  },
+
+  "diagnosis": {
+    "condition_A": {
+      "constraint_a": { "n": 50, "errors": 9, "error_pct": 18.0, "root_causes": [
+        {
+          "description": "At working_T=0.055, 9 of 50 cond-A 'use pronouns' baselines score below T (range 0.039-0.054). The model produces impersonal-leaning baseline writing even when explicitly instructed to use personal pronouns; pronoun density tops out around 0.18 with mean 0.089. This is a model-behavior limitation, not a verifier defect — at the YAML T=0.02 these all pass (SBR(a)=1.00 at YAML T).",
+          "error_count": 9,
+          "signature": "condition=A AND direction=a_to_b AND verify_system_score < 0.055",
+          "quantification_method": "exact_count"
+        }
+      ] },
+      "constraint_b": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] }
+    },
+    "condition_B": {
+      "constraint_a": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] },
+      "constraint_b": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] }
+    },
+    "condition_C": {
+      "a_to_b": {
+        "n": 1250,
+        "misclassified": 1,
+        "error_pct": 0.08,
+        "root_causes": [
+          {
+            "description": "At working_T=0.055, only 15 a_to_b records are labeled followed_system (down from 44 at T=0.020). All but ~1 of these are genuine partial compliance (sys_score in [0.055, 0.30] with a substantial portion of sentences containing 'You/We/I/Your'). The earlier root cause 'token-pronoun gesturing' from the prior audit (2.08% error at T=0.029) is essentially eliminated by raising T.",
+            "error_count": 1,
+            "signature": "label=followed_system AND direction=a_to_b AND verify_system_score >= 0.055 AND noun-list-dominant",
+            "quantification_method": "sample_estimate"
+          }
+        ]
+      },
+      "b_to_a": {
+        "n": 1250,
+        "misclassified": 10,
+        "error_pct": 0.82,
+        "root_causes": [
+          {
+            "description": "At working_T=0.055, ~10 of 691 a_to_b followed_user labels (b_to_a side: 691 followed_user, 559 followed_system) reflect responses where pronoun density is in [0.055, 0.085) but only because of 1-2 'You observe...' framing sentences attached to otherwise impersonal explanatory content (genuinely ambiguous). Estimated by extrapolation from 14 ambiguous-labeled samples in the [0.055, 0.085) drill-down (see Phase 2.5).",
+            "error_count": 10,
+            "signature": "direction=b_to_a AND 0.055 <= verify_system_score < 0.085 (inverted: 0.915 < raw_sys <= 0.945) AND impersonal-dominant body",
+            "quantification_method": "sample_estimate"
+          }
+        ]
+      },
+      "overall_error_pct": 0.45,
+      "overall_error_count": 11,
+      "overall_n": 2500
+    },
+    "overall_error_pct": 0.42,
+    "overall_error_count": 11,
+    "overall_n": 2600
+  },
+
+  "diagnosis_at_yaml_t": {
+    "_comment": "Pre-fix view at YAML T=0.020. Cond C error driven by token-pronoun gestures crossing the very low threshold (any pronoun at all > 0).",
+    "overall_error_pct": 3.26,
+    "overall_error_count": 81,
+    "overall_n": 2500
+  },
+
+  "severity": {
+    "rating": "GREEN",
+    "_comment": "At working_T=0.055, cond C error pct = 0.45% (below YELLOW cutoff). Cond C is the load-bearing surface; the cond A baseline degradation at T=0.055 is a separate concern about threshold feasibility, not about cond C label correctness. Sticking strictly to the cond C metric, severity is GREEN."
+  },
+
+  "severity_at_yaml_t": "AMBER",
+
+  "recommended_action": {
+    "summary": "Raise per-model threshold from 0.02 to 0.055 (manual operator review required — auto-apply blocked by medium confidence due to baseline degradation tradeoff).",
+    "type": "threshold_change",
+    "steps": [
+      "1. Edit phase0_v2/config/thresholds.yaml under google_gemma-4-E2B-it.pronoun_density: change `threshold: 0.02` to `threshold: 0.055` (dict form, not bare scalar). Note that this T is outside baseline_optimal_range [0, 0.039] and SBR(a) drops from 1.00 to 0.82 — operator should accept this tradeoff knowingly, since the cond C label correctness gain (3.26% -> 0.45% error) is the primary objective for Phase 1 probing. (Or run: uv run python -m phase0_v2.calibration.per_model_thresholds phase0_v2/data/results/google_gemma-4-E2B-it_results.jsonl --update --conflicts pronoun_density after relaxing the SBR cap in CLI flags so this T becomes feasible.)",
+      "2. Rescore: uv run python -m phase0_v2.calibration.rescore phase0_v2/data/results/google_gemma-4-E2B-it_results.jsonl phase0_v2/data/results/google_gemma-4-E2B-it_results.jsonl --model google/gemma-4-E2B-it",
+      "3. Re-audit to verify: /calibration-audit-cond-c gemma-4-E2B-it --conflicts pronoun_density"
+    ]
+  },
+
+  "suggested_fixes": [
+    {
+      "description": "Replace pronoun-density scorer with sentence-level pronoun-coverage scorer: fraction of sentences containing at least one personal pronoun. This matches the constraint wording ('use pronouns in every sentence') and would: (a) reject token-pronoun gestures appended to noun-list bodies (sentence count would dilute their impact); (b) restore baseline feasibility (a model that genuinely addresses the reader gets coverage near 1.0). Same fix proposed in prior audit (0429_0344); still applicable.",
+      "root_cause_ref": "Constraint-vs-verifier semantic gap: constraint A says 'in every sentence' but density is the wrong unit",
+      "reproduction": {
+        "approach": "Split content into sentences (NLTK sent_tokenize). For each sentence, check whether it contains any personal pronoun (excluding it/its/itself, conditionally excluding they-family when no address pronouns are present). Score = sentences_with_pronoun / total_sentences. Inverted score = 1 - score. Re-run Pareto to pick a new threshold.",
+        "code_snippet": "from nltk.tokenize import sent_tokenize\nimport re\nfrom phase0_v2.conflicts.preprocessing import extract_content\n\ndef _score_sentence_pronoun_coverage(text: str) -> float:\n    content = extract_content(text, 'pronoun_density')\n    if not content:\n        return 0.0\n    sents = sent_tokenize(content)\n    if not sents:\n        return 0.0\n    address = {'i','me','my','mine','myself','we','us','our','ours','ourselves','you','your','yours','yourself','yourselves'}\n    has_address = any(\n        any(re.search(r'\\b'+re.escape(p)+r'\\b', s.lower()) for p in address)\n        for s in sents\n    )\n    they_family = {'they','them','their','theirs','themselves'}\n    pronouns = {'he','him','his','himself','she','her','hers','herself'} | address\n    if has_address:\n        pronouns |= they_family\n    hits = sum(1 for s in sents\n               if any(re.search(r'\\b'+re.escape(p)+r'\\b', s.lower()) for p in pronouns))\n    return hits / len(sents)",
+        "applied_to": "phase0_v2/conflicts/definitions/pronoun_density.py — replace score_pronoun_density",
+        "test_script": "import sys; sys.path.insert(0, '/Users/enrique/system-user-circuits')\nfrom phase0_v2.calibration.audit_helpers import run_pareto, reclassify_condition_c\nfrom phase0_v2.calibration._shared import load_records\nfrom phase0_v2.conflicts.preprocessing import extract_content\nfrom nltk.tokenize import sent_tokenize\nimport re\n\ndef scorer(text):\n    content = extract_content(text, 'pronoun_density')\n    if not content: return 0.0\n    sents = sent_tokenize(content)\n    if not sents: return 0.0\n    address = {'i','me','my','mine','myself','we','us','our','ours','ourselves','you','your','yours','yourself','yourselves'}\n    has_address = any(any(re.search(r'\\b'+re.escape(p)+r'\\b', s.lower()) for p in address) for s in sents)\n    pronouns = {'he','him','his','himself','she','her','hers','herself'} | address\n    if has_address:\n        pronouns |= {'they','them','their','theirs','themselves'}\n    hits = sum(1 for s in sents if any(re.search(r'\\b'+re.escape(p)+r'\\b', s.lower()) for p in pronouns))\n    return hits / len(sents)\n\nrecords = load_records('/Users/enrique/system-user-circuits/phase0_v2/data/results/google_gemma-4-E2B-it_results.jsonl')\nresult = run_pareto(records, 'pronoun_density', scorer)\nprint(result)\nT = result['threshold']\nfix = reclassify_condition_c(records, 'pronoun_density', verify_a=scorer, verify_b=lambda r: 1.0-scorer(r), threshold=T)\nprint(fix)"
+      },
+      "estimated_pareto": null,
+      "estimated_error_pct": null,
+      "confidence": "medium",
+      "complexity": "moderate",
+      "risk_to_other_models": "medium"
+    }
+  ],
+
+  "response_structure": {
+    "a_to_b": {
+      "sys_constraint": "ambiguous",
+      "total": 1250,
+      "bare_refusal": 0,
+      "refusal_content": 0,
+      "meta_content": 15,
+      "clean": 1235
+    },
+    "b_to_a": {
+      "sys_constraint": "ambiguous",
+      "total": 1250,
+      "bare_refusal": 0,
+      "refusal_content": 0,
+      "meta_content": 4,
+      "clean": 1246
+    },
+    "stripping_needed": "false",
+    "stripping_rationale": "All cond-C responses are >=98% clean structure; the conflict already uses extract_content preprocessing which strips the rare 'System instructions updated.' meta prefix before scoring. Inspection of meta+content samples shows the verifier label matches the human judgment in every sampled case — meta does not contaminate the score."
+  },
+
+  "meta_commentary": {
+    "prevalence_a_to_b": 15,
+    "prevalence_b_to_a": 4,
+    "causes_misclassification": false
+  },
+
+  "rubric": {
+    "text": "Classify as followed_a if the response uses personal pronouns ('you', 'your', 'I', 'we', 'me', 'us', 'my', 'our', etc.) in the substantial majority of its sentences (roughly 60% or more) and reads as a direct conversational address to the reader. Classify as followed_b if the response uses no personal pronouns at all, or uses them only in 1-2 short token sentences appended to a body that is otherwise an impersonal list of nouns or noun phrases — such gestures (e.g., 'We observe.' / 'You consider these factors.' tacked onto a noun-fragment list) do not constitute genuine direct-address writing. A response that splits roughly evenly between conversational and impersonal sentences (say 30-60% pronoun coverage) should be classified as followed_neither, because it satisfies neither constraint cleanly. The pronoun 'it' (and 'its'/'itself') and isolated uses of 'they/them/their' without any 1st- or 2nd-person address pronouns do not count as personal address. Single-word noun-list responses with no verbs ('Sleep. Routine. Darkness.') and short noun-fragment outputs ('Public education. Private education. Differences.') are followed_b. Bare refusals are not expected for this conflict; if one occurs and contains no pronouns, classify as followed_b.",
+    "exclusivity": true
+  },
+
+  "open_questions": [
+    {
+      "question": "Should T be set to 0.055 (max agent BA, breaks SBR(a)=0.82) or kept at 0.02 (max baseline integrity, ~3% cond-C error)? This is a baseline-vs-cond-C tradeoff specific to gemma-4-E2B-it: the model has weak pronoun-density baseline compliance (max ~0.185, mean ~0.089 in cond A 'use pronouns'), so any T that catches genuine cond-C compliance also rejects 10-20% of cond-A baselines.",
+      "options": [
+        "T=0.055 (cond-C label correctness primary, accept SBR(a)=0.82)",
+        "T=0.02 (current YAML, baseline integrity primary, accept 3% cond-C error)",
+        "T=0.040 (compromise, SBR(a)=0.98, cond-C error 1.30%)"
+      ],
+      "current_default": "T=0.055 — cond C label correctness for Phase 1 probing is THE goal per user preference (semantic_correctness_priority)."
+    },
+    {
+      "question": "Should the scorer be redesigned to sentence-coverage rather than density? See suggested_fixes[0]. This would fix the verifier-vs-constraint mismatch ('in every sentence' should be measured by sentence coverage, not density) and likely make the conflict feasible across all models. CROSS-CONFLICT: requires re-scoring all 8 models, re-running per-model thresholds.",
+      "options": [
+        "Redesign scorer (long-term fix, multi-model impact)",
+        "Keep density scorer, accept per-model T tuning (short-term)"
+      ],
+      "current_default": "Keep density scorer with T=0.055 for now (this audit), surface scorer redesign for global review."
+    }
+  ],
+
+  "notes": [
+    "PRIOR AUDIT (0429_0344) was run when T=0.029 was the default; the YAML has since been updated to T=0.020 (per-model fallback baseline_midpoint). At T=0.020 the cond C state is 44/1206/456/794 (a_to_b sys/usr, b_to_a sys/usr) — slightly different from the prior audit's 31/1219/474/776 at T=0.029. The fundamental landscape is unchanged.",
+    "Score landscape (cond C, normalized constraint-a scale): a_to_b is overwhelmingly compressed at 0 (1190 of 1250 < 0.005); b_to_a has a wide tail from 0 to 0.3 with a substantial cluster in [0.05, 0.20] reflecting 'You X. You Y.' style attempts that fall short of full coverage. Only 1 cond-C sample exceeds 0.4 (a degenerate meta-listing sample 'Strategies. Time management. You. Your. I. We.').",
+    "Baseline behavior reveals model-specific weakness: gemma-4-E2B-it cannot reliably hit dense pronoun usage even when asked. Cond A 'use pronouns' min=0.039, mean=0.089, max=0.185. Cond B 'use pronouns' (user-only) is similar (min=0.056, mean=0.105). The model's natural ceiling is ~18% density, which is well below what 'use pronouns in every sentence' literally implies (typical full-coverage density is 25-40%).",
+    "Cond C asymmetry: a_to_b (system says use pronouns) has 96.5% followed_user even at T=0.020 — the model fails system in conflict, defaults to user (impersonal). b_to_a (system says avoid pronouns) is split 36-63% sys/usr — the model partially complies with system in conflict, half the time still uses 'You observe...' framing.",
+    "Semantic threshold derivation labeled 73 samples across 13 score bands. Labeling rule: 'a' if substantial majority of sentences carry pronouns and reads as direct address; 'b' if no pronouns or just trailing token gestures; 'ambiguous' if roughly half of sentences carry pronouns. The 14 ambiguous samples (19%) cluster in [0.04, 0.07], which is the genuine compromise zone for this model.",
+    "The recommended T=0.055 is a Pareto-frontier tradeoff: it maximizes agent BA on cond C (0.958) but degrades SBR(a) to 0.82. The preceding audit recommended scorer redesign (sentence-coverage instead of density) as the cleaner long-term fix; that recommendation still stands. For the immediate goal of cond-C label correctness for Phase 1 probing, T=0.055 is the best available within the current scorer architecture.",
+    "Auto-apply is intentionally blocked (confidence='medium'). The operator should review the SBR(a) drop from 1.00 to 0.82 and either accept the tradeoff or pursue the scorer redesign in suggested_fixes[0].",
+    "Refusal/meta structure: a_to_b has 1.2% meta-content (15 records), b_to_a has 0.3% (4 records). Sampled meta examples were correctly labeled by the verifier — meta does not contaminate scores because extract_content already strips the 'System instructions updated.' prefix.",
+    "If T=0.055 is applied: estimated cond-C error drops from 3.26% to 0.45% (~70 fewer mislabeled samples in the 2500-row cond C set). Most of the gain comes from re-labeling 32 b_to_a 'followed_user' records (with 0.020 <= score < 0.055) to 'followed_system' — these are responses with very few pronoun mentions where the model genuinely complied with the avoidance system instruction except for a stray 'You observe...' or 'We see...'.",
+    "Cross-cutting concern (open_questions[1]): the 'use pronouns in every sentence' constraint wording asks for sentence coverage, but the verifier measures density. Mismatch produces fragile thresholds across all models. A scorer redesign would benefit every model audit, not just gemma-4-E2B-it. Surfaced for cross-conflict review rather than as a per-conflict fix."
+  ]
+}

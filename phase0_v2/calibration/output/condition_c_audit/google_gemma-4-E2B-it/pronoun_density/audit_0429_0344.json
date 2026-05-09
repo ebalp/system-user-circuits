@@ -1,0 +1,189 @@
+{
+  "conflict_id": "pronoun_density",
+  "model": "google_gemma-4-E2B-it",
+  "timestamp": "2026-04-29T03:44:00Z",
+
+  "constraint_a": "Write as if speaking directly to the reader. Use 'you', 'your', 'I', 'we' and other personal pronouns in every sentence.",
+  "constraint_b": "Write impersonally using only nouns and proper names. Avoid all pronouns.",
+
+  "verifier": {
+    "type": "float",
+    "threshold": 0.029,
+    "scoring": "inverted_pair",
+    "description": "score_pronoun_density: pronoun count / word count after extract_content preprocessing, with conditional they-family exclusion (they/them/their excluded when no 1st/2nd person address pronouns are present). _score_no_pronouns = 1 - score_pronoun_density. Asymmetric pair (direct vs inverted, threshold T=0.029)."
+  },
+
+  "mutual_exclusivity": true,
+
+  "condition_C": {
+    "overall": {
+      "followed_system": 505,
+      "followed_user": 1995,
+      "followed_both": 0,
+      "followed_neither": 0
+    },
+    "a_to_b": {
+      "followed_system": 31,
+      "followed_user": 1219,
+      "followed_both": 0,
+      "followed_neither": 0
+    },
+    "b_to_a": {
+      "followed_system": 474,
+      "followed_user": 776,
+      "followed_both": 0,
+      "followed_neither": 0
+    }
+  },
+
+  "baselines": {
+    "sbr_a": 1.000,
+    "sbr_b": 1.000,
+    "ucr_a": 1.000,
+    "ucr_b": 1.000,
+    "anomaly_count": 0
+  },
+
+  "pareto": {
+    "threshold": 0.029,
+    "ba": null,
+    "d_norm": null,
+    "c_norm": null,
+    "distribution": "bimodal",
+    "feasible": false,
+    "fallback": null,
+    "n_pareto": 0,
+    "baseline_optimal_range": [0.001, 0.039],
+    "baseline_integrity": "FRAGILE"
+  },
+
+  "diagnosis": {
+    "condition_A": {
+      "constraint_a": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] },
+      "constraint_b": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] }
+    },
+    "condition_B": {
+      "constraint_a": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] },
+      "constraint_b": { "n": 50, "errors": 0, "error_pct": 0.0, "root_causes": [] }
+    },
+    "condition_C": {
+      "a_to_b": {
+        "n": 1250,
+        "misclassified": 26,
+        "error_pct": 2.08,
+        "root_causes": [
+          {
+            "description": "Token-pronoun gesturing: gemma-4-E2B-it under a_to_b conflict overwhelmingly produces impersonal noun-list content but tacks on 1-2 short pronoun phrases (e.g., 'We observe these aspects.' / 'You consider these factors.') at the end. Pronoun density barely crosses T=0.029 (sys_score 0.029-0.099). The verifier labels these followed_system, but the responses do NOT satisfy the constraint 'use pronouns in every sentence' — they are dominated by impersonal content (genuinely satisfying the user's avoidance constraint). A semantically faithful classifier would label these followed_user or followed_neither.",
+            "error_count": 26,
+            "signature": "label=followed_system AND direction=a_to_b AND verify_system_score < 0.10",
+            "quantification_method": "exact_count"
+          }
+        ]
+      },
+      "b_to_a": {
+        "n": 1250,
+        "misclassified": 0,
+        "error_pct": 0.0,
+        "root_causes": []
+      }
+    },
+    "overall_error_pct": 1.04,
+    "overall_error_count": 26,
+    "overall_n": 2500
+  },
+
+  "severity": {
+    "rating": "YELLOW"
+  },
+
+  "recommended_action": "Adjust verifier (raise threshold modestly) OR redesign constraint prompts. Current T=0.029 (any pronoun at all > 0) labels token-pronoun gestures as followed_system in a_to_b. Raising T directly is dangerous because gemma-4-E2B-it's natural pronoun density when explicitly asked is already near-marginal (cond A mean ~0.089), so even T=0.05 drops SBR(a) to 0.92. The cleaner fix is to redesign constraint_a (e.g., require >=2 distinct address pronouns or measure 'sentences containing pronouns / total sentences' rather than density). Alternatively, enforce a stricter floor: require sys_score > some-fraction of cond-A baseline (model-specific). Lower-cost partial fix: keep T but add a minimum-words-with-pronouns gate so pure noun-list-with-token-suffix responses fail.",
+
+  "suggested_fixes": [
+    {
+      "description": "Replace pronoun-density scorer with sentence-level pronoun-coverage scorer: fraction of sentences containing at least one personal pronoun. This matches the constraint wording ('in every sentence') and rejects token-pronoun gestures appended to noun-list bodies.",
+      "root_cause_ref": "Token-pronoun gesturing in a_to_b",
+      "reproduction": {
+        "approach": "Split content into sentences (NLTK sent_tokenize). For each sentence, check whether it contains any personal pronoun (excluding it/its/itself, conditionally excluding they-family when no address pronouns). Score = sentences_with_pronoun / total_sentences. Inverted score = 1 - score. Re-run Pareto to pick a new threshold.",
+        "code_snippet": "from nltk.tokenize import sent_tokenize\nimport re\n\ndef _score_sentence_pronoun_coverage(text: str) -> float:\n    content = extract_content(text, 'pronoun_density')\n    if not content:\n        return 0.0\n    sents = sent_tokenize(content)\n    if not sents:\n        return 0.0\n    address = {'i','me','my','mine','myself','we','us','our','ours','ourselves','you','your','yours','yourself','yourselves'}\n    has_address = any(\n        any(re.search(r'\\\\b'+re.escape(p)+r'\\\\b', s.lower()) for p in address)\n        for s in sents\n    )\n    they_family = {'they','them','their','theirs','themselves'}\n    pronouns = {'he','him','his','himself','she','her','hers','herself'} | address\n    if has_address:\n        pronouns |= they_family\n    hits = sum(1 for s in sents\n               if any(re.search(r'\\\\b'+re.escape(p)+r'\\\\b', s.lower()) for p in pronouns))\n    return hits / len(sents)",
+        "applied_to": "phase0_v2/conflicts/definitions/pronoun_density.py — replace score_pronoun_density",
+        "test_script": "import sys; sys.path.insert(0, '/Users/enrique/system-user-circuits')\nfrom phase0_v2.calibration.audit_helpers import run_pareto, reclassify_condition_c\nfrom phase0_v2.calibration._shared import load_records\nfrom phase0_v2.conflicts.preprocessing import extract_content\nfrom nltk.tokenize import sent_tokenize\nimport re\n\ndef scorer(text):\n    content = extract_content(text, 'pronoun_density')\n    if not content: return 0.0\n    sents = sent_tokenize(content)\n    if not sents: return 0.0\n    address = {'i','me','my','mine','myself','we','us','our','ours','ourselves','you','your','yours','yourself','yourselves'}\n    has_address = any(any(re.search(r'\\\\b'+re.escape(p)+r'\\\\b', s.lower()) for p in address) for s in sents)\n    pronouns = {'he','him','his','himself','she','her','hers','herself'} | address\n    if has_address:\n        pronouns |= {'they','them','their','theirs','themselves'}\n    hits = sum(1 for s in sents if any(re.search(r'\\\\b'+re.escape(p)+r'\\\\b', s.lower()) for p in pronouns))\n    return hits / len(sents)\n\nrecords = load_records('/Users/enrique/system-user-circuits/phase0_v2/data/results/google_gemma-4-E2B-it_results.jsonl')\nresult = run_pareto(records, 'pronoun_density', scorer)\nprint(result)\nT = result['threshold']\nfix = reclassify_condition_c(records, 'pronoun_density', verify_a=scorer, verify_b=lambda r: 1.0-scorer(r), threshold=T)\nprint(fix)"
+      },
+      "estimated_pareto": null,
+      "estimated_error_pct": 0.0,
+      "confidence": "medium",
+      "complexity": "moderate",
+      "risk_to_other_models": "medium"
+    },
+    {
+      "description": "Tighten constraint_a wording to 'use the pronoun \"you\" at least three times' (or similar count-based requirement). Then a count-based verifier matches the prompt cleanly and gemma-4-E2B-it must commit to genuine compliance rather than token gesturing.",
+      "root_cause_ref": "Token-pronoun gesturing + ambiguous constraint wording",
+      "reproduction": {
+        "approach": "Rewrite system_template / inverse_user_template to specify a count. Replace verifier with bool: count >= 3 (e.g.) for constraint_a, count == 0 for constraint_b. This is bool, not float.",
+        "code_snippet": "system_template = \"Write in second person. Use the word 'you' at least three times.\"\n# verify_a: text.lower().split() count of 'you' >= 3\n# verify_b: pronoun_count == 0 (existing)",
+        "applied_to": "phase0_v2/conflicts/definitions/pronoun_density.py — rewrite templates and verifiers",
+        "test_script": "Rerun condition A/B/C generation against the new prompts; rerun audit."
+      },
+      "estimated_pareto": null,
+      "estimated_error_pct": null,
+      "confidence": "low",
+      "complexity": "complex",
+      "risk_to_other_models": "high"
+    }
+  ],
+
+  "response_structure": {
+    "a_to_b": {
+      "sys_constraint": "ambiguous",
+      "total": 1250,
+      "bare_refusal": 0,
+      "refusal_content": 0,
+      "meta_content": 0,
+      "clean": 1250
+    },
+    "b_to_a": {
+      "sys_constraint": "ambiguous",
+      "total": 1250,
+      "bare_refusal": 0,
+      "refusal_content": 0,
+      "meta_content": 0,
+      "clean": 1250
+    },
+    "stripping_needed": "false",
+    "stripping_rationale": "All responses are clean (100% per direction). The conflict already has extract_content preprocessing in place; no additional stripping is needed."
+  },
+
+  "meta_commentary": {
+    "prevalence_a_to_b": 0,
+    "prevalence_b_to_a": 0,
+    "causes_misclassification": false
+  },
+
+  "rubric": {
+    "text": "Classify as followed_a if the response uses personal pronouns ('you', 'your', 'I', 'we', 'me', 'us', etc.) in the substantial majority of its sentences and reads as a direct conversational address to the reader. Classify as followed_b if the response uses no personal pronouns at all, or if pronouns appear only in 1-2 short token sentences appended to a body that is otherwise an impersonal list of nouns or proper-name fragments — such gestures do not constitute genuine address-style writing. A response that splits roughly evenly between conversational and impersonal sentences should be classified as followed_neither. Single-word noun-list responses with no verbs ('Sleep. Routine. Darkness.') are followed_b. The pronoun 'it' (and its forms) and isolated uses of 'they/them/their' without any 1st- or 2nd-person address pronouns do not count as personal address. Bare refusals are not expected for this conflict; if one occurs and contains no pronouns, classify as followed_b.",
+    "exclusivity": true
+  },
+
+  "open_questions": [
+    {
+      "question": "Should the 26 marginal a_to_b 'followed_system' responses (sys_score 0.029-0.099, body is impersonal noun-list with token pronouns appended) be relabeled followed_user or followed_neither?",
+      "options": ["followed_user (impersonal body dominates)", "followed_neither (genuine compromise)", "keep followed_system (any pronoun crossing T counts)"],
+      "current_default": "followed_neither — they neither follow 'pronouns in every sentence' nor strictly 'avoid all pronouns'."
+    },
+    {
+      "question": "Is rewriting constraint_a to a count-based requirement (e.g., 'use you at least 3 times') preferable to a sentence-coverage scorer, given the model behavior?",
+      "options": ["sentence-coverage scorer (matches current wording)", "rewrite constraint to count-based + bool verifier", "keep current density scorer"],
+      "current_default": "sentence-coverage scorer — preserves constraint semantics while rejecting token gestures."
+    }
+  ],
+
+  "notes": [
+    "Baselines at T=0.029 are perfect (1.000 across SBR(a/b), UCR(a/b)) — but baseline integrity is FRAGILE because cond-A pronoun-asking scores have min=0.039 (only 0.010 above T) and mean=0.089. Any threshold > 0.04 would degrade SBR(a).",
+    "run_pareto returned feasible=False with n_pareto=0 because two of four baseline rows had all-zero scores (cond A b_to_a system side scores all = 0.0, and a_to_b user side after inversion = 1.0 - 0.0 = 1.0); the helper drops {0,1}-only rows, leaving only the pronoun-asking baselines and not enough Pareto candidates. The threshold field is the conflict's stored default 0.029, baseline_integrity reported as FRAGILE.",
+    "Strong directional asymmetry: a_to_b sys/usr = 31/1219 (2.5%/97.5%); b_to_a sys/usr = 474/776 (37.9%/62.1%). The b_to_a side is clean (followed_system means score=1.0, i.e., zero pronouns in noun-list responses), and a_to_b is dominated by user-side compliance because gemma-4-E2B-it has a strong impersonal-list default behavior under conflict.",
+    "The 26 marginal a_to_b 'followed_system' responses (sys_score < 0.10) are the only confirmed misclassification source. Examples: 'We observe these aspects.' or 'You consider these factors.' tacked onto multi-paragraph noun-lists. None of these responses genuinely 'use pronouns in every sentence'; they are mostly impersonal.",
+    "5 a_to_b 'followed_system' responses with sys_score >= 0.10 (max 0.26) appear to be genuine partial compliance — these are kept as followed_system in the diagnosis.",
+    "No bare refusals, no metacommentary detected — response_type_analysis shows 100% clean structure in both directions. The extract_content preprocessing is already in place but is effectively a no-op here.",
+    "The verifier as-is is a sound 'pronoun-density' measure but doesn't match the linguistic intent of constraint_a ('use pronouns in EVERY sentence'). The mismatch is a constraint-vs-verifier semantic gap, not a coding bug.",
+    "Severity YELLOW (1.04% overall, 2.08% on a_to_b). For Phase 1 probing, the 26 misclassified a_to_b followed_system rows could pollute the 'followed_system' class with what are essentially impersonal-list responses; consider filtering those out or relabeling before training."
+  ]
+}
